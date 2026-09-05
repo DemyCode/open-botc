@@ -19,7 +19,6 @@ const args = Object.fromEntries(
     a.startsWith('--') ? [[a.slice(2), arr[i + 1]]] : [],
   ),
 );
-const BASE = args.url || 'http://localhost:8080';
 const OUT = args.out || path.resolve('shots');
 const CHROME =
   args.chrome ||
@@ -28,6 +27,75 @@ const CHROME =
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 fs.mkdirSync(OUT, { recursive: true });
+
+// ------------------------------------------------------------------- server
+//
+// Start a private server unless one was named with --url. Notifications are
+// switched off: this walkthrough marks every bot as "buzz confirmed" to
+// screenshot the ready state, which would otherwise fire a burst of real
+// pushes at a public ntfy server on every phase change.
+
+let ownServer = null;
+let serverDir = null;
+let BASE = args.url;
+
+if (!BASE) {
+  const port = 8300 + Math.floor(Math.random() * 400);
+  BASE = `http://127.0.0.1:${port}`;
+  serverDir = fs.mkdtempSync('/tmp/botc-uidata-');
+  ownServer = spawn(process.execPath, ['dist/index.js'], {
+    env: {
+      ...process.env,
+      PORT: String(port),
+      HOST: '127.0.0.1',
+      BOTC_NTFY_URL: 'off',
+      BOTC_DATA_DIR: serverDir,
+    },
+    stdio: 'ignore',
+  });
+}
+
+let stopped = false;
+function stopServer() {
+  if (stopped) return;
+  stopped = true;
+  ownServer?.kill();
+  if (serverDir) {
+    try {
+      fs.rmSync(serverDir, { recursive: true, force: true, maxRetries: 3 });
+    } catch {
+      /* the OS will reap /tmp */
+    }
+  }
+}
+
+// Never orphan the server or the browser, however this script ends.
+process.on('exit', () => {
+  stopServer();
+  globalThis.__botcChrome?.kill();
+});
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => process.exit(1));
+}
+process.on('uncaughtException', (err) => {
+  console.error(err);
+  process.exit(1);
+});
+
+async function waitForServer() {
+  for (let i = 0; i < 80; i++) {
+    try {
+      if ((await fetch(`${BASE}/api/config`)).ok) return;
+    } catch {
+      /* not listening yet */
+    }
+    await sleep(250);
+  }
+  console.error(`✖ ${BASE} never came up`);
+  stopServer();
+  process.exit(1);
+}
+await waitForServer();
 
 // ------------------------------------------------------------ chrome driver
 
@@ -48,6 +116,7 @@ const chrome = spawn(
   ],
   { stdio: 'ignore' },
 );
+globalThis.__botcChrome = chrome;
 
 async function devtools() {
   for (let i = 0; i < 60; i++) {
@@ -233,8 +302,19 @@ await sleep(400);
 await capture('04-lobby-ready');
 
 // ---- start
+// Long enough that a phase never auto-advances before it is screenshotted,
+// short enough that a slow game cannot run past the wall clock below.
 const host = bots[0];
-host.send({ t: 'setOptions', options: { revealSeconds: 120, dawnSeconds: 60, speechSeconds: 60, voteSeconds: 60 } });
+host.send({
+  t: 'setOptions',
+  options: {
+    revealSeconds: 25,
+    dawnSeconds: 8,
+    speechSeconds: 10,
+    voteSeconds: 10,
+    nightPromptSeconds: 20,
+  },
+});
 await sleep(200);
 host.send({ t: 'start' });
 await sleep(700);
@@ -249,8 +329,28 @@ for (const b of bots) b.send({ t: 'ready' });
 await sleep(900);
 
 // ---- walk the game, screenshotting each phase the browser lands in
+const deadline = Date.now() + 200_000;
 let guard = 0;
 while (guard++ < 900) {
+  if (Date.now() > deadline) {
+    // Distinguish "the server stalled" from "the browser stopped updating".
+    const browser = await uiPhase();
+    const connected = await page.evaluate(
+      `document.querySelector('.topbar .dot')?.classList.contains('off') === false`,
+    );
+    const v = bots[0].view;
+    fail(
+      `game did not finish in time — browser shows ${browser} (socket ` +
+        `${connected ? 'up' : 'DOWN'}), server says ${v?.phase} ` +
+        `night=${v?.night} day=${v?.day} ` +
+        `phaseSecondsLeft=${JSON.stringify(v?.phaseSecondsLeft)} ` +
+        `winner=${JSON.stringify(v?.winner)} ` +
+        `nomination=${v?.nomination ? v.nomination.stage : 'null'} ` +
+        `alive=${v?.players.filter((p) => p.alive).length}`,
+    );
+    console.error('  last log:', JSON.stringify(v?.log.slice(-6).map((l) => l.text)));
+    break;
+  }
   const phase = await uiPhase();
 
   if (phase === 'night') {
@@ -285,7 +385,7 @@ while (guard++ < 900) {
 
   if (phase === 'dawn') {
     await capture('09-dawn');
-    await sleep(600);
+    await sleep(300);
     continue;
   }
 
@@ -345,14 +445,14 @@ while (guard++ < 900) {
         await sleep(30);
       }
     }
-    await sleep(900);
+    await sleep(500);
     await capture('15-vote-result');
     continue;
   }
 
   if (phase === 'dusk') {
     await capture('16-dusk');
-    await sleep(900);
+    await sleep(300);
     continue;
   }
 
@@ -388,6 +488,7 @@ if (overflow > 1) fail(`page scrolls horizontally by ${overflow}px on a 414px sc
 for (const b of bots) b.close();
 page.ws.close();
 chrome.kill();
+stopServer();
 // Chromium may still be flushing its profile; cleanup is best-effort.
 await sleep(300);
 try {

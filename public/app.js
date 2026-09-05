@@ -744,6 +744,7 @@ function notificationCard(v) {
           <button class="btn small ghost" data-act="testBuzz">Test again</button>
           <button class="btn small ghost" data-act="unconfirm">Set up again</button>
         </div>
+        ${vibrationHelp()}
       </div>`;
   }
 
@@ -799,11 +800,56 @@ function notificationCard(v) {
         </div>
       </details>
 
+      ${vibrationHelp()}
+
       <p class="faint">
         Your topic is private to you — it is how your secret night information
         reaches your phone. Don't share it.
       </p>
     </div>`;
+}
+
+/**
+ * Whether a notification vibrates is an Android notification-channel setting,
+ * which the sender cannot control. Samsung phones in particular ship with
+ * battery rules and channel defaults that swallow the buzz, so spell out the
+ * fixes rather than leaving people thinking it is broken.
+ */
+function vibrationHelp() {
+  return `
+    <details>
+      <summary class="muted" style="cursor:pointer;padding:6px 0">
+        Notification arrives but the phone doesn't vibrate?
+      </summary>
+      <div class="stack" style="margin-top:10px">
+        <p class="faint">
+          Three things fix this, in the order worth trying — all inside the
+          <b>ntfy</b> app or Android settings, not here:
+        </p>
+        <p class="faint">
+          <b>1. Turn on Instant delivery.</b> ntfy app → Settings →
+          <i>Instant delivery</i>. Without it Android batches messages through
+          Google's servers and may hold them for minutes. This matters most on
+          Samsung.
+        </p>
+        <p class="faint">
+          <b>2. Let the channel vibrate.</b> Long-press the ntfy app icon →
+          Notifications (or Android Settings → Apps → ntfy → Notifications) →
+          open the <i>Max priority</i> channel → turn on Vibrate. Android locks
+          this to the channel; no app can switch it on for you.
+        </p>
+        <p class="faint">
+          <b>3. Stop the phone sleeping the app.</b> Android Settings → Apps →
+          ntfy → Battery → <i>Unrestricted</i>. On Samsung also check
+          Device care → Battery → Background usage limits, and make sure ntfy
+          is not in "Sleeping apps".
+        </p>
+        <p class="faint">
+          Also check the phone is not on silent, and that Do Not Disturb is off
+          — or allow ntfy through it.
+        </p>
+      </div>
+    </details>`;
 }
 
 function pushNag(v) {

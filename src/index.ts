@@ -327,6 +327,9 @@ server.listen(PORT, HOST, () => {
   for (const u of urls) console.log(`     ${u}`);
   console.log('');
   console.log('  Open one of the LAN addresses on every phone in the room.');
+  if (ntfyBase() === '' || ntfyBase().toLowerCase() === 'off') {
+    console.log('  ! Notifications are disabled (BOTC_NTFY_URL=off).');
+  }
   if (!fs.existsSync(PUBLIC_DIR)) {
     console.warn(`  ! public/ not found at ${PUBLIC_DIR}`);
   }
