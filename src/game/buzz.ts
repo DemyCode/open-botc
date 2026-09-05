@@ -1,16 +1,22 @@
 /**
  * The vibration vocabulary.
  *
- * These patterns drive `navigator.vibrate()` in the page. They are designed to
- * be told apart *without looking* — a player with their eyes shut should know
- * whether the night wants them or somebody just got accused. So each one has a
- * distinct rhythmic shape rather than a distinct length:
+ * A phone vibrates only to wake somebody who cannot otherwise be reached —
+ * nothing else. In practice that means the night, plus dawn:
  *
- *   YOUR TURN   two taps then a long hold   — the only one that ends sustained
- *   ACCUSATION  five fast taps              — the only rapid one
- *   VOTE        three even pulses
- *   DEATH       one long hold               — the only single pulse
- *   DAWN        two slow spaced pulses
+ *   YOUR TURN   two taps then a long hold  — the night needs your ability
+ *   YOU LEARNED two medium pulses          — the night woke you with information
+ *   YOU CHANGED a run then a hold          — you are the Demon now
+ *   DAWN        two slow spaced pulses     — everyone, open your eyes
+ *
+ * Daytime events are deliberately silent. Everybody is awake, in the same room,
+ * holding their phone and able to hear each other: a nomination is announced by
+ * the person making it, and the screen updates anyway. Vibrating for public
+ * events that need no action teaches people to ignore the buzz, and then the
+ * one that matters — your night turn — gets missed.
+ *
+ * The patterns are designed to be told apart *without looking*, since a player
+ * feeling one has their eyes shut.
  *
  * A locked phone is a different matter: there, vibration is a property of the
  * Android notification channel and cannot be set by the sender. Players are
@@ -42,6 +48,16 @@ export interface BuzzSpec {
   label: string;
   /** One line explaining when it fires. */
   meaning: string;
+  /**
+   * Does this event actually need the player? Only `wake: true` events vibrate
+   * a phone or send a notification.
+   *
+   * A buzz has to mean "the game is waiting on you". Vibrating for vote tallies
+   * and speech changes trains people to ignore it, and then the one buzz that
+   * matters — your night turn — gets lost. Everything else still updates the
+   * screen; it just does so quietly.
+   */
+  wake: boolean;
 }
 
 export const BUZZ: Record<BuzzKind, BuzzSpec> = {
@@ -51,63 +67,76 @@ export const BUZZ: Record<BuzzKind, BuzzSpec> = {
     pattern: [180, 120, 180, 120, 1000],
     label: 'Your turn',
     meaning: 'The night needs you — open your phone and choose.',
+    wake: true,
   },
   info: {
     pattern: [350, 200, 350],
     label: 'You learned something',
     meaning: 'Private information arrived. Read it in the You tab.',
+    wake: true,
   },
   reveal: {
     pattern: [700, 250, 300],
     label: 'Your character',
     meaning: 'The game has started and you have been dealt a role.',
+    wake: false,
   },
-  // The only rapid pattern: unmistakable urgency, everybody feels it at once.
+  // Silent: everybody is awake and the nominator says it out loud.
   nomination: {
     pattern: [110, 90, 110, 90, 110, 90, 110, 90, 110],
     label: 'Someone is accused',
     meaning: 'A nomination was made. Listen to the accuser, then the accused.',
+    wake: false,
   },
   speech: {
     pattern: [200, 150, 200],
     label: 'Speaker changed',
     meaning: 'The accused is now defending themselves.',
+    wake: false,
   },
   vote: {
     pattern: [300, 150, 300, 150, 300],
     label: 'Vote now',
     meaning: 'Raise your hand on your phone: execute, or not.',
+    wake: false,
   },
   voteresult: {
     pattern: [200, 100, 200],
     label: 'Vote counted',
     meaning: 'The result of the vote.',
+    wake: false,
   },
-  // The only single sustained pulse.
+  // The only single sustained pulse. Silent: a night death is already carried
+  // by the dawn buzz, and an execution happens while everyone is watching.
   death: {
     pattern: [1500],
     label: 'Someone died',
     meaning: 'An execution, or a death in the night.',
+    wake: false,
   },
   dawn: {
     pattern: [600, 400, 600],
     label: 'Day breaks',
     meaning: 'Open your eyes. The morning report is on your phone.',
+    wake: true,
   },
   night: {
     pattern: [900],
     label: 'Night falls',
     meaning: 'Close your eyes and put the phone down.',
+    wake: false,
   },
   transform: {
     pattern: [250, 150, 250, 150, 250, 150, 900],
     label: 'You have changed',
     meaning: 'Your character became something else.',
+    wake: true,
   },
   gameover: {
     pattern: [150, 100, 150, 100, 150, 100, 150, 100, 1200],
     label: 'Game over',
     meaning: 'Good or evil has won.',
+    wake: false,
   },
 };
 
@@ -115,10 +144,16 @@ export function pattern(kind: BuzzKind): number[] {
   return BUZZ[kind].pattern;
 }
 
-/** Served to the client so it can render the legend and let players feel each one. */
+export function wakes(kind: BuzzKind): boolean {
+  return BUZZ[kind].wake;
+}
+
+/**
+ * The buzzes a player can actually receive, for the in-app legend. Silent
+ * events are left out — there is nothing for a player to learn about them.
+ */
 export function buzzCatalogue() {
-  return (Object.keys(BUZZ) as BuzzKind[]).map((k) => ({
-    kind: k,
-    ...BUZZ[k],
-  }));
+  return (Object.keys(BUZZ) as BuzzKind[])
+    .filter((k) => BUZZ[k].wake)
+    .map((k) => ({ kind: k, ...BUZZ[k] }));
 }

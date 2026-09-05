@@ -170,20 +170,42 @@ received.length = 0;
 players[0].send({ t: 'pushConfirmed', ok: true });
 await sleep(200);
 
-for (const p of players) p.send({ t: 'setOptions', options: { revealSeconds: 1 } });
+players[0].send({ t: 'setOptions', options: { revealSeconds: 1, dawnSeconds: 1 } });
+await sleep(150);
 players[0].send({ t: 'start' });
-await sleep(800);
+await sleep(700);
+
+check(
+  received.length === 0,
+  `dealing characters wakes nobody — everyone is looking at their phone (got ${received.length})`,
+);
+
+// Play through the first night; nobody may be disturbed until they are woken.
+for (const p of players) p.send({ t: 'ready' });
+for (let i = 0; i < 200 && players[0].view?.phase !== 'day'; i++) {
+  for (const p of players) {
+    if (p.view?.prompt) {
+      const t = p.view.prompt.choices
+        .filter((c) => !c.disabled)
+        .slice(0, p.view.prompt.count)
+        .map((c) => c.playerId);
+      p.send({ t: 'choose', promptId: p.view.prompt.id, targets: t });
+      break;
+    }
+  }
+  await sleep(60);
+}
 
 check(
   received.every((r) => r.topic === topic),
   'only the player who confirmed a test buzz is published to',
 );
-check(received.length > 0, 'the confirmed player is notified when the game starts');
+check(received.length > 0, 'the confirmed player is woken during the night or at dawn');
 check(
   received.every((r) => r.headers.priority === 'max'),
-  'every in-game notification is priority max, so the phone vibrates',
+  'every notification is priority max, so the phone vibrates',
 );
-console.log(`  in-game notifications sent: ${received.length}`);
+console.log(`  night notifications sent: ${received.length}`);
 
 // ---- live round-trip, if asked
 if (LIVE) {

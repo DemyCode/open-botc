@@ -262,6 +262,10 @@ function firstLine(s: string): string {
 /**
  * Queue a buzz. The kind picks the vibration rhythm, so that a player can tell
  * what happened without looking — see `buzz.ts` for the vocabulary.
+ *
+ * Kinds marked `wake: false` are dropped here: their screens still update via
+ * the normal state broadcast, but no phone is disturbed. A buzz has to mean the
+ * game is waiting on you, or people stop trusting it.
  */
 function buzz(
   s: GameState,
@@ -270,7 +274,7 @@ function buzz(
   title: string,
   body: string,
 ): void {
-  if (playerIds.length === 0) return;
+  if (playerIds.length === 0 || !BUZZ[kind].wake) return;
   s.outbox.push({
     k: 'buzz',
     playerIds,

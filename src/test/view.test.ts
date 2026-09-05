@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { BUZZ } from '../game/buzz.js';
 import { addPlayer, beginNight, createGame, startGame } from '../game/engine.js';
 import { registersAs } from '../game/registration.js';
 import { viewFor } from '../game/view.js';
@@ -166,5 +167,52 @@ describe('misregistration', () => {
     assert.equal(registersAs(g.s, chef, 'townsfolk', ctx), true);
     assert.equal(registersAs(g.s, chef, 'evil', ctx), false);
     assert.equal(registersAs(g.s, imp, 'demon', ctx), true);
+  });
+});
+
+describe('buzzing discipline', () => {
+  it('vibrates only to wake someone who cannot otherwise be reached', () => {
+    const waking = (Object.keys(BUZZ) as (keyof typeof BUZZ)[]).filter((k) => BUZZ[k].wake);
+    assert.deepEqual(
+      waking.sort(),
+      ['dawn', 'info', 'transform', 'turn'],
+      'the set of waking events changed — is the new one really waking someone?',
+    );
+  });
+
+  it('stays silent through the whole day, when everyone is awake', () => {
+    for (const k of ['nomination', 'vote', 'speech', 'voteresult', 'death'] as const) {
+      assert.equal(BUZZ[k].wake, false, `${k} happens in daylight and must not buzz`);
+    }
+  });
+
+  it('emits no buzz at all for silent events', () => {
+    const g = mk(['chef', 'empath', 'soldier', 'poisoner', 'imp']);
+    runNight(g, { poisoner: () => [byChar(g.s, 'poisoner').id] });
+    toDay(g);
+
+    const kinds = g.s.outbox
+      .filter((e): e is Extract<typeof e, { k: 'buzz' }> => e.k === 'buzz')
+      .map((e) => e.tag);
+    assert.ok(kinds.length > 0, 'a night should buzz somebody');
+    for (const k of kinds) {
+      assert.ok(
+        BUZZ[k as keyof typeof BUZZ]?.wake,
+        `"${k}" reached a phone but is marked silent`,
+      );
+    }
+  });
+
+  it('does not buzz for the reveal, nightfall or the game ending', () => {
+    for (const k of ['reveal', 'night', 'gameover'] as const) {
+      assert.equal(BUZZ[k].wake, false, `${k} should not disturb a phone`);
+    }
+  });
+
+  it('every waking pattern is distinct, so they can be told apart blind', () => {
+    const shapes = Object.values(BUZZ)
+      .filter((b) => b.wake)
+      .map((b) => JSON.stringify(b.pattern));
+    assert.equal(new Set(shapes).size, shapes.length, 'two waking buzzes feel the same');
   });
 });

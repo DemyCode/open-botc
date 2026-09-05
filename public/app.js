@@ -802,12 +802,12 @@ function vibrationHelp() {
       </summary>
       <div class="stack" style="margin-top:10px">
         <p class="faint">
-          Each event has its own rhythm, so you can tell what happened without
-          looking at the screen. Tap one to feel it.
+          Your phone only ever buzzes for these — when the game is actually
+          waiting on you. Everything else just updates the screen quietly. Each
+          has its own rhythm, so you can tell them apart without looking.
         </p>
         <div class="rows">
           ${(S.config?.buzzes || [])
-            .filter((b) => ['turn', 'nomination', 'vote', 'death', 'dawn'].includes(b.kind))
             .map(
               (b) => `<div class="row">
                 <span class="lbl">${esc(b.label)}<small>${esc(b.meaning)}</small></span>

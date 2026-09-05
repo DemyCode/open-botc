@@ -169,22 +169,29 @@ The single instruction, shown in the app where nobody can miss it: **put your
 phone on vibrate.** Players are also told to hold the phone in their lap during
 the night, because a phone buzzing on a hard table is audible.
 
-### Telling the buzzes apart
+### A buzz only ever means "wake up"
 
-Since vibration is the only channel, each event has its own rhythm, and you can
-tell them apart with your eyes shut:
+Phones vibrate **only to wake someone who cannot otherwise be reached** — the
+night, and dawn. Four events, and no others:
 
-| Event | Rhythm |
-|---|---|
-| **Your turn** | two taps then a long hold — the only one ending sustained |
-| **Someone is accused** | five fast taps — the only rapid one |
-| **Vote now** | three even pulses |
-| **Someone died** | one long hold — the only single pulse |
-| **Day breaks** | two slow spaced pulses |
+| Event | Rhythm | When |
+|---|---|---|
+| **Your turn** | two taps then a long hold | the night needs your ability |
+| **You learned something** | two medium pulses | the night woke you with information |
+| **You have changed** | a run then a hold | you are the Demon now |
+| **Day breaks** | two slow spaced pulses | everyone, open your eyes |
 
-The vocabulary lives in `src/game/buzz.ts`, is served to the client, and the
-setup card has a "Feel" button for each one so players can learn them before the
-game starts.
+Everything in daylight is silent: nominations, votes, speeches, deaths, the
+game ending. Everyone is awake, in the same room, holding their phone and able
+to hear each other — the nominator says it out loud and the screen updates
+anyway. Vibrating for public events that need no action teaches people to
+ignore the buzz, and then the one that matters gets missed.
+
+The patterns are designed to be told apart without looking, because a player
+feeling one has their eyes shut. The vocabulary lives in `src/game/buzz.ts`,
+where each event carries a `wake` flag; the engine drops non-waking buzzes
+centrally, so no call site can leak one. A test pins the waking set, and the
+end-to-end run asserts no phone was ever buzzed for a daytime event.
 
 > **Topics are secret.** Your topic is how your private night information
 > reaches your phone. Anyone who knows it can read that information. They are

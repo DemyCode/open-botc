@@ -243,10 +243,21 @@ async function playOneGame(gameIndex) {
   check(final.winner === 'good' || final.winner === 'evil', 'a side won');
   check(!!final.grimoire && final.grimoire.length === N, 'grimoire revealed at the end');
 
-  // Everybody should have been buzzed at least once.
-  for (const p of players) {
-    check(p.buzzes.length > 0, `${p.name} was buzzed at least once`);
-  }
+  // A phone may only be vibrated to wake somebody: the night, and dawn.
+  const WAKING = new Set(['turn', 'info', 'dawn', 'transform']);
+  const allBuzzes = players.flatMap((p) => p.buzzes);
+  const stray = [...new Set(allBuzzes.map((b) => b.tag).filter((t) => !WAKING.has(t)))];
+  check(stray.length === 0, `no phone was buzzed for a silent event: ${JSON.stringify(stray)}`);
+  check(allBuzzes.length > 0, 'the game buzzed somebody');
+
+  const perPlayer = players.map((p) => p.buzzes.length);
+  const byKind = {};
+  for (const b of allBuzzes) byKind[b.tag] = (byKind[b.tag] || 0) + 1;
+  console.log(
+    `  buzzes: ${allBuzzes.length} total, ` +
+      `${Math.min(...perPlayer)}–${Math.max(...perPlayer)} per player ` +
+      `(${Object.entries(byKind).map(([k, n]) => `${k}×${n}`).join(' ')})`,
+  );
   // Races are expected: a phone can tap a button just as the phase changes.
   const benign = /already|cannot|not open|not running|expired|valid|turn|nothing to answer/i;
   const unexpected = players.flatMap((p) => p.errors.filter((e) => !benign.test(e)));
