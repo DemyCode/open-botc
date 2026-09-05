@@ -94,9 +94,27 @@ function beep(pattern = [400]) {
   }
 }
 
+/** Events big enough to deserve the bell rather than a plain chirp. */
+const BELL_KINDS = new Set(['turn', 'nomination', 'death', 'transform', 'gameover', 'reveal']);
+
+let bellAudio = null;
+function playBell() {
+  try {
+    if (!bellAudio) {
+      bellAudio = new Audio('/bell.wav');
+      bellAudio.preload = 'auto';
+    }
+    bellAudio.currentTime = 0;
+    return bellAudio.play();
+  } catch {
+    return Promise.reject();
+  }
+}
+
 /**
  * In-page feedback for a buzz. This only reaches a phone that is unlocked with
- * the page in front; ntfy is what wakes a phone in a pocket.
+ * the page in front; ntfy is what wakes a phone in a pocket. The rhythm is
+ * chosen per event so players can tell them apart without looking.
  */
 function handleBuzz(b) {
   const pattern = Array.isArray(b.pattern) ? b.pattern : [400];
@@ -105,7 +123,8 @@ function handleBuzz(b) {
   } catch {
     /* vibration not permitted */
   }
-  beep(pattern);
+  if (BELL_KINDS.has(b.tag)) playBell().catch(() => beep(pattern));
+  else beep(pattern);
 }
 
 // ------------------------------------------------------------------ socket
@@ -313,6 +332,15 @@ const ACTIONS = {
     S.testSent = true;
     S.testDelivered = null;
     render();
+  },
+  feelBuzz: (kind) => {
+    const spec = (S.config?.buzzes || []).find((b) => b.kind === kind);
+    if (!spec) return;
+    handleBuzz({ pattern: spec.pattern, title: spec.label, body: spec.meaning });
+  },
+  playBell: () => {
+    unlockAudio();
+    playBell().catch(() => toast('Tap the screen once, then try again.'));
   },
   confirmBuzz: () => {
     send({ t: 'pushConfirmed', ok: true });
@@ -810,43 +838,85 @@ function notificationCard(v) {
 }
 
 /**
- * Whether a notification vibrates is an Android notification-channel setting,
- * which the sender cannot control. Samsung phones in particular ship with
- * battery rules and channel defaults that swallow the buzz, so spell out the
- * fixes rather than leaving people thinking it is broken.
+ * Making the alert unmistakable.
+ *
+ * On a locked phone the vibration pattern and sound belong to the Android
+ * notification channel, not to us — the server cannot set them. So the levers
+ * that actually work are the ones the player flips once, here spelled out.
  */
 function vibrationHelp() {
   return `
     <details>
       <summary class="muted" style="cursor:pointer;padding:6px 0">
-        Notification arrives but the phone doesn't vibrate?
+        Make it unmistakable (and fix "it doesn't vibrate")
       </summary>
       <div class="stack" style="margin-top:10px">
         <p class="faint">
-          Three things fix this, in the order worth trying — all inside the
-          <b>ntfy</b> app or Android settings, not here:
+          A stock notification blip is easy to mistake for a text message. Three
+          one-time settings in the <b>ntfy</b> app fix that — the game cannot set
+          them for you, Android only lets you do it.
         </p>
+
         <p class="faint">
-          <b>1. Turn on Instant delivery.</b> ntfy app → Settings →
-          <i>Instant delivery</i>. Without it Android batches messages through
-          Google's servers and may hold them for minutes. This matters most on
-          Samsung.
+          <b>1. Give it the clocktower bell.</b> Download it, then in ntfy open
+          this topic → <i>Notification sound</i> → pick it. Nothing else on your
+          phone sounds like this, so you will never mistake it.
         </p>
+        <div class="btn-row">
+          <a class="btn small" href="/bell.wav" download="clocktower-bell.wav">⬇ Bell sound</a>
+          <button class="btn small ghost" data-act="playBell">▶ Hear it</button>
+        </div>
         <p class="faint">
-          <b>2. Let the channel vibrate.</b> Long-press the ntfy app icon →
-          Notifications (or Android Settings → Apps → ntfy → Notifications) →
-          open the <i>Max priority</i> channel → turn on Vibrate. Android locks
-          this to the channel; no app can switch it on for you.
+          If it doesn't show up in ntfy's sound picker, move the downloaded file
+          into your phone's <b>Notifications</b> folder, then look again.
         </p>
+
         <p class="faint">
-          <b>3. Stop the phone sleeping the app.</b> Android Settings → Apps →
-          ntfy → Battery → <i>Unrestricted</i>. On Samsung also check
-          Device care → Battery → Background usage limits, and make sure ntfy
-          is not in "Sleeping apps".
+          <b>2. Make it keep ringing.</b> In the same screen turn on
+          <i>Keep ringing until dismissed</i> (ntfy 1.16+). A normal notification
+          buzzes once; this one will not stop until you pick up the phone.
         </p>
+
         <p class="faint">
-          Also check the phone is not on silent, and that Do Not Disturb is off
-          — or allow ntfy through it.
+          <b>3. Turn on Instant delivery.</b> ntfy → Settings →
+          <i>Instant delivery</i>. Without it Android routes through Google and
+          can hold messages for minutes. This matters most on Samsung.
+        </p>
+
+        <p class="faint">
+          Still silent? Long-press the ntfy icon → Notifications → open the
+          <i>Max priority</i> channel → switch Vibrate on. Then Android Settings
+          → Apps → ntfy → Battery → <i>Unrestricted</i>; on Samsung also check
+          Device care → Battery → Background usage limits and make sure ntfy is
+          not listed under "Sleeping apps". Finally, check the phone is not on
+          silent and that Do Not Disturb allows ntfy through.
+        </p>
+      </div>
+    </details>
+
+    <details>
+      <summary class="muted" style="cursor:pointer;padding:6px 0">
+        What the different buzzes mean
+      </summary>
+      <div class="stack" style="margin-top:10px">
+        <p class="faint">
+          While the app is open, each event has its own rhythm so you can tell
+          them apart with your eyes shut. Tap one to feel it.
+        </p>
+        <div class="rows">
+          ${(S.config?.buzzes || [])
+            .filter((b) => ['turn', 'nomination', 'vote', 'death', 'dawn'].includes(b.kind))
+            .map(
+              (b) => `<div class="row">
+                <span class="lbl">${esc(b.label)}<small>${esc(b.meaning)}</small></span>
+                <button class="btn small ghost" data-act="feelBuzz" data-arg="${b.kind}">Feel</button>
+              </div>`,
+            )
+            .join('')}
+        </div>
+        <p class="faint">
+          These are the in-app patterns. A locked phone uses ntfy's own
+          vibration, which is why the bell sound above matters.
         </p>
       </div>
     </details>`;

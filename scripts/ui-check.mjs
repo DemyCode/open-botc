@@ -373,7 +373,15 @@ while (guard++ < 900) {
       // Let a bot answer.
       for (const b of bots) {
         if (b.view?.prompt) {
-          const t = b.view.prompt.choices.filter((c) => !c.disabled).slice(0, b.view.prompt.count);
+          // Pick at random. Always taking the first choice means the Imp
+          // targets the same seat every night, and if that seat happens to be
+          // the Soldier nobody ever dies.
+          const pool = b.view.prompt.choices.filter((c) => !c.disabled);
+          for (let i = pool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+          }
+          const t = pool.slice(0, b.view.prompt.count);
           b.send({ t: 'choose', promptId: b.view.prompt.id, targets: t.map((c) => c.playerId) });
           break;
         }
@@ -439,9 +447,13 @@ while (guard++ < 900) {
   if (phase === 'voting') {
     await capture('14-voting');
     await clickAttr('voteYes');
+    // Guarantee exactly one execution per day so the game converges. Voting
+    // yes on *every* nomination would tie each one at the same count, and a
+    // tie correctly executes nobody — that is how the real rules work, and it
+    // produces endless quiet games. Exploring varied voting is e2e.mjs's job.
     for (const b of bots) {
       if (b.view?.self?.canVote) {
-        b.send({ t: 'vote', vote: Math.random() < 0.6 });
+        b.send({ t: 'vote', vote: b.view.onTheBlock == null });
         await sleep(30);
       }
     }

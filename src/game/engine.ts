@@ -1,3 +1,4 @@
+import { BUZZ, type BuzzKind } from './buzz.js';
 import {
   CHARACTERS,
   DEMON_INFO_FIRST_NIGHT,
@@ -249,7 +250,7 @@ function giveInfo(s: GameState, p: PlayerState, draft: InfoDraft, buzzToo = true
     ts: Date.now(),
   });
   if (buzzToo) {
-    buzz(s, [p.id], draft.title, firstLine(draft.body), [400, 120, 400], true, 'info');
+    buzz(s, [p.id], 'info', draft.title, firstLine(draft.body));
   }
 }
 
@@ -258,27 +259,31 @@ function firstLine(s: string): string {
   return i < 0 ? s : s.slice(0, i) + ' …';
 }
 
+/**
+ * Queue a buzz. The kind picks the vibration rhythm, so that a player can tell
+ * what happened without looking — see `buzz.ts` for the vocabulary.
+ */
 function buzz(
   s: GameState,
   playerIds: string[],
+  kind: BuzzKind,
   title: string,
   body: string,
-  pattern: number[],
-  push: boolean,
-  tag?: string,
 ): void {
   if (playerIds.length === 0) return;
-  s.outbox.push({ k: 'buzz', playerIds, title, body, pattern, push, tag });
+  s.outbox.push({
+    k: 'buzz',
+    playerIds,
+    title,
+    body,
+    pattern: BUZZ[kind].pattern,
+    push: true,
+    tag: kind,
+  });
 }
 
-function buzzEveryone(
-  s: GameState,
-  title: string,
-  body: string,
-  pattern: number[],
-  tag?: string,
-): void {
-  buzz(s, s.players.map((p) => p.id), title, body, pattern, true, tag);
+function buzzEveryone(s: GameState, kind: BuzzKind, title: string, body: string): void {
+  buzz(s, s.players.map((p) => p.id), kind, title, body);
 }
 
 // ---------------------------------------------------------------------------
@@ -317,15 +322,7 @@ export function startGame(s: GameState, playerId: string, now = Date.now()): voi
 
   for (const p of s.players) {
     const c = CHARACTERS[p.perceived!];
-    buzz(
-      s,
-      [p.id],
-      'Your character',
-      `You are the ${c.name}.`,
-      [300, 100, 300, 100, 600],
-      true,
-      'reveal',
-    );
+    buzz(s, [p.id], 'reveal', 'Your character', `You are the ${c.name}.`);
   }
 }
 
@@ -397,13 +394,7 @@ export function beginNight(s: GameState, now = Date.now()): void {
   s.stepIndex = 0;
 
   logPublic(s, `Night ${s.night} falls.`, true);
-  buzzEveryone(
-    s,
-    `Night ${s.night}`,
-    'Eyes closed. Wait for your phone.',
-    [700],
-    'phase',
-  );
+  buzzEveryone(s, 'night', `Night ${s.night}`, 'Eyes closed. Wait for your phone.');
 
   advanceNight(s, now);
 }
@@ -580,7 +571,7 @@ function askChoice(
     deadline: o.now + s.options.nightPromptSeconds * 1000,
   };
 
-  buzz(s, [p.id], `${o.title} — your turn`, o.body, [500, 150, 500, 150, 500], true, 'turn');
+  buzz(s, [p.id], 'turn', `${o.title} — your turn`, o.body);
   return 'wait';
 }
 
@@ -779,15 +770,7 @@ function becomeImp(s: GameState, p: PlayerState, why: string): void {
     title: 'You are now the Imp',
     body: `${why} You are the Demon from now on.`,
   });
-  buzz(
-    s,
-    [p.id],
-    'You are now the Imp',
-    'The Demon has passed to you.',
-    [800, 200, 800],
-    true,
-    'transform',
-  );
+  buzz(s, [p.id], 'transform', 'You are now the Imp', 'The Demon has passed to you.');
 }
 
 // ---------------------------------------------------------------------------
@@ -829,7 +812,7 @@ function dawn(s: GameState, now: number): void {
     deaths.length === 0
       ? 'Nobody died in the night.'
       : `${deaths.map((d) => d.name).join(' and ')} died in the night.`;
-  buzzEveryone(s, `Day ${s.day} — open your eyes`, summary, [600, 200, 600], 'phase');
+  buzzEveryone(s, 'dawn', `Day ${s.day} — open your eyes`, summary);
 
   s.phaseDeadline = now + s.options.dawnSeconds * 1000;
 }
@@ -855,10 +838,9 @@ function doOpenNominations(s: GameState, _now: number): void {
   logPublic(s, 'Nominations are open.', true);
   buzzEveryone(
     s,
+    'speech',
     'Nominations are open',
     'Tap a player on your phone to nominate them.',
-    [300, 100, 300],
-    'phase',
   );
 }
 
@@ -886,10 +868,9 @@ export function nominate(
   logPublic(s, `${nominator.name} nominates ${nominee.name}.`, true);
   buzzEveryone(
     s,
+    'nomination',
     'Nomination',
     `${nominator.name} nominates ${nominee.name}. Listen to the accuser.`,
-    [250, 100, 250, 100, 250],
-    'nomination',
   );
 
   // --- Virgin
@@ -909,13 +890,7 @@ export function nominate(
         `${nominee.name} is the Virgin — ${nominator.name} is executed immediately!`,
         true,
       );
-      buzzEveryone(
-        s,
-        'Virgin!',
-        `${nominator.name} is executed immediately.`,
-        [900, 200, 900],
-        'exec',
-      );
+      buzzEveryone(s, 'death', 'Virgin!', `${nominator.name} is executed immediately.`);
       s.nomination = null;
       executeAndEndDay(s, nominator, now);
       return;
@@ -951,13 +926,7 @@ function nextSpeechStage(s: GameState, now: number): void {
     n.stage = 'accusee';
     const nominee = playerById(s, n.nomineeId);
     logPublic(s, `${nominee?.name ?? '?'} defends themselves.`);
-    buzzEveryone(
-      s,
-      'Defence',
-      `${nominee?.name ?? '?'} now speaks.`,
-      [250, 100, 250],
-      'speech',
-    );
+    buzzEveryone(s, 'speech', 'Defence', `${nominee?.name ?? '?'} now speaks.`);
     s.phaseDeadline = now + s.options.speechSeconds * 1000;
     return;
   }
@@ -999,15 +968,7 @@ function beginVoting(s: GameState, now: number): void {
   } else {
     n.voteOrder = eligibleVoters(s).map((p) => p.id);
     n.voteIndex = -1;
-    buzz(
-      s,
-      n.voteOrder,
-      'Vote now',
-      `Execute ${nominee?.name ?? '?'}?`,
-      [400, 100, 400],
-      true,
-      'vote',
-    );
+    buzz(s, n.voteOrder, 'vote', 'Vote now', `Execute ${nominee?.name ?? '?'}?`);
     s.phaseDeadline = now + s.options.voteSeconds * 1000;
   }
 }
@@ -1024,15 +985,7 @@ function promptSequentialVoter(s: GameState, now: number): void {
     const p = playerById(s, id);
     if (p && (p.alive || !p.ghostVoteUsed)) {
       const nominee = playerById(s, n.nomineeId);
-      buzz(
-        s,
-        [id],
-        'Your vote',
-        `Execute ${nominee?.name ?? '?'}?`,
-        [400, 100, 400],
-        true,
-        'vote',
-      );
+      buzz(s, [id], 'vote', 'Your vote', `Execute ${nominee?.name ?? '?'}?`);
       s.phaseDeadline = now + sequentialVoteSeconds(s) * 1000;
       return;
     }
@@ -1131,7 +1084,7 @@ function resolveVote(s: GameState, now: number): void {
     text += ` (${blocked.join(', ')} could not vote — Butler.)`;
   }
   logPublic(s, text, true);
-  buzzEveryone(s, 'Vote result', text, [200, 80, 200], 'voteresult');
+  buzzEveryone(s, 'voteresult', 'Vote result', text);
 
   s.phase = 'nominations';
   s.phaseDeadline = null;
@@ -1191,21 +1144,14 @@ export function slay(
   if (isDemon) {
     killPlayer(s, target, 'slayer', { starPass: false, now });
     logPublic(s, `${target.name} dies! They were the Demon.`, true);
-    buzzEveryone(
-      s,
-      'Slayer!',
-      `${slayer.name} shot ${target.name} — they die.`,
-      [900, 200, 900],
-      'slayer',
-    );
+    buzzEveryone(s, 'death', 'Slayer!', `${slayer.name} shot ${target.name} — they die.`);
   } else {
     logPublic(s, 'Nothing happens.', true);
     buzzEveryone(
       s,
+      'voteresult',
       'Slayer shot',
       `${slayer.name} shot ${target.name} — nothing happens.`,
-      [300, 100, 300],
-      'slayer',
     );
   }
 
@@ -1246,7 +1192,7 @@ function endDayNow(s: GameState, now: number): void {
     doExecute(s, victim, now);
   } else {
     logPublic(s, 'No execution today.', true);
-    buzzEveryone(s, 'Dusk', 'No execution today.', [400], 'phase');
+    buzzEveryone(s, 'voteresult', 'Dusk', 'No execution today.');
   }
 
   if (checkEndOfDayWins(s)) return;
@@ -1269,7 +1215,7 @@ function doExecute(s: GameState, victim: PlayerState, now: number): void {
   s.executedToday = victim.id;
   s.executionHappened = true;
   logPublic(s, `${victim.name} is executed.`, true);
-  buzzEveryone(s, 'Execution', `${victim.name} is executed.`, [900, 200, 900], 'exec');
+  buzzEveryone(s, 'death', 'Execution', `${victim.name} is executed.`);
 }
 
 function checkEndOfDayWins(s: GameState): boolean {
@@ -1327,13 +1273,7 @@ function endGame(s: GameState, winner: 'good' | 'evil', reason: string): boolean
   s.phaseDeadline = null;
   s.finalGrimoire = true;
   logPublic(s, `${winner === 'good' ? 'GOOD' : 'EVIL'} wins — ${reason}`, true);
-  buzzEveryone(
-    s,
-    `${winner === 'good' ? 'Good' : 'Evil'} wins!`,
-    reason,
-    [1000, 300, 1000],
-    'gameover',
-  );
+  buzzEveryone(s, 'gameover', `${winner === 'good' ? 'Good' : 'Evil'} wins!`, reason);
   s.outbox.push({ k: 'gameover' });
   return true;
 }

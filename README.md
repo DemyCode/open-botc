@@ -147,8 +147,45 @@ Nobody types anything. The player taps:
 2. **Send me a test buzz** — confirms it actually works, and marks them ready
    in the lobby.
 
-Night information is sent at ntfy priority **max**, so the phone rings and
-bypasses Do Not Disturb.
+Every message is sent at ntfy priority **max**. That is the only level the
+Android app treats as insistent, and it is the whole lever the sender has —
+priority 4 lands in a quieter channel that many phones (Samsung especially)
+leave silent.
+
+### Making the buzz unmistakable
+
+A stock notification blip is easy to mistake for a text message, which is fatal
+in a game where the buzz means "it is your turn". Two halves to this:
+
+**On a locked phone**, the vibration pattern and sound belong to the Android
+notification channel. *No sender can set them* — the player flips these once,
+in the ntfy app, and the setup card in the game links to all of it:
+
+- **Set the clocktower bell** (`public/bell.wav`, served at `/bell.wav`) as the
+  notification sound for the topic. Nothing else on a phone sounds like it. If
+  it does not appear in ntfy's sound picker, move the file into the phone's
+  `Notifications` folder first.
+- **"Keep ringing until dismissed"** (ntfy 1.16+, per subscription). A normal
+  notification buzzes once; this one will not stop.
+- **Instant delivery** (ntfy → Settings). Without it Android routes through
+  Google and can hold messages for minutes.
+
+Regenerate the bell with `npm run make-bell` if you want a different one — it is
+synthesised from real bell partials in `scripts/make-bell.mjs`, no asset needed.
+
+**While the app is open**, the game controls the vibration completely, so each
+event has its own rhythm and you can tell them apart with your eyes shut:
+
+| Event | Rhythm |
+|---|---|
+| **Your turn** | two taps then a long hold — the only one ending sustained |
+| **Someone is accused** | five fast taps — the only rapid one |
+| **Vote now** | three even pulses |
+| **Someone died** | one long hold — the only single pulse |
+| **Day breaks** | two slow spaced pulses |
+
+The vocabulary lives in `src/game/buzz.ts`, is served to the client, and the
+setup card has a "Feel" button for each one so players can learn them.
 
 > **Topics are secret.** Your topic is how your private night information
 > reaches your phone. Anyone who knows it can read that information. They are

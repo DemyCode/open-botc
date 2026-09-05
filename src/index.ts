@@ -25,6 +25,7 @@ import {
   startGame,
   submitNightChoice,
 } from './game/engine.js';
+import { buzzCatalogue } from './game/buzz.js';
 import { characterCatalogue, viewFor } from './game/view.js';
 import { ntfyBase, ntfyHost, sendPush } from './push.js';
 import { RoomManager, type Room } from './rooms.js';
@@ -60,6 +61,7 @@ app.get('/api/config', (_req, res) => {
     ntfyBase: ntfyBase(),
     ntfyHost: ntfyHost(),
     characters: characterCatalogue(),
+    buzzes: buzzCatalogue(),
   });
 });
 

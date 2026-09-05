@@ -24,9 +24,9 @@ FROM node:24-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production \
-    PORT=8080 \
-    HOST=0.0.0.0 \
-    BOTC_DATA_DIR=/data
+  PORT=8080 \
+  HOST=0.0.0.0 \
+  BOTC_DATA_DIR=/data
 
 COPY --from=deps  /app/node_modules ./node_modules
 COPY --from=build /app/dist         ./dist

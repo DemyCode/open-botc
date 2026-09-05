@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "e2e": "node scripts/e2e.mjs",
     "ui-check": "node scripts/ui-check.mjs",
-    "ntfy-check": "node scripts/ntfy-check.mjs"
+    "ntfy-check": "node scripts/ntfy-check.mjs",
+    "make-bell": "node scripts/make-bell.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",
