@@ -19,8 +19,6 @@ const S = {
   promptDeadline: null,
   phaseDeadline: null,
   retry: 0,
-  swReg: null,
-  pushOn: false,
   /** A test notification has been sent and we're waiting for a yes/no. */
   testSent: false,
   testDelivered: null,
@@ -96,6 +94,10 @@ function beep(pattern = [400]) {
   }
 }
 
+/**
+ * In-page feedback for a buzz. This only reaches a phone that is unlocked with
+ * the page in front; ntfy is what wakes a phone in a pocket.
+ */
 function handleBuzz(b) {
   const pattern = Array.isArray(b.pattern) ? b.pattern : [400];
   try {
@@ -104,71 +106,6 @@ function handleBuzz(b) {
     /* vibration not permitted */
   }
   beep(pattern);
-
-  // The socket can be alive while the phone is in a pocket — show a local
-  // notification too, so the buzz is accompanied by something readable.
-  if (document.hidden && S.swReg && Notification.permission === 'granted') {
-    S.swReg.showNotification(b.title || 'Clocktower', {
-      body: b.body || '',
-      tag: b.tag || 'botc',
-      renotify: true,
-      vibrate: pattern,
-      icon: '/icon.svg',
-      badge: '/icon.svg',
-    });
-  }
-}
-
-// -------------------------------------------------------------- push set-up
-
-function urlB64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = atob(base64);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-}
-
-async function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-  try {
-    S.swReg = await navigator.serviceWorker.register('/sw.js');
-    await navigator.serviceWorker.ready;
-    const sub = await S.swReg.pushManager.getSubscription();
-    S.pushOn = !!sub;
-  } catch (err) {
-    console.warn('service worker unavailable', err);
-  }
-}
-
-async function enablePush() {
-  if (!S.swReg) {
-    toast('Notifications need HTTPS (or localhost). Use ntfy instead.');
-    return;
-  }
-  if (!('PushManager' in window)) {
-    toast('This browser cannot do push. Use ntfy instead.');
-    return;
-  }
-  try {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return toast('Notifications were blocked.');
-    let sub = await S.swReg.pushManager.getSubscription();
-    if (!sub) {
-      sub = await S.swReg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlB64ToUint8Array(S.config.vapidPublicKey),
-      });
-    }
-    send({ t: 'push', webPush: sub.toJSON() });
-    S.pushOn = true;
-    toast('Notifications on — your phone will buzz at night.', true);
-    render();
-  } catch (err) {
-    console.warn(err);
-    toast('Could not turn on notifications.');
-  }
 }
 
 // ------------------------------------------------------------------ socket
@@ -224,12 +161,6 @@ function onMessage(msg) {
     case 'identity':
       saveSession({ code: msg.code, token: msg.token });
       location.hash = msg.code;
-      // Re-register any Web Push subscription this device already has.
-      if (S.pushOn && S.swReg) {
-        S.swReg.pushManager.getSubscription().then((sub) => {
-          if (sub) send({ t: 'push', webPush: sub.toJSON() });
-        });
-      }
       break;
 
     case 'view': {
@@ -286,7 +217,6 @@ function onMessage(msg) {
       break;
 
     case 'pong':
-    case 'pushOk':
       break;
   }
 }
@@ -374,7 +304,6 @@ const ACTIONS = {
     S.picked = [];
   },
   playAgain: () => send({ t: 'playAgain' }),
-  enablePush,
   settings: () => {
     S.showSettings = !S.showSettings;
     render();
@@ -870,12 +799,6 @@ function notificationCard(v) {
         </div>
       </details>
 
-      ${window.isSecureContext
-        ? `<button class="btn ghost small" data-act="enablePush">
-             ${S.pushOn ? '✓ Browser notifications also on' : 'Also use browser notifications'}
-           </button>`
-        : ''}
-
       <p class="faint">
         Your topic is private to you — it is how your secret night information
         reaches your phone. Don't share it.
@@ -1295,15 +1218,29 @@ document.addEventListener('visibilitychange', () => {
 
 // ---------------------------------------------------------------- bootstrap
 
+/**
+ * Earlier versions registered a service worker for Web Push. That is gone, but
+ * a stale registration lingers in browsers that already visited, so clear it.
+ */
+function dropStaleServiceWorker() {
+  if (!('serviceWorker' in navigator) || !navigator.serviceWorker.getRegistrations) return;
+  navigator.serviceWorker
+    .getRegistrations()
+    .then((regs) => regs.forEach((r) => r.unregister()))
+    .catch(() => {
+      /* nothing to clean up */
+    });
+}
+
 async function boot() {
   render();
+  dropStaleServiceWorker();
   try {
     S.config = await (await fetch('/api/config')).json();
     for (const c of S.config.characters) S.chars[c.id] = c;
   } catch {
     toast('Could not load game data.');
   }
-  await registerServiceWorker();
 
   const hash = (location.hash || '').replace('#', '').toUpperCase();
   if (S.session && (!hash || hash === S.session.code)) connect();

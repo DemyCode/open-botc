@@ -57,8 +57,6 @@ export interface SelfView {
   ntfyTopic: string | null;
   /** They have confirmed a test notification actually buzzed. */
   pushConfirmed: boolean;
-  /** A Web Push subscription is registered as well. */
-  webPushOn: boolean;
   log: InfoEntry[];
 }
 
@@ -206,7 +204,6 @@ export function viewFor(s: GameState, playerId: string, now = Date.now()): GameV
     isReady: s.ready.includes(playerId),
     ntfyTopic: you?.push?.ntfyTopic ?? null,
     pushConfirmed: !!you?.push?.confirmed,
-    webPushOn: !!you?.push?.webPush,
     log: you?.log ?? [],
   };
 

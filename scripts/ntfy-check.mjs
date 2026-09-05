@@ -17,7 +17,22 @@ const args = Object.fromEntries(
 const BASE = args.url || 'http://localhost:8080';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const config = await (await fetch(`${BASE}/api/config`)).json();
+/** Wait for the server to accept connections, so a fresh restart isn't a race. */
+async function waitForServer(tries = 40) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(`${BASE}/api/config`);
+      if (res.ok) return res.json();
+    } catch {
+      /* not listening yet */
+    }
+    await sleep(250);
+  }
+  console.error(`✖ ${BASE} never came up`);
+  process.exit(1);
+}
+
+const config = await waitForServer();
 console.log(`ntfy server : ${config.ntfyBase}  (host ${config.ntfyHost})`);
 
 const { code } = await (await fetch(`${BASE}/api/rooms`, { method: 'POST' })).json();
@@ -29,6 +44,10 @@ ws.on('message', (raw) => {
   const m = JSON.parse(String(raw));
   if (m.t === 'view') view = m.view;
   if (m.t === 'testBuzzResult') testResult = m;
+});
+ws.on('error', (err) => {
+  console.error(`✖ websocket failed: ${err.message}`);
+  process.exit(1);
 });
 await new Promise((r) => ws.on('open', r));
 

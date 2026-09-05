@@ -88,46 +88,40 @@ export class RoomManager {
     this.dirty = true;
   }
 
-  /** Deliver buzz/push events queued by the engine. */
+  /**
+   * Deliver buzz events queued by the engine.
+   *
+   * Two paths, and both run: the open socket makes the phone buzz and chirp
+   * while the player is looking at it, and ntfy rings it when it is locked in
+   * a pocket. A live socket is no reason to skip ntfy — the page may be open
+   * but the screen off.
+   */
   async flush(room: Room): Promise<void> {
     const events = drainOutbox(room.state);
     for (const ev of events) {
       if (ev.k !== 'buzz') continue;
 
+      const payload = JSON.stringify({
+        t: 'buzz',
+        title: ev.title,
+        body: ev.body,
+        pattern: ev.pattern,
+        tag: ev.tag,
+      });
+
       for (const playerId of ev.playerIds) {
-        const sockets = room.sockets.get(playerId);
-        const payload = JSON.stringify({
-          t: 'buzz',
-          title: ev.title,
-          body: ev.body,
-          pattern: ev.pattern,
-          tag: ev.tag,
-        });
-        let live = false;
-        if (sockets) {
-          for (const ws of sockets) {
-            if (ws.readyState === ws.OPEN) {
-              ws.send(payload);
-              live = true;
-            }
-          }
+        for (const ws of room.sockets.get(playerId) ?? []) {
+          if (ws.readyState === ws.OPEN) ws.send(payload);
         }
 
-        // Always send an OS push for turn-critical events: the phone may be
-        // locked in someone's pocket even while the socket is technically open.
         if (ev.push) {
           const player = room.state.players.find((p) => p.id === playerId);
-          if (player?.push) {
-            void sendPush(player.push, {
-              title: ev.title,
-              body: ev.body,
-              tag: ev.tag,
-              pattern: ev.pattern,
-              url: `/#${room.state.code}`,
-            });
-          } else if (!live) {
-            // No push channel and no socket: nothing we can do.
-          }
+          void sendPush(player?.push, {
+            title: ev.title,
+            body: ev.body,
+            tag: ev.tag,
+            url: `/#${room.state.code}`,
+          });
         }
       }
     }

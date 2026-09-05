@@ -88,11 +88,9 @@ export interface InfoEntry {
 export interface PushTarget {
   /**
    * Secret ntfy topic, generated for this player when they join. This is the
-   * primary channel: it buzzes a locked phone without needing HTTPS.
+   * only channel: it buzzes a locked phone without needing HTTPS.
    */
   ntfyTopic?: string;
-  /** Web Push subscription. A bonus when the server is behind TLS. */
-  webPush?: unknown;
   /** The player pressed "yes, it buzzed" after a test notification. */
   confirmed?: boolean;
 }

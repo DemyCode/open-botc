@@ -26,7 +26,7 @@ import {
   submitNightChoice,
 } from './game/engine.js';
 import { characterCatalogue, viewFor } from './game/view.js';
-import { initPush, ntfyBase, ntfyHost, sendPush, vapidPublicKey } from './push.js';
+import { ntfyBase, ntfyHost, sendPush } from './push.js';
 import { RoomManager, type Room } from './rooms.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,18 +34,9 @@ const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
 
-initPush();
-
 const app = express();
 app.use(express.json({ limit: '64kb' }));
-app.use(
-  express.static(PUBLIC_DIR, {
-    setHeaders(res, filePath) {
-      // The service worker must not be cached aggressively.
-      if (filePath.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache');
-    },
-  }),
-);
+app.use(express.static(PUBLIC_DIR));
 
 const rooms = new RoomManager();
 
@@ -66,7 +57,6 @@ app.get('/api/rooms/:code', (req, res) => {
 
 app.get('/api/config', (_req, res) => {
   res.json({
-    vapidPublicKey: vapidPublicKey(),
     ntfyBase: ntfyBase(),
     ntfyHost: ntfyHost(),
     characters: characterCatalogue(),
@@ -86,6 +76,13 @@ app.get('/api/qr', async (req, res) => {
   } catch {
     res.status(500).send('qr failed');
   }
+});
+
+// Browsers that visited an earlier version still ask for this. A 404 makes
+// them drop the registration; the SPA fallback below would hand back HTML and
+// leave the stale worker in place.
+app.get('/sw.js', (_req, res) => {
+  res.status(404).type('text/plain').send('gone');
 });
 
 app.get('*', (_req, res) => {
@@ -203,30 +200,15 @@ async function handle(
     case 'ping':
       return send(ws, { t: 'pong' });
 
-    case 'push': {
-      const player = s.players.find((p) => p.id === playerId);
-      if (!player) return;
-      player.push = player.push || {};
-      if (msg.webPush !== undefined) player.push.webPush = msg.webPush || undefined;
-      if (msg.ntfyTopic !== undefined) {
-        const topic = String(msg.ntfyTopic || '').trim();
-        player.push.ntfyTopic = topic || undefined;
-      }
-      rooms.markDirty();
-      await settle(room);
-      return send(ws, { t: 'pushOk' });
-    }
-
     case 'testBuzz': {
       const player = s.players.find((p) => p.id === playerId);
-      if (!player?.push) return sendError(ws, 'No notification channel set up.');
+      if (!player?.push?.ntfyTopic) return sendError(ws, 'No ntfy topic assigned.');
       const delivered = await sendPush(
         player.push,
         {
           title: '🩸 Clocktower test',
           body: `This is how your phone will buzz, ${player.name}.`,
           tag: 'test',
-          pattern: [500, 150, 500, 150, 500],
           url: `/#${s.code}`,
         },
         { force: true },

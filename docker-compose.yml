@@ -1,0 +1,50 @@
+services:
+  botc:
+    build: .
+    image: open-botc
+    container_name: open-botc
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - botc-data:/data
+    environment:
+      # Where phone notifications are published. The public ntfy.sh is the
+      # path of least resistance: the ntfy app trusts it out of the box and
+      # the one-tap `ntfy://` subscribe link works immediately.
+      BOTC_NTFY_URL: "https://ntfy.sh"
+
+      # Set this to the address players actually type in, so tapping a
+      # notification opens the game. Example: https://clocktower.example.com
+      # BOTC_PUBLIC_URL: "http://192.168.1.10:8080"
+
+  # ---------------------------------------------------------------------------
+  # Optional: run your own ntfy so no notification text leaves your network.
+  #
+  # Trade-off — the ntfy app only auto-trusts https. Over plain http on a LAN,
+  # players must add the server manually in the app (Settings → Manage users /
+  # Default server) and the one-tap subscribe link will not work. Put this
+  # behind TLS if you want the two-tap flow to keep working.
+  #
+  # To use it: uncomment the block below, and set on the botc service:
+  #   BOTC_NTFY_URL: "http://ntfy:80"
+  # ---------------------------------------------------------------------------
+  # ntfy:
+  #   image: binwiederhier/ntfy
+  #   container_name: botc-ntfy
+  #   command: serve
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8081:80"
+  #   volumes:
+  #     - ntfy-cache:/var/cache/ntfy
+  #     - ntfy-data:/etc/ntfy
+  #   environment:
+  #     NTFY_BASE_URL: "http://192.168.1.10:8081"
+  #     NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+  #     NTFY_BEHIND_PROXY: "false"
+
+volumes:
+  botc-data:
+  # ntfy-cache:
+  # ntfy-data:
