@@ -2,8 +2,20 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { BUZZ } from '../game/buzz.js';
-import { addPlayer, beginNight, createGame, startGame } from '../game/engine.js';
+import {
+  addPlayer,
+  beginNight,
+  castVote,
+  createGame,
+  endSpeech,
+  nominate,
+  openNominations,
+  slay,
+  startGame,
+  tick,
+} from '../game/engine.js';
 import { registersAs } from '../game/registration.js';
+import { alivePlayers } from '../game/types.js';
 import { viewFor } from '../game/view.js';
 import { byChar, mk, runNight, toDay } from './helpers.js';
 
@@ -214,5 +226,73 @@ describe('buzzing discipline', () => {
       .filter((b) => b.wake)
       .map((b) => JSON.stringify(b.pattern));
     assert.equal(new Set(shapes).size, shapes.length, 'two waking buzzes feel the same');
+  });
+
+  // The real rule is about timing, not about which events are flagged: a phone
+  // may only be disturbed while its owner's eyes are shut.
+  it('never buzzes while eyes are open', () => {
+    const g = mk(['slayer', 'empath', 'soldier', 'scarletwoman', 'imp', 'monk']);
+    runNight(g);
+    toDay(g);
+
+    g.s.outbox = [];
+    openNominations(g.s, byChar(g.s, 'slayer').id, g.clock.advance(100));
+
+    const nominator = byChar(g.s, 'empath');
+    const nominee = byChar(g.s, 'soldier');
+    nominate(g.s, nominator.id, nominee.id, g.clock.advance(100));
+    endSpeech(g.s, nominator.id, g.clock.advance(100));
+    endSpeech(g.s, nominee.id, g.clock.advance(100));
+    for (const p of alivePlayers(g.s)) {
+      if (g.s.phase !== 'voting') break;
+      castVote(g.s, p.id, true, g.clock.advance(50));
+    }
+    if (g.s.phase === 'voting') tick(g.s, g.clock.advance(60_000));
+
+    const buzzes = g.s.outbox.filter((e) => e.k === 'buzz');
+    assert.deepEqual(
+      buzzes.map((b) => (b as { tag?: string }).tag),
+      [],
+      'a whole day of nominating, speeches and voting must not buzz anybody',
+    );
+  });
+
+  it('a daytime Demon takeover does not buzz the new Imp', () => {
+    const g = mk(['slayer', 'empath', 'soldier', 'scarletwoman', 'imp', 'monk']);
+    runNight(g);
+    toDay(g);
+
+    const sw = byChar(g.s, 'scarletwoman');
+    g.s.outbox = [];
+    slay(g.s, byChar(g.s, 'slayer').id, byChar(g.s, 'imp').id, g.clock.advance(100));
+
+    assert.equal(sw.character, 'imp', 'the takeover should still happen');
+    assert.deepEqual(
+      g.s.outbox.filter((e) => e.k === 'buzz'),
+      [],
+      'they are staring at the screen that just told them — do not buzz',
+    );
+    assert.ok(
+      sw.log.some((e) => /now the Imp/i.test(e.title)),
+      'they must still be told, on screen',
+    );
+  });
+
+  it('still wakes the new Imp when the star is passed at night', () => {
+    const g = mk(['chef', 'empath', 'soldier', 'scarletwoman', 'imp']);
+    runNight(g);
+    toDay(g);
+
+    const sw = byChar(g.s, 'scarletwoman');
+    const imp = byChar(g.s, 'imp');
+    runNight(g, { imp: () => [imp.id] });
+
+    assert.equal(sw.character, 'imp');
+    const tags = g.s.outbox
+      .filter((e) => e.k === 'buzz')
+      .flatMap((e) => ((e as { playerIds: string[]; tag?: string }).playerIds.includes(sw.id)
+        ? [(e as { tag?: string }).tag]
+        : []));
+    assert.ok(tags.includes('transform'), 'their eyes were shut — wake them');
   });
 });

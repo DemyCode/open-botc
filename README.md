@@ -171,27 +171,36 @@ the night, because a phone buzzing on a hard table is audible.
 
 ### A buzz only ever means "wake up"
 
-Phones vibrate **only to wake someone who cannot otherwise be reached** — the
-night, and dawn. Four events, and no others:
+**A phone vibrates only while its owner's eyes are shut.** That is the whole
+rule. If your eyes are open the screen already shows you what you can do, so
+there is nothing to interrupt you for.
+
+In practice that leaves the night and dawn — four events, and no others:
 
 | Event | Rhythm | When |
 |---|---|---|
 | **Your turn** | two taps then a long hold | the night needs your ability |
 | **You learned something** | two medium pulses | the night woke you with information |
-| **You have changed** | a run then a hold | you are the Demon now |
+| **You have changed** | a run then a hold | the star was passed to you *in the night* |
 | **Day breaks** | two slow spaced pulses | everyone, open your eyes |
 
 Everything in daylight is silent: nominations, votes, speeches, deaths, the
-game ending. Everyone is awake, in the same room, holding their phone and able
-to hear each other — the nominator says it out loud and the screen updates
-anyway. Vibrating for public events that need no action teaches people to
-ignore the buzz, and then the one that matters gets missed.
+reveal, the game ending. Everyone is awake, in the same room and able to hear
+each other — the nominator says it out loud and the screen updates anyway.
+Vibrating for public events that need no action teaches people to ignore the
+buzz, and then the one that matters gets missed.
+
+Note the third row: the Scarlet Woman usually inherits the Demon *in daylight*,
+from an execution or a Slayer shot. She is told on screen and not buzzed. Only
+a night star-pass wakes her.
 
 The patterns are designed to be told apart without looking, because a player
 feeling one has their eyes shut. The vocabulary lives in `src/game/buzz.ts`,
-where each event carries a `wake` flag; the engine drops non-waking buzzes
-centrally, so no call site can leak one. A test pins the waking set, and the
-end-to-end run asserts no phone was ever buzzed for a daytime event.
+where each event carries a `wake` flag, and the engine drops non-waking buzzes
+centrally so no call site can leak one. Three things hold the line: a test pins
+the waking set, another plays a whole day of nominating, speeches and voting and
+asserts the outbox stays empty, and the end-to-end run records the phase every
+buzz arrives in and fails if any lands outside the night.
 
 > **Topics are secret.** Your topic is how your private night information
 > reaches your phone. Anyone who knows it can read that information. They are

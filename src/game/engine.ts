@@ -770,11 +770,21 @@ function handleDemonDeath(
 function becomeImp(s: GameState, p: PlayerState, why: string): void {
   p.character = 'imp';
   p.perceived = 'imp';
-  giveInfo(s, p, {
-    title: 'You are now the Imp',
-    body: `${why} You are the Demon from now on.`,
-  });
-  buzz(s, [p.id], 'transform', 'You are now the Imp', 'The Demon has passed to you.');
+
+  // Record it silently; the buzz below decides whether to disturb them.
+  giveInfo(
+    s,
+    p,
+    { title: 'You are now the Imp', body: `${why} You are the Demon from now on.` },
+    false,
+  );
+
+  // Only wake them if their eyes are actually shut. The Scarlet Woman usually
+  // inherits the Demon in broad daylight — an execution, or a Slayer shot —
+  // and then the player is already looking at the screen that just told them.
+  if (s.phase === 'night') {
+    buzz(s, [p.id], 'transform', 'You are now the Imp', 'The Demon has passed to you.');
+  }
 }
 
 // ---------------------------------------------------------------------------

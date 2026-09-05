@@ -46,7 +46,9 @@ class Player {
       ws.on('message', (raw) => {
         const msg = JSON.parse(String(raw));
         if (msg.t === 'view') this.view = msg.view;
-        else if (msg.t === 'buzz') this.buzzes.push(msg);
+        // The server broadcasts state before flushing buzzes, so the view here
+        // is the phase the buzz belongs to.
+        else if (msg.t === 'buzz') this.buzzes.push({ ...msg, phase: this.view?.phase });
         else if (msg.t === 'identity') this.token = msg.token;
         else if (msg.t === 'error') this.errors.push(msg.message);
       });
@@ -249,6 +251,15 @@ async function playOneGame(gameIndex) {
   const stray = [...new Set(allBuzzes.map((b) => b.tag).filter((t) => !WAKING.has(t)))];
   check(stray.length === 0, `no phone was buzzed for a silent event: ${JSON.stringify(stray)}`);
   check(allBuzzes.length > 0, 'the game buzzed somebody');
+
+  // The rule that actually matters: nobody is disturbed while their eyes are open.
+  const EYES_SHUT = new Set(['night', 'dawn']);
+  const awake = [
+    ...new Set(
+      allBuzzes.filter((b) => !EYES_SHUT.has(b.phase)).map((b) => `${b.tag}@${b.phase}`),
+    ),
+  ];
+  check(awake.length === 0, `no phone buzzed while eyes were open: ${JSON.stringify(awake)}`);
 
   const perPlayer = players.map((p) => p.buzzes.length);
   const byKind = {};
