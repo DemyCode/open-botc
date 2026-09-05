@@ -1,0 +1,19 @@
+{
+  "name": "Blood on the Clocktower — Trouble Brewing",
+  "short_name": "Clocktower",
+  "description": "Self-hosted, storyteller-free Trouble Brewing for playing in a room together.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

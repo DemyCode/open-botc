@@ -1,0 +1,405 @@
+#!/usr/bin/env node
+/**
+ * Renders the real client in headless Chromium and walks a whole game,
+ * screenshotting each phase and failing on any console error.
+ *
+ *   node scripts/ui-check.mjs [--url http://localhost:8080] [--out ./shots]
+ *
+ * Talks to Chromium over the DevTools protocol directly, so there is no
+ * puppeteer/playwright dependency.
+ */
+
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { WebSocket } from 'ws';
+
+const args = Object.fromEntries(
+  process.argv.slice(2).flatMap((a, i, arr) =>
+    a.startsWith('--') ? [[a.slice(2), arr[i + 1]]] : [],
+  ),
+);
+const BASE = args.url || 'http://localhost:8080';
+const OUT = args.out || path.resolve('shots');
+const CHROME =
+  args.chrome ||
+  process.env.CHROME_BIN ||
+  '/nix/store/b3zmxxdfbv1q13fy1vkgxaszmnkwkf0z-chromium-151.0.7922.137/bin/chromium';
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+fs.mkdirSync(OUT, { recursive: true });
+
+// ------------------------------------------------------------ chrome driver
+
+const PORT = 9500 + Math.floor(Math.random() * 400);
+const profile = fs.mkdtempSync('/tmp/botc-ui-');
+const chrome = spawn(
+  CHROME,
+  [
+    '--headless=new',
+    `--remote-debugging-port=${PORT}`,
+    `--user-data-dir=${profile}`,
+    '--no-sandbox',
+    '--disable-gpu',
+    '--disable-dev-shm-usage',
+    '--hide-scrollbars',
+    '--window-size=414,896',
+    'about:blank',
+  ],
+  { stdio: 'ignore' },
+);
+
+async function devtools() {
+  for (let i = 0; i < 60; i++) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${PORT}/json/list`);
+      const targets = await res.json();
+      const page = targets.find((t) => t.type === 'page');
+      if (page) return page.webSocketDebuggerUrl;
+    } catch {
+      /* not up yet */
+    }
+    await sleep(250);
+  }
+  throw new Error('Chromium did not expose a devtools endpoint');
+}
+
+class Page {
+  constructor(ws) {
+    this.ws = ws;
+    this.id = 0;
+    this.pending = new Map();
+    this.consoleErrors = [];
+    this.pageErrors = [];
+
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(String(raw));
+      if (msg.id && this.pending.has(msg.id)) {
+        const { resolve, reject } = this.pending.get(msg.id);
+        this.pending.delete(msg.id);
+        msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result);
+        return;
+      }
+      if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
+        this.consoleErrors.push(msg.params.args.map((a) => a.value ?? a.description).join(' '));
+      }
+      if (msg.method === 'Runtime.exceptionThrown') {
+        const d = msg.params.exceptionDetails;
+        this.pageErrors.push(d.exception?.description || d.text);
+      }
+    });
+  }
+
+  send(method, params = {}) {
+    const id = ++this.id;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.ws.send(JSON.stringify({ id, method, params }));
+    });
+  }
+
+  async evaluate(expression) {
+    const r = await this.send('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    if (r.exceptionDetails) {
+      throw new Error(r.exceptionDetails.exception?.description || 'evaluate failed');
+    }
+    return r.result.value;
+  }
+
+  async shot(name) {
+    const { data } = await this.send('Page.captureScreenshot', {
+      format: 'png',
+      captureBeyondViewport: true,
+    });
+    fs.writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(data, 'base64'));
+  }
+}
+
+// -------------------------------------------------------------- bot players
+
+class Bot {
+  constructor(name) {
+    this.name = name;
+    this.view = null;
+  }
+  async connect(code) {
+    this.ws = new WebSocket(BASE.replace(/^http/, 'ws') + '/ws');
+    await new Promise((r) => this.ws.on('open', r));
+    this.ws.on('message', (raw) => {
+      const m = JSON.parse(String(raw));
+      if (m.t === 'view') this.view = m.view;
+    });
+    this.send({ t: 'join', code, name: this.name });
+    await sleep(150);
+  }
+  send(m) {
+    this.ws.send(JSON.stringify(m));
+  }
+  close() {
+    this.ws?.close();
+  }
+}
+
+// -------------------------------------------------------------------- drive
+
+let failures = 0;
+const seen = new Set();
+function note(msg) {
+  console.log(`  ${msg}`);
+}
+function fail(msg) {
+  failures++;
+  console.error(`  ✖ ${msg}`);
+}
+
+const wsUrl = await devtools();
+const page = new Page(new WebSocket(wsUrl));
+await new Promise((r) => page.ws.on('open', r));
+await page.send('Page.enable');
+await page.send('Runtime.enable');
+await page.send('Emulation.setDeviceMetricsOverride', {
+  width: 414,
+  height: 896,
+  deviceScaleFactor: 2,
+  mobile: true,
+});
+
+const { code } = await (await fetch(`${BASE}/api/rooms`, { method: 'POST' })).json();
+console.log(`\nroom ${code}\n`);
+
+// The human player is the browser; everyone else is a bot.
+const bots = [];
+for (let i = 0; i < 7; i++) {
+  const b = new Bot(`Bot${i + 1}`);
+  await b.connect(code);
+  bots.push(b);
+}
+
+await page.send('Page.navigate', { url: `${BASE}/#${code}` });
+await sleep(1200);
+
+async function capture(name) {
+  if (seen.has(name)) return;
+  seen.add(name);
+  await page.shot(name);
+  note(`📸 ${name}`);
+}
+
+async function uiPhase() {
+  return page.evaluate('document.body.dataset.phase || "home"');
+}
+
+async function click(selectorText) {
+  return page.evaluate(`(() => {
+    const els = [...document.querySelectorAll('button,a.btn')];
+    const el = els.find(e => e.textContent.trim().toLowerCase().includes(${JSON.stringify(
+      selectorText.toLowerCase(),
+    )}));
+    if (!el) return false;
+    el.click();
+    return true;
+  })()`);
+}
+
+async function clickAttr(attr) {
+  return page.evaluate(`(() => {
+    const el = document.querySelector('[data-act="${attr}"]:not([disabled])');
+    if (!el) return false; el.click(); return true;
+  })()`);
+}
+
+// ---- home
+await capture('01-home');
+await page.evaluate(`document.getElementById('name').value = 'Robin'`);
+await clickAttr('join');
+await sleep(900);
+
+if ((await uiPhase()) !== 'lobby') fail(`expected lobby, got ${await uiPhase()}`);
+await capture('02-lobby');
+
+// the notification card, mid-flow
+await page.evaluate(`document.querySelector('details')?.setAttribute('open','')`);
+await sleep(200);
+await capture('03-notifications');
+await page.evaluate(`document.querySelector('details')?.removeAttribute('open')`);
+
+// Bots confirm their buzz so the lobby shows the ready state.
+for (const b of bots) b.send({ t: 'pushConfirmed', ok: true });
+await sleep(400);
+await capture('04-lobby-ready');
+
+// ---- start
+const host = bots[0];
+host.send({ t: 'setOptions', options: { revealSeconds: 120, dawnSeconds: 60, speechSeconds: 60, voteSeconds: 60 } });
+await sleep(200);
+host.send({ t: 'start' });
+await sleep(700);
+if ((await uiPhase()) !== 'reveal') fail(`expected reveal, got ${await uiPhase()}`);
+await capture('05-reveal');
+
+const myRole = await page.evaluate(`document.querySelector('.role .rname')?.textContent`);
+note(`browser player is the ${myRole}`);
+
+await clickAttr('ready');
+for (const b of bots) b.send({ t: 'ready' });
+await sleep(900);
+
+// ---- walk the game, screenshotting each phase the browser lands in
+let guard = 0;
+while (guard++ < 900) {
+  const phase = await uiPhase();
+
+  if (phase === 'night') {
+    const hasPrompt = await page.evaluate(`!!document.querySelector('[data-act="confirmPrompt"]')`);
+    if (hasPrompt) {
+      await capture('06-night-prompt');
+      // Pick enough players, then confirm.
+      await page.evaluate(`(() => {
+        const n = document.querySelectorAll('.player.selectable');
+        const need = document.querySelector('[data-act="confirmPrompt"]').textContent.match(/Choose (\\d+)/);
+        const count = need ? Number(need[1]) : 1;
+        for (let i = 0; i < count && i < n.length; i++) n[i].click();
+      })()`);
+      await sleep(250);
+      await capture('07-night-picked');
+      await clickAttr('confirmPrompt');
+      await sleep(300);
+    } else {
+      await capture('08-night-waiting');
+      // Let a bot answer.
+      for (const b of bots) {
+        if (b.view?.prompt) {
+          const t = b.view.prompt.choices.filter((c) => !c.disabled).slice(0, b.view.prompt.count);
+          b.send({ t: 'choose', promptId: b.view.prompt.id, targets: t.map((c) => c.playerId) });
+          break;
+        }
+      }
+      await sleep(220);
+    }
+    continue;
+  }
+
+  if (phase === 'dawn') {
+    await capture('09-dawn');
+    await sleep(600);
+    continue;
+  }
+
+  if (phase === 'day') {
+    await capture('10-day');
+    if (await clickAttr('openNominations')) await sleep(400);
+    else {
+      bots.find((b) => b.view?.self?.alive)?.send({ t: 'openNominations' });
+      await sleep(400);
+    }
+    continue;
+  }
+
+  if (phase === 'nominations') {
+    await capture('11-nominations');
+    const canNominate = await page.evaluate(`!!document.querySelector('[data-act="nominate"]')`);
+    if (canNominate) {
+      await page.evaluate(`document.querySelector('.player.selectable')?.click()`);
+      await sleep(250);
+      await capture('12-nomination-picked');
+      await clickAttr('nominate');
+      await sleep(400);
+    } else {
+      const nom = bots.find((b) => b.view?.self?.canNominate);
+      const cand = nom?.view.players.find((x) => x.alive && !x.wasNominated);
+      if (nom && cand) nom.send({ t: 'nominate', targetId: cand.id });
+      else {
+        for (const b of bots.filter((x) => x.view?.self?.alive && !x.view.self.hasRequestedEndDay)) {
+          b.send({ t: 'endDay' });
+          await sleep(40);
+        }
+        await clickAttr('endDay');
+      }
+      await sleep(400);
+    }
+    continue;
+  }
+
+  if (phase === 'speech') {
+    await capture('13-speech');
+    await clickAttr('endSpeech');
+    const n = bots[0].view?.nomination;
+    if (n) {
+      const speaker = n.stage === 'accuser' ? n.nominatorId : n.nomineeId;
+      bots.find((b) => b.view?.youId === speaker)?.send({ t: 'endSpeech' });
+    }
+    await sleep(400);
+    continue;
+  }
+
+  if (phase === 'voting') {
+    await capture('14-voting');
+    await clickAttr('voteYes');
+    for (const b of bots) {
+      if (b.view?.self?.canVote) {
+        b.send({ t: 'vote', vote: Math.random() < 0.6 });
+        await sleep(30);
+      }
+    }
+    await sleep(900);
+    await capture('15-vote-result');
+    continue;
+  }
+
+  if (phase === 'dusk') {
+    await capture('16-dusk');
+    await sleep(900);
+    continue;
+  }
+
+  if (phase === 'over') {
+    await capture('17-gameover');
+    break;
+  }
+
+  await sleep(250);
+}
+
+// ---- the other tabs
+await page.evaluate(`document.querySelector('[data-act="tab"][data-arg="me"]').click()`);
+await sleep(400);
+await capture('18-you-tab');
+await page.evaluate(`document.querySelector('[data-act="tab"][data-arg="log"]').click()`);
+await sleep(400);
+await capture('19-history-tab');
+
+if ((await uiPhase()) !== 'over') fail(`game never finished in the UI (phase=${await uiPhase()})`);
+
+// ---- console health
+const realErrors = page.consoleErrors.filter((e) => !/favicon|manifest|Failed to load resource/i.test(e));
+if (realErrors.length) fail(`console errors: ${JSON.stringify(realErrors.slice(0, 4))}`);
+if (page.pageErrors.length) fail(`uncaught exceptions: ${JSON.stringify(page.pageErrors.slice(0, 4))}`);
+
+// ---- layout: nothing may scroll sideways on a phone
+const overflow = await page.evaluate(
+  `document.documentElement.scrollWidth - document.documentElement.clientWidth`,
+);
+if (overflow > 1) fail(`page scrolls horizontally by ${overflow}px on a 414px screen`);
+
+for (const b of bots) b.close();
+page.ws.close();
+chrome.kill();
+// Chromium may still be flushing its profile; cleanup is best-effort.
+await sleep(300);
+try {
+  fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+} catch {
+  /* the OS will reap /tmp */
+}
+
+console.log(`\nscreenshots → ${OUT}`);
+if (failures === 0) {
+  console.log(`✅ UI check passed (${seen.size} screens)`);
+  process.exit(0);
+}
+console.error(`❌ UI check: ${failures} failure(s)`);
+process.exit(1);
