@@ -290,16 +290,40 @@ await sleep(900);
 if ((await uiPhase()) !== 'lobby') fail(`expected lobby, got ${await uiPhase()}`);
 await capture('02-lobby');
 
-// the notification card, mid-flow
+// ---- the whole notification set-up flow, card by card
 await page.evaluate(`document.querySelector('details')?.setAttribute('open','')`);
 await sleep(200);
-await capture('03-notifications');
+await capture('03a-notify-subscribe');
 await page.evaluate(`document.querySelector('details')?.removeAttribute('open')`);
 
-// Bots confirm their buzz so the lobby shows the ready state.
+if (!(await clickAttr('testBuzz'))) fail('no way to send a test buzz');
+await sleep(500);
+await capture('03b-notify-did-it-buzz');
+
+// Say it did not buzz: the fix-it card must lead with the permission cause.
+if (!(await clickAttr('retryBuzz'))) fail('no "No" button on the test prompt');
+await sleep(400);
+await capture('03c-notify-fix-it');
+const fixText = await page.evaluate(`document.querySelector('main')?.innerText || ''`);
+if (!/allow(ed)? .*notification/i.test(fixText)) {
+  fail('the fix-it card does not mention allowing notifications');
+}
+
+// Now say it worked.
+await clickAttr('testBuzz');
+await sleep(400);
+if (!(await clickAttr('confirmBuzz'))) fail('no way to confirm the buzz worked');
+await sleep(500);
+await capture('03d-notify-confirmed');
+
+// Bots confirm too, so the lobby shows the all-ready state.
 for (const b of bots) b.send({ t: 'pushConfirmed', ok: true });
 await sleep(400);
 await capture('04-lobby-ready');
+const lobbyText = await page.evaluate(`document.querySelector('main')?.innerText || ''`);
+if (/have not set up phone buzzing/i.test(lobbyText)) {
+  fail('lobby still reports players without buzzing after all confirmed');
+}
 
 // ---- start
 // Long enough that a phase never auto-advances before it is screenshotted,

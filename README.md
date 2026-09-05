@@ -145,12 +145,29 @@ channel because it works over plain HTTP on a LAN, which browser notifications
 do not.
 
 The server generates a **private random topic for each player when they join**.
-Nobody types anything. The player taps:
+Nobody types anything. The player taps **Subscribe me** — an `ntfy://` deep link
+that opens the ntfy app and subscribes to their topic. Coming back to the page
+fires a test buzz automatically, and confirming it marks them ready in the
+lobby.
 
-1. **Subscribe me** — an `ntfy://` deep link that opens the ntfy app and
-   subscribes to their topic in one tap.
-2. **Send me a test buzz** — confirms it actually works, and marks them ready
-   in the lobby.
+#### The one manual step nobody can remove
+
+On a **fresh ntfy install**, Android will not let ntfy post notifications until
+the user grants `POST_NOTIFICATIONS`. That is an Android 13+ runtime permission:
+only the ntfy app can request it, only from its own foreground activity, and
+subscribing through a deep link does not trigger it
+([ntfy#508](https://github.com/binwiederhier/ntfy/issues/508)). A web page
+cannot grant it, cannot prompt for it, and cannot even detect it.
+
+So the first-ever run needs the player to open ntfy once and tap **Allow**. The
+app is built around that rather than pretending otherwise:
+
+- the subscribe button says up front that ntfy will ask, and to say yes;
+- returning from ntfy auto-fires the test, so it is one tap rather than two;
+- answering "no, it didn't buzz" leads with exactly this cause and how to fix
+  it, instead of a generic troubleshooting list.
+
+Once granted, it never comes up again — including for later games.
 
 Every message is sent at ntfy priority **max**. That is the only level the
 Android app treats as insistent, and it is the whole lever the sender has —

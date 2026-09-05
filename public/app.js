@@ -22,6 +22,10 @@ const S = {
   /** A test notification has been sent and we're waiting for a yes/no. */
   testSent: false,
   testDelivered: null,
+  /** They said the test did not buzz; show the fix-it card. */
+  testFailed: false,
+  /** Timestamp of tapping the ntfy subscribe link, to auto-test on return. */
+  leftForNtfy: null,
   showSettings: false,
   busy: false,
 };
@@ -282,6 +286,7 @@ const ACTIONS = {
   testBuzz: () => {
     send({ t: 'testBuzz' });
     S.testSent = true;
+    S.testFailed = false;
     S.testDelivered = null;
     render();
   },
@@ -297,8 +302,8 @@ const ACTIONS = {
   },
   retryBuzz: () => {
     S.testSent = false;
+    S.testFailed = true;
     render();
-    toast('Tap ① to subscribe in the ntfy app, then test again.');
   },
   unconfirm: () => {
     send({ t: 'pushConfirmed', ok: false });
@@ -323,6 +328,12 @@ function togglePick(id) {
     while (S.picked.length > max) S.picked.shift();
   }
 }
+
+// The subscribe link hands off to the ntfy app, so it must navigate normally —
+// no preventDefault. We only note that we are expecting the player back.
+document.addEventListener('click', (ev) => {
+  if (ev.target.closest('[data-subscribe]')) S.leftForNtfy = Date.now();
+});
 
 document.addEventListener('click', (ev) => {
   const target = ev.target.closest('[data-act]');
@@ -721,6 +732,27 @@ function notificationCard(v) {
       </div>`;
   }
 
+  // Step 3 — the test failed. Lead with the cause that catches almost everyone.
+  if (S.testFailed) {
+    return `
+      <div class="card stack">
+        <h2>🔕 Let's fix it</h2>
+        <p class="muted">
+          Nearly always this: <b>ntfy has not been allowed to send notifications
+          yet.</b> Subscribing through a link does not ask — only the app itself
+          can, and only when you open it.
+        </p>
+        <p class="faint">
+          Open <b>ntfy</b> from your home screen. It will ask "Allow
+          notifications?" — say <b>Allow</b>. If it does not ask, go to Android
+          Settings → Apps → ntfy → Notifications and switch them on.
+        </p>
+        <a class="btn" href="${esc(ntfyDeepLink(v))}" data-subscribe="1">Open ntfy</a>
+        <button class="btn primary" data-act="testBuzz">Try the test again</button>
+        ${vibrationHelp()}
+      </div>`;
+  }
+
   // Step 2 — the test has been sent, waiting for the player to say if it worked.
   if (S.testSent) {
     return `
@@ -736,18 +768,25 @@ function notificationCard(v) {
       </div>`;
   }
 
-  // Step 1 — subscribe.
+  // Step 1 — subscribe. Coming back from ntfy fires the test automatically.
   const deep = ntfyDeepLink(v);
   return `
     <div class="card stack">
       <h2>🔔 Buzz my phone</h2>
       <p class="muted">
-        Two taps. You need the free <b>ntfy</b> app — it is what buzzes your phone
+        One tap. You need the free <b>ntfy</b> app — it is what buzzes your phone
         while the screen is off.
       </p>
 
-      <a class="btn primary" href="${esc(deep)}">① Subscribe me (opens ntfy)</a>
-      <button class="btn" data-act="testBuzz">② Send me a test buzz</button>
+      <a class="btn primary" href="${esc(deep)}" data-subscribe="1">Subscribe me (opens ntfy)</a>
+
+      <div class="banner info">
+        ntfy will ask <b>"Allow notifications?"</b> — say yes. That is the step
+        that actually makes your phone buzz. Then come straight back here and
+        it will test itself.
+      </div>
+
+      <button class="btn ghost small" data-act="testBuzz">Send a test buzz now</button>
 
       ${silenceWarning()}
 
@@ -1250,9 +1289,24 @@ async function refreshWakeLock() {
 setInterval(refreshWakeLock, 3000);
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) {
-    refreshWakeLock();
-    if (!S.connected) connect();
+  if (document.hidden) return;
+  refreshWakeLock();
+  if (!S.connected) connect();
+
+  // They went to ntfy and came back: test for them, so subscribing is one tap
+  // rather than two. The delay lets the socket settle and gives the phone a
+  // moment to finish switching apps.
+  const away = S.leftForNtfy ? Date.now() - S.leftForNtfy : 0;
+  if (away > 1500 && S.view && !S.view.self.pushConfirmed) {
+    S.leftForNtfy = null;
+    setTimeout(() => {
+      if (S.view && !S.view.self.pushConfirmed && !S.testSent) {
+        send({ t: 'testBuzz' });
+        S.testSent = true;
+        S.testFailed = false;
+        render();
+      }
+    }, 900);
   }
 });
 
