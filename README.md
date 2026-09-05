@@ -115,16 +115,21 @@ Handled properly:
 
 ### Judgement calls
 
-A human storyteller makes some choices for drama. Those are dials in the
-lobby settings, with sane defaults:
+The rules follow the official Trouble Brewing script and are **not** adjustable
+in the app — the Drunk registers as the Drunk, the Recluse and Spy misregister
+half the time, and the Mayor's bounce is a coin flip. Only timings and the
+voting style are exposed, because those are a table's preference rather than a
+question of correctness.
 
-| Setting | Default | What it does |
+These remain settable in `RoomOptions` for anyone who wants to fork the
+behaviour, but no UI offers them:
+
+| Field | Default | What it does |
 |---|---|---|
-| `drunkShowsAsFake` | off (official) | Whether the Drunk registers as the Drunk, or as their fake Townsfolk role |
+| `drunkShowsAsFake` | `false` (official) | Whether the Drunk registers as the Drunk, or as their fake Townsfolk role |
 | `recluseMisregisterChance` | 0.5 | How often the Recluse looks evil |
 | `spyMisregisterChance` | 0.5 | How often the Spy looks good |
 | `mayorBounceChance` | 0.5 | How often a Mayor's night death lands on someone else |
-| `votingMode` | all at once | Or sequentially around the circle from the nominee |
 
 ---
 
@@ -152,29 +157,22 @@ Android app treats as insistent, and it is the whole lever the sender has —
 priority 4 lands in a quieter channel that many phones (Samsung especially)
 leave silent.
 
-### Making the buzz unmistakable
+### Silence is a rule, not a setting
 
-A stock notification blip is easy to mistake for a text message, which is fatal
-in a game where the buzz means "it is your turn". Two halves to this:
+**This app never plays audio, and nothing may be added that does.**
 
-**On a locked phone**, the vibration pattern and sound belong to the Android
-notification channel. *No sender can set them* — the player flips these once,
-in the ntfy app, and the setup card in the game links to all of it:
+Everyone is sitting in the same room. If a phone makes a noise when the night
+wakes a player, the whole table hears *who* is acting — which is the one secret
+the entire game rests on. So there is no sound, no notification tone, no chime.
 
-- **Set the clocktower bell** (`public/bell.wav`, served at `/bell.wav`) as the
-  notification sound for the topic. Nothing else on a phone sounds like it. If
-  it does not appear in ntfy's sound picker, move the file into the phone's
-  `Notifications` folder first.
-- **"Keep ringing until dismissed"** (ntfy 1.16+, per subscription). A normal
-  notification buzzes once; this one will not stop.
-- **Instant delivery** (ntfy → Settings). Without it Android routes through
-  Google and can hold messages for minutes.
+The single instruction, shown in the app where nobody can miss it: **put your
+phone on vibrate.** Players are also told to hold the phone in their lap during
+the night, because a phone buzzing on a hard table is audible.
 
-Regenerate the bell with `npm run make-bell` if you want a different one — it is
-synthesised from real bell partials in `scripts/make-bell.mjs`, no asset needed.
+### Telling the buzzes apart
 
-**While the app is open**, the game controls the vibration completely, so each
-event has its own rhythm and you can tell them apart with your eyes shut:
+Since vibration is the only channel, each event has its own rhythm, and you can
+tell them apart with your eyes shut:
 
 | Event | Rhythm |
 |---|---|
@@ -185,7 +183,8 @@ event has its own rhythm and you can tell them apart with your eyes shut:
 | **Day breaks** | two slow spaced pulses |
 
 The vocabulary lives in `src/game/buzz.ts`, is served to the client, and the
-setup card has a "Feel" button for each one so players can learn them.
+setup card has a "Feel" button for each one so players can learn them before the
+game starts.
 
 > **Topics are secret.** Your topic is how your private night information
 > reaches your phone. Anyone who knows it can read that information. They are
@@ -196,7 +195,7 @@ Install ntfy: [Play](https://play.google.com/store/apps/details?id=io.heckel.ntf
 · [iPhone](https://apps.apple.com/us/app/ntfy/id1625396347)
 
 Players without the app can leave the ntfy topic page open in a browser tab —
-it rings, but only while the phone is unlocked.
+it buzzes, but only while the phone is unlocked.
 
 ### Running your own ntfy
 

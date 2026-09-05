@@ -91,10 +91,10 @@ export class RoomManager {
   /**
    * Deliver buzz events queued by the engine.
    *
-   * Two paths, and both run: the open socket makes the phone buzz and chirp
-   * while the player is looking at it, and ntfy rings it when it is locked in
-   * a pocket. A live socket is no reason to skip ntfy — the page may be open
-   * but the screen off.
+   * Two paths, and both run: the open socket vibrates the phone while the
+   * player is looking at it, and ntfy buzzes it when it is locked in a pocket.
+   * A live socket is no reason to skip ntfy — the page may be open but the
+   * screen off. Neither path ever makes a sound; see `buzz.ts` for why.
    */
   async flush(room: Room): Promise<void> {
     const events = drainOutbox(room.state);

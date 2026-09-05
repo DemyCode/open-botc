@@ -13,8 +13,12 @@
  *   DAWN        two slow spaced pulses
  *
  * A locked phone is a different matter: there, vibration is a property of the
- * Android notification channel and cannot be set by the sender. The bell sound
- * in public/bell.wav is what makes those unmistakable — see the setup card.
+ * Android notification channel and cannot be set by the sender. Players are
+ * told to put the phone on vibrate, which is the setting that matters.
+ *
+ * Nothing here ever makes a sound, and nothing may be added that does. Everyone
+ * is in the same room: a noise when the night wakes you tells the whole table
+ * who is acting, which is the one secret the game rests on.
  */
 
 export type BuzzKind =

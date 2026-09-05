@@ -1,7 +1,7 @@
 /**
  * Phone notifications, via ntfy only.
  *
- * ntfy is the single channel on purpose: it rings a locked phone over plain
+ * ntfy is the single channel on purpose: it buzzes a locked phone over plain
  * HTTP on a LAN, which browser notifications cannot do without TLS and a
  * permission prompt.
  */
