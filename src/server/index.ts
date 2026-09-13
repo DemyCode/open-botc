@@ -121,10 +121,6 @@ wss.on('connection', (ws: WebSocket) => {
         case 'vote':
           engine.castVote(state, playerId, !!msg.yes);
           break;
-        case 'closeVote':
-          requireHost(state, playerId);
-          engine.closeVote(state);
-          break;
         case 'endDay':
           requireHost(state, playerId);
           engine.requestEndDay(state);

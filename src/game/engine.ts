@@ -157,17 +157,21 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
   state.publicLog.push(`${nominator.name} nominates ${nominee.name}.`);
 }
 
-/** Lets the current speaker (or the host) end their speech early instead of waiting out the timer. */
+/**
+ * Lets the current speaker end their own speech early instead of waiting out the timer.
+ * Deliberately nobody else's call — not even the host: the host is just whoever happened to
+ * create the room, not a storyteller with authority to cut another player's turn short. If the
+ * speaker says nothing, the accusing/defending timer auto-advances on its own.
+ */
 export function skipSpeech(state: GameState, playerId: string): void {
   const nom = state.currentNomination;
   if (!nom) throw new GameError('No nomination in progress');
-  const isHost = state.hostId === playerId;
   if (nom.state === 'accusing') {
-    if (!isHost && playerId !== nom.nominatorId) throw new GameError('Only the accuser or host can skip this');
+    if (playerId !== nom.nominatorId) throw new GameError('Only the accuser can end their own speech early');
     nom.state = 'defending';
     nom.phaseEndsAt = Date.now() + DEFEND_MS;
   } else if (nom.state === 'defending') {
-    if (!isHost && playerId !== nom.nomineeId) throw new GameError('Only the accused or host can skip this');
+    if (playerId !== nom.nomineeId) throw new GameError('Only the accused can end their own defense early');
     startVoting(state, nom);
   } else {
     throw new GameError('Nothing to skip right now');
@@ -259,14 +263,6 @@ function finishVoting(state: GameState, nom: Nomination): void {
 
   state.currentNomination = null;
   maybeAutoEndDay(state);
-}
-
-/** Host override: stop the vote right now and tally whatever has been cast so far as the final result. */
-export function closeVote(state: GameState): void {
-  const nom = state.currentNomination;
-  if (!nom) throw new GameError('No nomination in progress');
-  if (nom.state !== 'voting') throw new GameError('Not voting yet');
-  finishVoting(state, nom);
 }
 
 export function tick(state: GameState, now: number): void {

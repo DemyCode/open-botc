@@ -304,18 +304,18 @@ function renderVoteList(v, n) {
   );
 }
 
-function renderNomination(v, isHost) {
+function renderNomination(v) {
   const n = v.nomination;
   const card = [el('h2', {}, `${n.nominatorName} accuses ${n.nomineeName}`)];
 
   if (n.state === 'accusing') {
     card.push(el('p', { class: 'muted center' }, `${n.nominatorName} is making their case… (${secondsLeft(n.phaseEndsAt)}s)`));
-    if (isHost || v.selfId === n.nominatorId) {
+    if (v.selfId === n.nominatorId) {
       card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'skipSpeech' }) }, 'Done — move to defense'));
     }
   } else if (n.state === 'defending') {
     card.push(el('p', { class: 'muted center' }, `${n.nomineeName} is responding… (${secondsLeft(n.phaseEndsAt)}s)`));
-    if (isHost || v.selfId === n.nomineeId) {
+    if (v.selfId === n.nomineeId) {
       card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'skipSpeech' }) }, 'Done — start the vote'));
     }
   } else if (n.state === 'voting') {
@@ -331,7 +331,6 @@ function renderNomination(v, isHost) {
       card.push(el('p', { class: 'muted center pulse' }, `Waiting on ${n.currentVoterName || '…'} to vote…`));
     }
     card.push(renderVoteList(v, n));
-    if (isHost) card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'closeVote' }) }, 'Tally Now'));
   }
 
   return el('div', { class: 'card' }, card);
@@ -348,7 +347,7 @@ function renderDay(v) {
   }
 
   if (v.nomination) {
-    children.push(renderNomination(v, isHost));
+    children.push(renderNomination(v));
   } else {
     children.push(
       el(

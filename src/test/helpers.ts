@@ -93,10 +93,12 @@ export function runFullNight(state: GameState, maxSteps = 30): void {
   }
 }
 
-/** Skips straight past the accusing/defending speeches (as the host) to the sequential vote. */
+/** Skips straight past the accusing/defending speeches (as the actual accuser/accused) to the sequential vote. */
 export function fastForwardToVote(state: GameState): void {
-  skipSpeech(state, state.hostId);
-  skipSpeech(state, state.hostId);
+  const nom = state.currentNomination;
+  if (!nom) throw new Error('No nomination in progress');
+  skipSpeech(state, nom.nominatorId);
+  skipSpeech(state, nom.nomineeId);
 }
 
 /** Casts votes in the official going-around order until the nomination resolves, voting yes for `yesIds`. */

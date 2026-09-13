@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { castVote, closeVote, nominate, requestEndDay, skipSpeech, useSlayer } from '../game/engine.js';
+import { castVote, nominate, requestEndDay, skipSpeech, useSlayer } from '../game/engine.js';
 import { fastForwardToVote, mkDay, voteInOrder } from './helpers.js';
 
 test('vote below majority does not put anyone on the block', () => {
@@ -64,7 +64,7 @@ test('a Virgin nominated by an evil player does not proc', () => {
   assert.equal(s.currentNomination?.state, 'accusing');
 });
 
-test('the nomination goes through accusing -> defending -> voting, and only the current speaker/host can skip', () => {
+test('the nomination goes through accusing -> defending -> voting, and only the current speaker can skip', () => {
   const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
   const [, poisoner, empath] = s.players;
   nominate(s, poisoner.id, empath.id);
@@ -78,6 +78,23 @@ test('the nomination goes through accusing -> defending -> voting, and only the 
   skipSpeech(s, empath.id); // the accused ends their own defense early
   assert.equal(s.currentNomination?.state, 'voting');
   assert.ok(s.currentNomination?.currentVoterId, 'voting should start on the first eligible voter');
+});
+
+test('the host has no authority to skip someone else\'s speech — only the speaker themselves can', () => {
+  // Regression test: the host used to be able to cut off the accused's defense (or the
+  // accuser's speech) early, even when they were neither party. The host is just whoever
+  // happened to create the room, not a storyteller with power over other players' turns.
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
+  const [host, poisoner, empath] = s.players; // host (imp) is neither the accuser nor the accused
+  nominate(s, poisoner.id, empath.id);
+
+  assert.throws(() => skipSpeech(s, host.id), "the host should not be able to skip the accuser's speech");
+  skipSpeech(s, poisoner.id);
+  assert.equal(s.currentNomination?.state, 'defending');
+
+  assert.throws(() => skipSpeech(s, host.id), "the host should not be able to skip the accused's defense");
+  skipSpeech(s, empath.id);
+  assert.equal(s.currentNomination?.state, 'voting');
 });
 
 test('votes go around the circle in order, one at a time', () => {
@@ -95,16 +112,17 @@ test('votes go around the circle in order, one at a time', () => {
   assert.notEqual(s.currentNomination?.currentVoterId, firstVoter, 'the turn should advance to the next voter');
 });
 
-test('a host can tally early mid-vote, treating unasked voters as no', () => {
+test('a vote cannot be force-closed early — it always runs the full circle, even once majority is reached', () => {
   const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']); // majority=4
   const [, poisoner, empath] = s.players;
   nominate(s, poisoner.id, empath.id);
   fastForwardToVote(s);
-  const nom = s.currentNomination!;
-  // Vote yes all the way through — 5 remaining voters besides the nominee reach majority before the circle closes.
+  // 4 yes votes already reaches majority, but the circle must still ask the remaining 2 players.
   for (let i = 0; i < 4; i++) castVote(s, s.currentNomination!.currentVoterId!, true);
-  closeVote(s);
-  assert.equal(nom.state, 'closed');
+  assert.ok(s.currentNomination, 'the vote must not resolve before every player has been asked');
+  assert.equal(s.currentNomination?.state, 'voting');
+
+  voteInOrder(s, []); // finish the circle, voting no for whoever's left
   assert.equal(s.onBlockId, empath.id);
 });
 
