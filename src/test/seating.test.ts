@@ -3,15 +3,11 @@ import { test } from 'node:test';
 import { addPlayer, declareNeighbor, startGame } from '../game/engine.js';
 import { mk } from './helpers.js';
 
-/** Declares a full, mutually-consistent circle in the given player order (index i's right is i+1). */
+/** Declares a full circle in the given player order: each player's right is the next in `order`. */
 function declareFullCircle(state: ReturnType<typeof mk>, order = state.players): void {
   const n = order.length;
   for (let i = 0; i < n; i++) {
-    const self = order[i];
-    const left = order[(i - 1 + n) % n];
-    const right = order[(i + 1) % n];
-    declareNeighbor(state, self.id, 'left', left.id);
-    declareNeighbor(state, self.id, 'right', right.id);
+    declareNeighbor(state, order[i].id, order[(i + 1) % n].id);
   }
 }
 
@@ -26,50 +22,29 @@ test('a fully agreed-upon circle resolves and assigns seats matching the declare
   );
 });
 
-test('seating is not confirmed until every player has declared both sides', () => {
+test('seating is not confirmed until every player has declared their right', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
-  const [a, b, c, d, e] = s.players;
-  declareNeighbor(s, a.id, 'left', e.id);
-  declareNeighbor(s, a.id, 'right', b.id);
-  declareNeighbor(s, b.id, 'left', a.id);
+  const [a, b] = s.players;
+  declareNeighbor(s, a.id, b.id);
   // c, d, e never declare
   assert.equal(s.seatingConfirmed, false);
 });
 
 test('a disagreement (broken cycle) does not resolve', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
-  const [a, b, c, d, e] = s.players;
-  declareFullCircle(s, [a, b, c, d, e]);
+  const [a, b, , d, e] = s.players;
+  declareFullCircle(s, [a, b, s.players[2], d, e]);
   assert.equal(s.seatingConfirmed, true);
 
   // b changes their mind and claims d is to their right instead of c — breaks the circle.
-  declareNeighbor(s, b.id, 'right', d.id);
+  declareNeighbor(s, b.id, d.id);
   assert.equal(s.seatingConfirmed, false);
 });
 
-test('a one-sided mismatch (right says X, but X does not say left back) does not resolve', () => {
-  const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
-  const [a, b, c, d, e] = s.players;
-  declareFullCircle(s, [a, b, c, d, e]);
-  // c insists their left is e (wrong — should be b), contradicting b's claim that c is to their right.
-  declareNeighbor(s, c.id, 'left', e.id);
-  assert.equal(s.seatingConfirmed, false);
-});
-
-test('declaring one side automatically fills in the reciprocal for the other player', () => {
-  const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
-  const [a, b] = s.players;
-  declareNeighbor(s, a.id, 'right', b.id); // "b is to my right"
-  assert.equal(b.seatLeftId, a.id, "b should automatically see a as being on b's left");
-});
-
-test('a full circle can be confirmed with only one declaration per edge, thanks to reciprocal auto-fill', () => {
+test('a full circle needs only one declaration per person (their own right)', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
   const order = s.players;
-  // Each player only declares their own right neighbor — every left side is auto-filled.
-  for (let i = 0; i < order.length; i++) {
-    declareNeighbor(s, order[i].id, 'right', order[(i + 1) % order.length].id);
-  }
+  declareFullCircle(s, order);
   assert.equal(s.seatingConfirmed, true);
   assert.deepEqual(
     s.players.slice().sort((p, q) => p.seat - q.seat).map((p) => p.id),
@@ -77,35 +52,43 @@ test('a full circle can be confirmed with only one declaration per edge, thanks 
   );
 });
 
-test('a later conflicting reciprocal overwrite correctly breaks a previously resolved circle', () => {
-  const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
-  const order = s.players;
-  const [a, , , d] = order;
-  for (let i = 0; i < order.length; i++) {
-    declareNeighbor(s, order[i].id, 'right', order[(i + 1) % order.length].id);
-  }
+test('regression: changing your mind and then reverting correctly re-confirms the original circle', () => {
+  // This is the actual bug reported in play: seating was declared correctly, then one person
+  // changed their answer and changed it back, and the circle stayed stuck on "not confirmed".
+  // Root cause was storing a derived "left" value that never got cleaned up when someone moved
+  // their "right" pointer away from a target — the target's stale stored left survived even
+  // after the mistake was corrected. Now there is no stored "left" at all, only "right", so
+  // there's nothing to go stale.
+  const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
+  const [a, b, c, d, e, f] = s.players;
+  declareFullCircle(s, [a, b, c, d, e, f]); // a->b->c->d->e->f->a
   assert.equal(s.seatingConfirmed, true);
 
-  // d mistakenly claims a is to their right, silently overwriting a's declared left (was e).
-  declareNeighbor(s, d.id, 'right', a.id);
-  assert.equal(a.seatLeftId, d.id, "a's left should now reflect d's claim");
-  assert.equal(s.seatingConfirmed, false);
+  declareNeighbor(s, d.id, c.id); // d changes their mind: claims c is to their right instead of e
+  assert.equal(s.seatingConfirmed, false, 'the circle should break while the mistake stands');
+
+  declareNeighbor(s, d.id, e.id); // d reverts back to their original, correct answer
+  assert.equal(s.seatingConfirmed, true, 'reverting the mistake must re-confirm the original circle');
+  assert.deepEqual(
+    s.players.slice().sort((p, q) => p.seat - q.seat).map((p) => p.id),
+    [a, b, c, d, e, f].map((p) => p.id)
+  );
 });
 
 test('you cannot declare yourself as your own neighbor', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
   const [a] = s.players;
-  assert.throws(() => declareNeighbor(s, a.id, 'left', a.id));
+  assert.throws(() => declareNeighbor(s, a.id, a.id));
 });
 
-test('picking the same person for both sides is allowed as input, but can never resolve into a circle', () => {
+test('picking the same person twice in a row (a mutual pair) is allowed as input, but never resolves', () => {
   // Input is unrestricted beyond "not yourself" — the only real check happens later, all at
   // once, in tryResolveSeating. A mutual pair naturally just never confirms with more than
   // 2 players, rather than being blocked at the moment someone picks it.
   const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
   const [a, b] = s.players;
-  declareNeighbor(s, a.id, 'left', b.id);
-  assert.doesNotThrow(() => declareNeighbor(s, a.id, 'right', b.id));
+  declareNeighbor(s, a.id, b.id);
+  assert.doesNotThrow(() => declareNeighbor(s, b.id, a.id));
   assert.equal(s.seatingConfirmed, false);
 });
 

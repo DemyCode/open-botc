@@ -61,7 +61,6 @@ export interface GameView {
   leftNeighborName: string | null;
   rightNeighborName: string | null;
   seatingConfirmed: boolean;
-  mySeatLeftId: string | null;
   mySeatRightId: string | null;
   endDayReadyNames: string[];
   endDayReadyCount: number;
@@ -146,7 +145,6 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     leftNeighborName: neighbors.left,
     rightNeighborName: neighbors.right,
     seatingConfirmed: state.seatingConfirmed,
-    mySeatLeftId: self?.seatLeftId ?? null,
     mySeatRightId: self?.seatRightId ?? null,
     endDayReadyNames: state.endDayRequestedBy.map((id) => state.players.find((p) => p.id === id)?.name ?? ''),
     endDayReadyCount: state.endDayRequestedBy.length,

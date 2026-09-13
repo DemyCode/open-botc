@@ -197,7 +197,7 @@ function rightNeighborSelect(v) {
   const current = v.mySeatRightId;
   return el(
     'select',
-    { onchange: (e) => send({ t: 'declareNeighbor', side: 'right', neighborId: e.target.value }) },
+    { onchange: (e) => send({ t: 'declareNeighbor', neighborId: e.target.value }) },
     [
       el('option', { value: '', disabled: 'true', selected: current ? null : 'true' }, '— choose —'),
       ...others.map((p) => el('option', { value: p.id, selected: p.id === current ? 'true' : null }, p.name)),

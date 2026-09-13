@@ -21,8 +21,13 @@ export interface PlayerState {
   token: string;
   name: string;
   seat: number;
-  /** This player's own claim of who sits to their left/right — used to derive `seat` for everyone. */
-  seatLeftId: string | null;
+  /**
+   * This player's own claim of who sits to their right — the only seating fact anyone declares.
+   * "Left" is never stored: it's always derived by finding whoever's seatRightId points back at
+   * you. Storing it separately caused a real bug — if X first claims Y as their right (setting
+   * Y's stored left to X) and later changes their mind, nothing ever reset Y's stale left value
+   * back to whoever legitimately claims Y now, permanently wedging seatingConfirmed to false.
+   */
   seatRightId: string | null;
   connected: boolean;
   character: CharacterId;
