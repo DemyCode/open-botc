@@ -73,8 +73,12 @@ function buildNightTurn(state: GameState, viewerId: string): NightTurnView | nul
   }
   const d = state.pendingDecoy;
   if (d && d.playerIds.includes(viewerId) && !(viewerId in d.responses)) {
-    const choices: NightTurnChoice[] = state.players.filter((p) => p.alive).map((p) => ({ id: p.id, name: p.name, seat: p.seat }));
-    return { kind: 'decoy', shape: 'choose', title: 'Your turn', body: d.prompt.question, min: 1, max: 1, choices };
+    const choices: NightTurnChoice[] =
+      d.shape === 'choose' ? state.players.filter((p) => p.alive).map((p) => ({ id: p.id, name: p.name, seat: p.seat })) : [];
+    return {
+      kind: 'decoy', shape: d.shape, title: 'Your turn', body: d.prompt.question,
+      min: d.shape === 'choose' ? 1 : 0, max: d.shape === 'choose' ? 1 : 0, choices,
+    };
   }
   return null;
 }

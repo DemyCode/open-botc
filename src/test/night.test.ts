@@ -2,6 +2,23 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { advanceUntil, answerRealTurn, byChar, byPerceived, mk, runFullNight, skipRound, startNight } from './helpers.js';
 
+test('the decoy always mirrors the real turn shape for that round', () => {
+  const state = mk(['imp', 'poisoner', 'washerwoman', 'empath', 'soldier', 'saint']);
+  startNight(state); // night 1
+  let steps = 0;
+  while (state.phase === 'night' && steps < 20) {
+    if (state.pendingRealTurn && state.pendingDecoy) {
+      assert.equal(
+        state.pendingDecoy.shape,
+        state.pendingRealTurn.shape,
+        `decoy shape should match the real "${state.pendingRealTurn.charId}" round's shape`
+      );
+    }
+    skipRound(state);
+    steps++;
+  }
+});
+
 test('every living player is covered exactly once by every night round (real xor decoy)', () => {
   const state = mk([
     'poisoner', 'imp', 'monk', 'empath', 'fortuneteller', 'washerwoman',

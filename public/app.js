@@ -213,7 +213,7 @@ function toggleChoice(id, max) {
 }
 
 function submitTurn(t) {
-  if (t.kind === 'decoy') send({ t: 'nightDecoy', targetId: state.selected[0] });
+  if (t.kind === 'decoy') send({ t: 'nightDecoy', targetId: t.shape === 'choose' ? state.selected[0] : '' });
   else if (t.shape === 'choose') send({ t: 'nightReal', targetIds: state.selected.slice() });
   else send({ t: 'nightReal', targetIds: [] });
   state.selected = [];
@@ -229,7 +229,7 @@ function renderNight(v) {
       banner,
       el('h1', { class: 'center' }, `Night ${v.night}`),
       el('div', { class: 'card' }, [
-        el('h2', {}, t.kind === 'real' && t.shape === 'info' ? 'Your Information' : 'Your Turn'),
+        el('h2', {}, t.shape === 'info' ? 'Your Information' : 'Your Turn'),
         el('p', { class: 'muted' }, t.body),
       ]),
     ];

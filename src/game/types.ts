@@ -56,6 +56,8 @@ export interface DecoyPrompt {
 
 export interface PendingDecoyRound {
   prompt: DecoyPrompt;
+  /** Always mirrors this round's real turn shape, so a "select someone" round never gets an "info" decoy or vice versa. */
+  shape: NightTurnShape;
   playerIds: string[];
   responses: Record<string, string>;
   deadline: number;

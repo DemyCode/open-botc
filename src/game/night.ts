@@ -17,6 +17,9 @@ export const OTHER_NIGHT_SEQUENCE: (CharacterId | 'minion-info')[] = [
   'poisoner', 'monk', 'imp', 'ravenkeeper', 'butler', 'empath', 'fortuneteller', 'undertaker', 'spy',
 ];
 
+// Shown when the real event this round is a "choose a player" action (Poisoner, Monk, ...) —
+// every other living player gets one of these instead, so a "pick someone" screen fires for
+// everyone at once regardless of who (if anyone) is doing it for real.
 const DECOY_QUESTIONS = [
   'Who is the funniest?',
   'Who is the sexiest?',
@@ -30,6 +33,20 @@ const DECOY_QUESTIONS = [
   'Who would make the best Storyteller?',
   'Who is the most stylish?',
   'Who is the most suspicious right now?',
+];
+
+// Shown when the real event this round is an "info" reveal (Washerwoman, Empath, ...) — no
+// selection needed, just flavor text and a "Got it", matching the shape of a real info round.
+const DECOY_INFO_LINES: ((name: string) => string)[] = [
+  (name) => `You dream about ${name} tonight.`,
+  (name) => `You have a feeling ${name} is hiding something.`,
+  (name) => `A vision flashes: ${name}, standing alone in the dark.`,
+  (name) => `You sense that ${name} slept poorly last night.`,
+  (name) => `Somewhere in the village, ${name} is smiling.`,
+  () => 'The village is quiet tonight.',
+  () => 'You hear an owl somewhere in the dark.',
+  () => 'Nothing seems out of place.',
+  () => 'A faint chill passes through the air.',
 ];
 
 const TURN_TIMEOUT_MS = 60_000;
@@ -95,9 +112,11 @@ function choosePromptFor(charId: CharacterId | 'minion-info'): { min: number; ma
   }
 }
 
-function pickDecoyQuestion(state: GameState, slot: string) {
-  const question = stablePick(state.secret, DECOY_QUESTIONS, slot, 'decoy-q');
-  return { id: slot, question };
+function pickDecoyContent(state: GameState, slot: string, shape: NightTurnShape): string {
+  if (shape === 'choose') return stablePick(state.secret, DECOY_QUESTIONS, slot, 'decoy-q');
+  const template = stablePick(state.secret, DECOY_INFO_LINES, slot, 'decoy-info');
+  const subject = stablePick(state.secret, state.players, slot, 'decoy-subject');
+  return template(subject.name);
 }
 
 function startRound(state: GameState, charId: CharacterId | 'minion-info', actors: PlayerState[]): void {
@@ -129,7 +148,13 @@ function startRound(state: GameState, charId: CharacterId | 'minion-info', actor
   const actorIds = new Set(actors.map((p) => p.id));
   const others = state.players.filter((p) => p.alive && !actorIds.has(p.id));
   state.pendingDecoy = others.length
-    ? { prompt: pickDecoyQuestion(state, slot), playerIds: others.map((p) => p.id), responses: {}, deadline: now + TURN_TIMEOUT_MS }
+    ? {
+        prompt: { id: slot, question: pickDecoyContent(state, slot, shape) },
+        shape,
+        playerIds: others.map((p) => p.id),
+        responses: {},
+        deadline: now + TURN_TIMEOUT_MS,
+      }
     : null;
 }
 
@@ -281,7 +306,7 @@ export function submitDecoyResponse(state: GameState, playerId: string, targetId
   if (!d || !d.playerIds.includes(playerId)) throw new GameError('No pending decoy for this player');
   if (playerId in d.responses) throw new GameError('Already responded');
   d.responses[playerId] = targetId;
-  tallySuperlative(state, d.prompt.question, targetId);
+  if (d.shape === 'choose') tallySuperlative(state, d.prompt.question, targetId);
   maybeAdvance(state);
 }
 
