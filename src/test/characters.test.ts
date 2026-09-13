@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CHARACTERS } from '../game/characters.js';
+import { allCharactersSummary, CHARACTERS, TEAM_DISPLAY_ORDER } from '../game/characters.js';
 import { useSlayer } from '../game/engine.js';
 import {
   chefInfo, demonInfo, empathInfo, fortuneTellerInfo, investigativeInfo,
@@ -228,4 +228,21 @@ test('Recluse: can be legitimately killed by the Slayer when misregistering as t
     }
   }
   assert.ok(found, 'expected the Recluse to misregister as the Demon within 500 seeds');
+});
+
+test('allCharactersSummary lists all 22 Trouble Brewing characters, grouped by team, each with a real ability', () => {
+  const summary = allCharactersSummary();
+  assert.equal(summary.length, 22);
+  assert.equal(new Set(summary.map((c) => c.id)).size, 22, 'no duplicate characters');
+
+  for (const c of summary) {
+    assert.equal(c.name, CHARACTERS[c.id].name);
+    assert.equal(c.team, CHARACTERS[c.id].team);
+    assert.ok(c.ability.length > 0, `${c.id} should have non-empty ability text`);
+  }
+
+  // Grouped by team, in the fixed good-then-evil display order (never interleaved).
+  const teamIndices = summary.map((c) => TEAM_DISPLAY_ORDER.indexOf(c.team));
+  const sorted = teamIndices.slice().sort((a, b) => a - b);
+  assert.deepEqual(teamIndices, sorted, 'characters should be grouped by team in TEAM_DISPLAY_ORDER');
 });

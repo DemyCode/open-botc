@@ -100,6 +100,45 @@ function showError(message) {
   setTimeout(() => bar.remove(), 3000);
 }
 
+let charactersCache = null;
+
+async function loadCharacters() {
+  if (charactersCache) return charactersCache;
+  const res = await fetch('/api/characters');
+  charactersCache = await res.json();
+  return charactersCache;
+}
+
+const TEAM_LABELS = { townsfolk: 'Townsfolk', outsider: 'Outsiders', minion: 'Minions', demon: 'Demon' };
+
+function showRolesModal() {
+  loadCharacters().then((chars) => {
+    const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+    const sections = Object.keys(TEAM_LABELS).map((team) =>
+      el('div', { class: 'roles-section' }, [
+        el('h3', { class: 'roles-team ' + team }, TEAM_LABELS[team]),
+        ...chars
+          .filter((c) => c.team === team)
+          .map((c) => el('div', { class: 'roles-card' }, [el('div', { class: 'roles-name' }, c.name), el('div', { class: 'roles-ability' }, c.ability)])),
+      ])
+    );
+    overlay.appendChild(
+      el('div', { class: 'modal' }, [
+        el('div', { class: 'modal-header' }, [
+          el('h2', {}, 'Trouble Brewing — All Roles'),
+          el('button', { class: 'secondary', onclick: () => overlay.remove() }, 'Close'),
+        ]),
+        el('div', { class: 'modal-body' }, sections),
+      ])
+    );
+    document.body.appendChild(overlay);
+  });
+}
+
+function rolesButton() {
+  return el('button', { class: 'secondary roles-btn', onclick: showRolesModal }, '📜 All Roles');
+}
+
 function renderScreen(children) {
   return el('div', { class: 'screen' }, children);
 }
@@ -739,6 +778,7 @@ function renderEnded(v) {
 function render() {
   stopWaitingDots(); // avoid piling up timers across re-renders; re-armed below if still waiting
   app.innerHTML = '';
+  app.appendChild(rolesButton()); // always available, fixed position via CSS — a reference sheet, not part of any turn
   if (!state.code || !state.playerId) {
     app.appendChild(renderLanding());
     return;

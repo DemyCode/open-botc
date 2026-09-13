@@ -2,10 +2,13 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
+import { allCharactersSummary } from '../game/characters.js';
 import * as engine from '../game/engine.js';
 import { GameError } from '../game/types.js';
 import { viewFor } from '../game/view.js';
 import { RoomManager } from './rooms.js';
+
+const ALL_CHARACTERS = allCharactersSummary();
 
 const PORT = Number(process.env.PORT) || 8080;
 const PUBLIC_DIR = path.resolve('public');
@@ -21,6 +24,12 @@ const server = http.createServer((req, res) => {
     const state = rooms.create();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ code: state.code }));
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/api/characters') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(ALL_CHARACTERS));
     return;
   }
 

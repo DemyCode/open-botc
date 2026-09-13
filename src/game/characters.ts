@@ -81,3 +81,21 @@ export function isEvilTeam(team: Team): boolean {
 export function alignmentOfCharacter(id: CharacterId): 'good' | 'evil' {
   return isEvilTeam(CHARACTERS[id].team) ? 'evil' : 'good';
 }
+
+/** Display order for a full role reference sheet: good roles first (as on the physical character sheet), then evil. */
+export const TEAM_DISPLAY_ORDER: Team[] = ['townsfolk', 'outsider', 'minion', 'demon'];
+
+export interface CharacterSummary {
+  id: CharacterId;
+  name: string;
+  team: Team;
+  ability: string;
+}
+
+/** Every Trouble Brewing character's name/team/ability, grouped by team for a reference sheet. */
+export function allCharactersSummary(): CharacterSummary[] {
+  return ALL_CHARACTER_IDS.map((id) => {
+    const c = CHARACTERS[id];
+    return { id: c.id, name: c.name, team: c.team, ability: c.ability };
+  }).sort((a, b) => TEAM_DISPLAY_ORDER.indexOf(a.team) - TEAM_DISPLAY_ORDER.indexOf(b.team));
+}
