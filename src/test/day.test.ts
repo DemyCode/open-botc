@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { castVote, closeVote, nominate, requestEndDay, useSlayer } from '../game/engine.js';
-import { mkDay } from './helpers.js';
+import { castVote, closeVote, nominate, requestEndDay, skipSpeech, useSlayer } from '../game/engine.js';
+import { fastForwardToVote, mkDay, voteInOrder } from './helpers.js';
 
 test('vote below majority does not put anyone on the block', () => {
   const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']); // 6 alive, majority=4
   const [a, , c] = s.players;
   nominate(s, a.id, c.id);
-  castVote(s, a.id, true);
-  castVote(s, c.id, true);
-  closeVote(s);
+  fastForwardToVote(s);
+  voteInOrder(s, [a.id, c.id]); // only 2 yes
   assert.equal(s.onBlockId, null);
 });
 
@@ -18,18 +17,18 @@ test('a strictly higher later nomination overtakes the block; a tie clears it', 
   const [a, b, c, d, e] = s.players;
 
   nominate(s, a.id, b.id);
-  [a, c, d, e].forEach((p) => castVote(s, p.id, true)); // 4 yes -> on the block
-  closeVote(s);
+  fastForwardToVote(s);
+  voteInOrder(s, [a.id, c.id, d.id, e.id]); // 4 yes -> on the block
   assert.equal(s.onBlockId, b.id);
 
   nominate(s, b.id, c.id);
-  [a, c, d].forEach((p) => castVote(s, p.id, true)); // 3 yes, below the current highest
-  closeVote(s);
+  fastForwardToVote(s);
+  voteInOrder(s, [a.id, c.id, d.id]); // 3 yes, below the current highest
   assert.equal(s.onBlockId, b.id, 'a lower vote count must not replace the block');
 
   nominate(s, c.id, d.id);
-  [a, c, d, e].forEach((p) => castVote(s, p.id, true)); // ties the current highest (4)
-  closeVote(s);
+  fastForwardToVote(s);
+  voteInOrder(s, [a.id, c.id, d.id, e.id]); // ties the current highest (4)
   assert.equal(s.onBlockId, null, 'a tie must clear the block');
 });
 
@@ -37,8 +36,8 @@ test('ending the day executes whoever is on the block and starts the next night'
   const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
   const [a, b, c, d, e] = s.players;
   nominate(s, a.id, b.id);
-  [a, c, d, e].forEach((p) => castVote(s, p.id, true));
-  closeVote(s);
+  fastForwardToVote(s);
+  voteInOrder(s, [a.id, c.id, d.id, e.id]);
   assert.equal(s.onBlockId, b.id);
 
   requestEndDay(s);
@@ -61,7 +60,52 @@ test('a Virgin nominated by an evil player does not proc', () => {
   const [imp, virgin] = s.players;
   nominate(s, imp.id, virgin.id);
   assert.equal(imp.alive, true);
-  assert.ok(s.currentNomination, 'should proceed to a normal vote since the nominator is evil');
+  assert.ok(s.currentNomination, 'should proceed to a normal accusation since the nominator is evil');
+  assert.equal(s.currentNomination?.state, 'accusing');
+});
+
+test('the nomination goes through accusing -> defending -> voting, and only the current speaker/host can skip', () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
+  const [, poisoner, empath] = s.players;
+  nominate(s, poisoner.id, empath.id);
+  assert.equal(s.currentNomination?.state, 'accusing');
+
+  assert.throws(() => skipSpeech(s, empath.id), 'the accused should not be able to skip the accusation');
+  skipSpeech(s, poisoner.id); // the accuser ends their own speech early
+  assert.equal(s.currentNomination?.state, 'defending');
+
+  assert.throws(() => skipSpeech(s, poisoner.id), 'the accuser should not be able to skip the defense');
+  skipSpeech(s, empath.id); // the accused ends their own defense early
+  assert.equal(s.currentNomination?.state, 'voting');
+  assert.ok(s.currentNomination?.currentVoterId, 'voting should start on the first eligible voter');
+});
+
+test('votes go around the circle in order, one at a time', () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
+  const [, poisoner, empath] = s.players;
+  nominate(s, poisoner.id, empath.id);
+  fastForwardToVote(s);
+  const nom = s.currentNomination!;
+  const firstVoter = nom.currentVoterId!;
+  assert.throws(
+    () => castVote(s, s.players.find((p) => p.id !== firstVoter)!.id, true),
+    'only the current voter may cast a vote'
+  );
+  castVote(s, firstVoter, true);
+  assert.notEqual(s.currentNomination?.currentVoterId, firstVoter, 'the turn should advance to the next voter');
+});
+
+test('a host can tally early mid-vote, treating unasked voters as no', () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']); // majority=4
+  const [, poisoner, empath] = s.players;
+  nominate(s, poisoner.id, empath.id);
+  fastForwardToVote(s);
+  const nom = s.currentNomination!;
+  // Vote yes all the way through — 5 remaining voters besides the nominee reach majority before the circle closes.
+  for (let i = 0; i < 4; i++) castVote(s, s.currentNomination!.currentVoterId!, true);
+  closeVote(s);
+  assert.equal(nom.state, 'closed');
+  assert.equal(s.onBlockId, empath.id);
 });
 
 test('Slayer hitting the real Demon kills them and ends the game for good', () => {
@@ -86,8 +130,8 @@ test("a Butler's yes vote is dropped if their master hasn't also voted yes", () 
   const [imp, butler, empath] = s.players;
   s.butlerMasterId = empath.id;
   nominate(s, imp.id, empath.id);
-  castVote(s, butler.id, true);
-  closeVote(s);
+  fastForwardToVote(s);
+  voteInOrder(s, [butler.id]); // butler votes yes, master (empath, the nominee) never votes yes
   assert.equal(s.onBlockId, null, "the Butler's lone yes vote should not count");
 });
 
@@ -96,11 +140,8 @@ test("a Butler's yes vote counts once their master also votes yes", () => {
   const [imp, butler, empath, investigator, washerwoman, soldier] = s.players;
   s.butlerMasterId = empath.id;
   nominate(s, imp.id, soldier.id);
-  castVote(s, butler.id, true);
-  castVote(s, empath.id, true);
-  castVote(s, investigator.id, true);
-  castVote(s, washerwoman.id, true);
-  closeVote(s);
+  fastForwardToVote(s);
+  voteInOrder(s, [butler.id, empath.id, investigator.id, washerwoman.id]);
   assert.equal(s.onBlockId, soldier.id);
 });
 
@@ -115,8 +156,8 @@ test('executing the Saint ends the game for evil immediately', () => {
   const s = mkDay(['imp', 'saint', 'empath', 'investigator', 'washerwoman', 'soldier']);
   const [imp, saint, empath, investigator, washerwoman] = s.players;
   nominate(s, imp.id, saint.id);
-  [imp, empath, investigator, washerwoman].forEach((p) => castVote(s, p.id, true));
-  closeVote(s);
+  fastForwardToVote(s);
+  voteInOrder(s, [imp.id, empath.id, investigator.id, washerwoman.id]);
   assert.equal(s.onBlockId, saint.id);
 
   requestEndDay(s);

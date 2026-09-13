@@ -1,12 +1,16 @@
 import { alignmentOfCharacter, CHARACTERS } from './characters.js';
-import { appendLog, beginNight } from './night.js';
+import { appendLog, beginNight, tick as nightTick } from './night.js';
 import { abilityWorks, registersAs } from './registration.js';
 import { randomId } from './rng.js';
 import { dealCharacters } from './setup.js';
 import type { GameState, Nomination, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
-export { submitDecoyResponse, submitRealResponse, tick } from './night.js';
+export { submitDecoyResponse, submitRealResponse } from './night.js';
+
+const ACCUSE_MS = 45_000;
+const DEFEND_MS = 45_000;
+const VOTER_TIMEOUT_MS = 15_000;
 
 function findPlayer(state: GameState, id: string): PlayerState {
   const p = state.players.find((pl) => pl.id === id);
@@ -146,20 +150,77 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
 
   state.currentNomination = {
     id: `nom-${state.usedNominatorIds.length}`, nominatorId, nomineeId,
-    state: 'voting', votes: {}, yesCount: 0,
+    state: 'accusing', phaseEndsAt: Date.now() + ACCUSE_MS,
+    voteOrder: [], voteIndex: -1, currentVoterId: null, voterDeadline: null,
+    votes: {}, yesCount: 0,
   };
   state.publicLog.push(`${nominator.name} nominates ${nominee.name}.`);
+}
+
+/** Lets the current speaker (or the host) end their speech early instead of waiting out the timer. */
+export function skipSpeech(state: GameState, playerId: string): void {
+  const nom = state.currentNomination;
+  if (!nom) throw new GameError('No nomination in progress');
+  const isHost = state.hostId === playerId;
+  if (nom.state === 'accusing') {
+    if (!isHost && playerId !== nom.nominatorId) throw new GameError('Only the accuser or host can skip this');
+    nom.state = 'defending';
+    nom.phaseEndsAt = Date.now() + DEFEND_MS;
+  } else if (nom.state === 'defending') {
+    if (!isHost && playerId !== nom.nomineeId) throw new GameError('Only the accused or host can skip this');
+    startVoting(state, nom);
+  } else {
+    throw new GameError('Nothing to skip right now');
+  }
+}
+
+/** Seat order the vote goes around in: everyone once, starting just after the nominee, ending on the nominee. */
+function buildVoteOrder(state: GameState, nomineeId: string): string[] {
+  const seated = state.players.slice().sort((a, b) => a.seat - b.seat);
+  const idx = seated.findIndex((p) => p.id === nomineeId);
+  const order: string[] = [];
+  for (let i = 1; i <= seated.length; i++) order.push(seated[(idx + i) % seated.length].id);
+  return order;
+}
+
+function findNextVoterIndex(state: GameState, nom: Nomination, fromIndex: number): number {
+  for (let i = fromIndex; i < nom.voteOrder.length; i++) {
+    const p = findPlayer(state, nom.voteOrder[i]);
+    if (p.alive || !p.ghostVoteUsed) return i;
+  }
+  return nom.voteOrder.length;
+}
+
+function startVoting(state: GameState, nom: Nomination): void {
+  nom.state = 'voting';
+  nom.voteOrder = buildVoteOrder(state, nom.nomineeId);
+  nom.voteIndex = -1;
+  advanceVoter(state, nom);
+}
+
+function advanceVoter(state: GameState, nom: Nomination): void {
+  const nextIdx = findNextVoterIndex(state, nom, nom.voteIndex + 1);
+  if (nextIdx >= nom.voteOrder.length) {
+    finishVoting(state, nom);
+    return;
+  }
+  nom.voteIndex = nextIdx;
+  nom.currentVoterId = nom.voteOrder[nextIdx];
+  nom.voterDeadline = Date.now() + VOTER_TIMEOUT_MS;
 }
 
 export function castVote(state: GameState, voterId: string, yes: boolean): void {
   const nom = state.currentNomination;
   if (!nom) throw new GameError('No nomination in progress');
+  if (nom.state !== 'voting') throw new GameError('Not voting yet');
+  if (nom.currentVoterId !== voterId) throw new GameError('Not your turn to vote');
   const voter = findPlayer(state, voterId);
   if (!voter.alive && yes) {
     if (voter.ghostVoteUsed) throw new GameError('Ghost vote already used');
     voter.ghostVoteUsed = true;
   }
   nom.votes[voterId] = yes;
+  advanceVoter(state, nom);
 }
 
 function computeYesCount(state: GameState, nom: Nomination): number {
@@ -175,15 +236,15 @@ function computeYesCount(state: GameState, nom: Nomination): number {
   return count;
 }
 
-export function closeVote(state: GameState): void {
-  const nom = state.currentNomination;
-  if (!nom) throw new GameError('No nomination in progress');
+function finishVoting(state: GameState, nom: Nomination): void {
   const nominee = findPlayer(state, nom.nomineeId);
   const aliveCount = state.players.filter((p) => p.alive).length;
   const majority = Math.floor(aliveCount / 2) + 1;
   const yesCount = computeYesCount(state, nom);
   nom.yesCount = yesCount;
   nom.state = 'closed';
+  nom.currentVoterId = null;
+  nom.voterDeadline = null;
 
   if (yesCount >= majority && yesCount > state.highestYesToday) {
     state.onBlockId = nominee.id;
@@ -198,6 +259,33 @@ export function closeVote(state: GameState): void {
 
   state.currentNomination = null;
   maybeAutoEndDay(state);
+}
+
+/** Host override: stop the vote right now and tally whatever has been cast so far as the final result. */
+export function closeVote(state: GameState): void {
+  const nom = state.currentNomination;
+  if (!nom) throw new GameError('No nomination in progress');
+  if (nom.state !== 'voting') throw new GameError('Not voting yet');
+  finishVoting(state, nom);
+}
+
+export function tick(state: GameState, now: number): void {
+  if (state.phase === 'night') {
+    nightTick(state, now);
+    return;
+  }
+  if (state.phase !== 'day') return;
+  const nom = state.currentNomination;
+  if (!nom) return;
+  if (nom.state === 'accusing' && now >= nom.phaseEndsAt) {
+    nom.state = 'defending';
+    nom.phaseEndsAt = now + DEFEND_MS;
+  } else if (nom.state === 'defending' && now >= nom.phaseEndsAt) {
+    startVoting(state, nom);
+  } else if (nom.state === 'voting' && nom.voterDeadline !== null && now >= nom.voterDeadline) {
+    nom.votes[nom.currentVoterId!] = false;
+    advanceVoter(state, nom);
+  }
 }
 
 function maybeAutoEndDay(state: GameState): void {

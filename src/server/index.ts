@@ -115,6 +115,9 @@ wss.on('connection', (ws: WebSocket) => {
         case 'nominate':
           engine.nominate(state, playerId, String(msg.nomineeId));
           break;
+        case 'skipSpeech':
+          engine.skipSpeech(state, playerId);
+          break;
         case 'vote':
           engine.castVote(state, playerId, !!msg.yes);
           break;

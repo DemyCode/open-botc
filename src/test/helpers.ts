@@ -1,5 +1,5 @@
 import { alignmentOfCharacter } from '../game/characters.js';
-import { addPlayer, createGame } from '../game/engine.js';
+import { addPlayer, castVote, createGame, skipSpeech } from '../game/engine.js';
 import { beginNight, submitDecoyResponse, submitRealResponse } from '../game/night.js';
 import type { CharacterId, GameState } from '../game/types.js';
 
@@ -89,6 +89,22 @@ export function runFullNight(state: GameState, maxSteps = 30): void {
   let steps = 0;
   while (state.phase === 'night' && steps < maxSteps) {
     skipRound(state);
+    steps++;
+  }
+}
+
+/** Skips straight past the accusing/defending speeches (as the host) to the sequential vote. */
+export function fastForwardToVote(state: GameState): void {
+  skipSpeech(state, state.hostId);
+  skipSpeech(state, state.hostId);
+}
+
+/** Casts votes in the official going-around order until the nomination resolves, voting yes for `yesIds`. */
+export function voteInOrder(state: GameState, yesIds: string[]): void {
+  let steps = 0;
+  while (state.currentNomination && state.currentNomination.state === 'voting' && steps < 100) {
+    const voterId = state.currentNomination.currentVoterId!;
+    castVote(state, voterId, yesIds.includes(voterId));
     steps++;
   }
 }

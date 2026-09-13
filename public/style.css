@@ -146,6 +146,8 @@ button.block { width: 100%; }
 }
 .role-banner .name { font-size: 1.4rem; font-weight: 700; }
 .role-banner .align { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; opacity: 0.9; }
+.role-banner .ability { font-size: 0.88rem; margin-top: 8px; opacity: 0.95; line-height: 1.35; }
+.role-banner .neighbors { font-size: 0.8rem; margin-top: 12px; opacity: 0.85; font-weight: 600; }
 
 .tag {
   display: inline-block;

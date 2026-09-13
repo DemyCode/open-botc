@@ -61,13 +61,21 @@ export interface PendingDecoyRound {
   deadline: number;
 }
 
-export type NominationState = 'accusing' | 'voting' | 'closed';
+export type NominationState = 'accusing' | 'defending' | 'voting' | 'closed';
 
 export interface Nomination {
   id: string;
   nominatorId: string;
   nomineeId: string;
   state: NominationState;
+  /** Absolute epoch ms when the current accusing/defending speech auto-advances. Unused once voting starts. */
+  phaseEndsAt: number;
+  /** Seat order the vote goes around in, starting just after the nominee and ending on the nominee. */
+  voteOrder: string[];
+  voteIndex: number;
+  currentVoterId: string | null;
+  /** Absolute epoch ms when the current voter's turn auto-resolves as a "no". */
+  voterDeadline: number | null;
   votes: Record<string, boolean>;
   yesCount: number;
 }

@@ -105,7 +105,17 @@ function roleBanner(v) {
   return el('div', { class: 'role-banner' }, [
     el('div', { class: 'align' }, v.myCharacter.alignment),
     el('div', { class: 'name' }, v.myCharacter.name),
+    el('div', { class: 'ability' }, v.myCharacter.ability),
+    el(
+      'div',
+      { class: 'neighbors' },
+      `${v.leftNeighborName || '?'}  ⟵ you ⟶  ${v.rightNeighborName || '?'}`
+    ),
   ]);
+}
+
+function secondsLeft(ts) {
+  return Math.max(0, Math.ceil((ts - Date.now()) / 1000));
 }
 
 function playerRow(p) {
@@ -215,6 +225,7 @@ function renderNight(v) {
   if (v.nightTurn) {
     const t = v.nightTurn;
     const children = [
+      roleBanner(v),
       banner,
       el('h1', { class: 'center' }, `Night ${v.night}`),
       el('div', { class: 'card' }, [
@@ -256,6 +267,7 @@ function renderNight(v) {
   }
 
   return renderScreen([
+    roleBanner(v),
     banner,
     el('h1', { class: 'center pulse' }, `Night ${v.night}`),
     el(
@@ -266,6 +278,40 @@ function renderNight(v) {
         : 'You are dead and rest peacefully.'
     ),
   ]);
+}
+
+function renderNomination(v, isHost) {
+  const n = v.nomination;
+  const card = [el('h2', {}, `${n.nominatorName} accuses ${n.nomineeName}`)];
+
+  if (n.state === 'accusing') {
+    card.push(el('p', { class: 'muted center' }, `${n.nominatorName} is making their case… (${secondsLeft(n.phaseEndsAt)}s)`));
+    if (isHost || v.selfId === n.nominatorId) {
+      card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'skipSpeech' }) }, 'Done — move to defense'));
+    }
+  } else if (n.state === 'defending') {
+    card.push(el('p', { class: 'muted center' }, `${n.nomineeName} is responding… (${secondsLeft(n.phaseEndsAt)}s)`));
+    if (isHost || v.selfId === n.nomineeId) {
+      card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'skipSpeech' }) }, 'Done — start the vote'));
+    }
+  } else if (n.state === 'voting') {
+    const yesCount = Object.values(n.votes).filter(Boolean).length;
+    card.push(el('p', { class: 'muted center' }, `${yesCount} yes so far`));
+    if (v.selfId === n.currentVoterId) {
+      card.push(el('p', { class: 'center' }, "It's your vote — everyone can see it."));
+      card.push(
+        el('div', { class: 'footer-actions' }, [
+          el('button', { onclick: () => send({ t: 'vote', yes: true }) }, 'Yes'),
+          el('button', { class: 'secondary', onclick: () => send({ t: 'vote', yes: false }) }, 'No'),
+        ])
+      );
+    } else {
+      card.push(el('p', { class: 'muted center pulse' }, `Waiting on ${n.currentVoterName || '…'} to vote…`));
+    }
+    if (isHost) card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'closeVote' }) }, 'Tally Now'));
+  }
+
+  return el('div', { class: 'card' }, card);
 }
 
 function renderDay(v) {
@@ -279,27 +325,7 @@ function renderDay(v) {
   }
 
   if (v.nomination) {
-    const n = v.nomination;
-    const myVote = n.votes[v.selfId];
-    children.push(
-      el('div', { class: 'card' }, [
-        el('h2', {}, `${n.nominatorName} nominates ${n.nomineeName}`),
-        el('p', { class: 'muted' }, `${Object.keys(n.votes).length} vote(s) cast so far`),
-        el('div', { class: 'footer-actions' }, [
-          el(
-            'button',
-            { class: myVote === true ? '' : 'secondary', onclick: () => send({ t: 'vote', yes: true }) },
-            'Vote Yes'
-          ),
-          el(
-            'button',
-            { class: myVote === false ? '' : 'secondary', onclick: () => send({ t: 'vote', yes: false }) },
-            'Vote No'
-          ),
-        ]),
-        isHost ? el('button', { class: 'block secondary', onclick: () => send({ t: 'closeVote' }) }, 'Tally Votes') : null,
-      ])
-    );
+    children.push(renderNomination(v, isHost));
   } else {
     children.push(
       el(
@@ -408,6 +434,13 @@ function render() {
   else if (v.phase === 'day') app.appendChild(renderDay(v));
   else if (v.phase === 'ended') app.appendChild(renderEnded(v));
 }
+
+// The server only pushes a new view when something actually changes, so an active countdown
+// (a speech timer, a per-voter timeout) needs its own local tick purely to refresh the display.
+setInterval(() => {
+  const n = state.view && state.view.nomination;
+  if (n && (n.state === 'accusing' || n.state === 'defending')) render();
+}, 1000);
 
 connect();
 render();

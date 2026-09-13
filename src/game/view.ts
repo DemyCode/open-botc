@@ -1,5 +1,5 @@
 import { CHARACTERS } from './characters.js';
-import type { GameState, Phase, SuperlativeResult } from './types.js';
+import type { GameState, Nomination, NominationState, Phase, SuperlativeResult } from './types.js';
 
 export interface PublicPlayerView {
   id: string;
@@ -33,6 +33,11 @@ export interface NominationView {
   nominatorName: string;
   nomineeId: string;
   nomineeName: string;
+  state: NominationState;
+  phaseEndsAt: number;
+  currentVoterId: string | null;
+  currentVoterName: string | null;
+  voterDeadline: number | null;
   votes: Record<string, boolean>;
 }
 
@@ -49,6 +54,8 @@ export interface GameView {
   myLog: { night: number; text: string }[];
   mySlayerUsed: boolean;
   amIAlive: boolean;
+  leftNeighborName: string | null;
+  rightNeighborName: string | null;
   nightTurn: NightTurnView | null;
   waitingForOthers: boolean;
   nomination: NominationView | null;
@@ -76,6 +83,31 @@ function buildSuperlatives(state: GameState): SuperlativeResult[] {
   return Object.entries(state.superlativeTally).map(([question, tally]) => ({ question, tally }));
 }
 
+/** Fixed seating-chart neighbours (not "nearest alive" — a dead player still keeps their chair). */
+function seatNeighbors(state: GameState, viewerId: string): { left: string | null; right: string | null } {
+  const seated = state.players.slice().sort((a, b) => a.seat - b.seat);
+  const idx = seated.findIndex((p) => p.id === viewerId);
+  if (idx === -1 || seated.length < 2) return { left: null, right: null };
+  const left = seated[(idx - 1 + seated.length) % seated.length];
+  const right = seated[(idx + 1) % seated.length];
+  return { left: left.name, right: right.name };
+}
+
+function buildNomination(state: GameState, nom: Nomination): NominationView {
+  return {
+    nominatorId: nom.nominatorId,
+    nominatorName: state.players.find((p) => p.id === nom.nominatorId)?.name ?? '',
+    nomineeId: nom.nomineeId,
+    nomineeName: state.players.find((p) => p.id === nom.nomineeId)?.name ?? '',
+    state: nom.state,
+    phaseEndsAt: nom.phaseEndsAt,
+    currentVoterId: nom.currentVoterId,
+    currentVoterName: nom.currentVoterId ? state.players.find((p) => p.id === nom.currentVoterId)?.name ?? null : null,
+    voterDeadline: nom.voterDeadline,
+    votes: nom.votes,
+  };
+}
+
 export function viewFor(state: GameState, viewerId: string): GameView {
   const revealAll = state.phase === 'ended';
   const self = state.players.find((p) => p.id === viewerId);
@@ -92,18 +124,9 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     };
   });
 
-  const nom = state.currentNomination;
-  const nomination: NominationView | null = nom
-    ? {
-        nominatorId: nom.nominatorId,
-        nominatorName: state.players.find((p) => p.id === nom.nominatorId)?.name ?? '',
-        nomineeId: nom.nomineeId,
-        nomineeName: state.players.find((p) => p.id === nom.nomineeId)?.name ?? '',
-        votes: nom.votes,
-      }
-    : null;
-
+  const nomination = state.currentNomination ? buildNomination(state, state.currentNomination) : null;
   const nightTurn = state.phase === 'night' ? buildNightTurn(state, viewerId) : null;
+  const neighbors = seatNeighbors(state, viewerId);
 
   return {
     code: state.code, phase: state.phase, night: state.night, day: state.day,
@@ -112,6 +135,8 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     myLog: self ? self.log : [],
     mySlayerUsed: self?.slayerUsed ?? false,
     amIAlive: self?.alive ?? false,
+    leftNeighborName: neighbors.left,
+    rightNeighborName: neighbors.right,
     nightTurn,
     waitingForOthers: state.phase === 'night' && !nightTurn && !!self?.alive,
     nomination,
