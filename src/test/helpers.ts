@@ -1,5 +1,5 @@
 import { alignmentOfCharacter } from '../game/characters.js';
-import { addPlayer, castVote, createGame, skipSpeech, toggleEndDayRequest } from '../game/engine.js';
+import { addPlayer, castVote, createGame, markReadyForSpeech, skipSpeech, toggleEndDayRequest } from '../game/engine.js';
 import { beginNight, submitRealResponse } from '../game/night.js';
 import type { CharacterId, GameState } from '../game/types.js';
 
@@ -81,11 +81,22 @@ export function runFullNight(state: GameState, maxSteps = 30): void {
   }
 }
 
-/** Skips straight past the accusing/defending speeches (as the actual accuser/accused) to the sequential vote. */
+/** Marks every player (living or dead — the ready gate is for everyone) ready for the current speech. */
+export function markAllReady(state: GameState): void {
+  const nom = state.currentNomination;
+  if (!nom) throw new Error('No nomination in progress');
+  for (const p of state.players) {
+    if (!nom.readyBy.includes(p.id)) markReadyForSpeech(state, p.id);
+  }
+}
+
+/** Skips straight past both ready-gates and the accusing/defending speeches (as the actual accuser/accused) to the sequential vote. */
 export function fastForwardToVote(state: GameState): void {
   const nom = state.currentNomination;
   if (!nom) throw new Error('No nomination in progress');
+  markAllReady(state);
   skipSpeech(state, nom.nominatorId);
+  markAllReady(state);
   skipSpeech(state, nom.nomineeId);
 }
 

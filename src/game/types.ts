@@ -65,15 +65,21 @@ export interface PendingRealTurn {
   deadline: number;
 }
 
-export type NominationState = 'accusing' | 'defending' | 'voting' | 'closed';
+export type NominationState = 'readyForAccusation' | 'accusing' | 'readyForDefense' | 'defending' | 'voting' | 'closed';
 
 export interface Nomination {
   id: string;
   nominatorId: string;
   nomineeId: string;
   state: NominationState;
-  /** Absolute epoch ms when the current accusing/defending speech auto-advances. Unused once voting starts. */
+  /** Absolute epoch ms when the current accusing/defending speech auto-advances. Unused during the ready-gate states and once voting starts. */
   phaseEndsAt: number;
+  /**
+   * Living players who have signaled they're ready to hear the upcoming speech, while state is
+   * 'readyForAccusation' or 'readyForDefense'. The speech's timer only starts once every living
+   * player has signaled ready; reset to [] each time a new ready-gate begins.
+   */
+  readyBy: string[];
   /** Seat order the vote goes around in, starting just after the nominee and ending on the nominee. */
   voteOrder: string[];
   voteIndex: number;

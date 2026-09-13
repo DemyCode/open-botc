@@ -29,12 +29,35 @@ html, body {
 }
 
 body {
+  background: var(--bg);
+}
+
+/* Two full-viewport sky layers crossfade between a night and a day ambience as the game phase
+   changes — "the sun and night winding up and down" — rather than snapping instantly, since a
+   hard cut between two very different backgrounds reads as a glitch rather than a transition. */
+.sky-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  transition: opacity 3s ease;
+}
+#sky-night {
+  opacity: 1;
   background:
     radial-gradient(ellipse 900px 600px at 50% -10%, rgba(124, 92, 255, 0.16), transparent),
     radial-gradient(ellipse 700px 500px at 100% 110%, rgba(255, 92, 158, 0.1), transparent),
     var(--bg);
-  background-attachment: fixed;
 }
+#sky-day {
+  opacity: 0;
+  background:
+    radial-gradient(ellipse 1100px 750px at 50% -15%, rgba(255, 199, 120, 0.4), transparent 60%),
+    radial-gradient(ellipse 800px 550px at 100% 110%, rgba(255, 138, 90, 0.16), transparent),
+    radial-gradient(ellipse 1300px 900px at 50% 60%, #201c2c, var(--bg));
+}
+body.phase-day #sky-night { opacity: 0; }
+body.phase-day #sky-day { opacity: 1; }
 
 #app {
   min-height: 100vh;
@@ -62,6 +85,11 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .screen, .card, .role-banner { animation: none !important; }
 }
+/* A countdown tick or a minor data update (a vote coming in, a seating pick changing) re-renders
+   the whole screen from scratch, but it isn't a new screen — replaying the entrance animation
+   every second made the UI visibly flash/"click". Applied whenever the screen's identity hasn't
+   actually changed since the last render. */
+.screen.no-anim, .role-banner.no-anim { animation: none; }
 
 h1 { font-family: var(--font-display); font-size: 1.55rem; font-weight: 700; margin: 0 0 4px; letter-spacing: 0.01em; }
 h2 { font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; margin: 0 0 6px; }
@@ -285,25 +313,27 @@ button.block { width: 100%; }
 .seating-graph-wrap { margin-top: 16px; display: flex; justify-content: center; }
 .seating-graph { width: 100%; max-width: 320px; height: auto; }
 
-.roles-btn {
-  position: fixed;
-  top: max(10px, env(safe-area-inset-top));
-  right: max(10px, env(safe-area-inset-right));
-  z-index: 500;
-  padding: 8px 12px;
-  font-size: 0.75rem;
-  opacity: 0.85;
-}
-
-.leave-btn {
+.topbar {
   position: fixed;
   top: max(10px, env(safe-area-inset-top));
   left: max(10px, env(safe-area-inset-left));
+  right: max(10px, env(safe-area-inset-right));
   z-index: 500;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+.topbar > * { pointer-events: auto; }
+.topbar-right { display: flex; gap: 8px; }
+
+.roles-btn, .leave-btn, .lang-btn {
   padding: 8px 12px;
   font-size: 0.75rem;
   opacity: 0.85;
 }
+.lang-btn { font-weight: 700; letter-spacing: 0.05em; }
 
 .modal-overlay {
   position: fixed;
@@ -350,12 +380,17 @@ button.block { width: 100%; }
 .roles-team.townsfolk, .roles-team.outsider { color: var(--good); }
 .roles-team-icon { width: 18px; height: 18px; flex-shrink: 0; }
 .roles-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px 12px;
   margin-bottom: 8px;
 }
+.roles-card-icon { width: 24px; height: 24px; flex-shrink: 0; margin-top: 2px; color: var(--accent-2); }
+.roles-card-text { min-width: 0; }
 .roles-name { font-weight: 700; margin-bottom: 2px; }
 .roles-ability { font-size: 0.85rem; color: var(--muted); line-height: 1.35; }
 

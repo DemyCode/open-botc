@@ -37,6 +37,8 @@ export interface NominationView {
   nomineeName: string;
   state: NominationState;
   phaseEndsAt: number;
+  /** Ids of everyone (living or dead) who has signaled they're ready for the upcoming speech. Only meaningful while state is readyForAccusation/readyForDefense. */
+  readyBy: string[];
   currentVoterId: string | null;
   currentVoterName: string | null;
   voterDeadline: number | null;
@@ -122,6 +124,7 @@ function buildNomination(state: GameState, nom: Nomination): NominationView {
     nomineeName: state.players.find((p) => p.id === nom.nomineeId)?.name ?? '',
     state: nom.state,
     phaseEndsAt: nom.phaseEndsAt,
+    readyBy: nom.readyBy,
     currentVoterId: nom.currentVoterId,
     currentVoterName: nom.currentVoterId ? state.players.find((p) => p.id === nom.currentVoterId)?.name ?? null : null,
     voterDeadline: nom.voterDeadline,

@@ -109,24 +109,269 @@ async function loadCharacters() {
   return charactersCache;
 }
 
-const TEAM_LABELS = { townsfolk: 'Townsfolk', outsider: 'Outsiders', minion: 'Minions', demon: 'Demon' };
+// ---------------------------------------------------------------------------
+// i18n — English and French. Ability/name text for French is a plain functional
+// translation of the game mechanics, written from scratch (not copied from any
+// rulebook), same as the rest of this project's original content.
+// ---------------------------------------------------------------------------
+
+let LANG = localStorage.getItem('botc.lang') || (navigator.language || 'en').slice(0, 2);
+if (LANG !== 'fr') LANG = 'en';
+
+const STRINGS = {
+  en: {
+    heroTagline: 'Fully automatic storyteller. Play in person, on your phones.',
+    yourName: 'Your name',
+    roomCode: 'Room code',
+    joinGame: 'Join Game',
+    createNewGame: 'Create New Game',
+    or: 'or',
+    enterNameCode: 'Enter your name and a room code',
+    enterNameFirst: 'Enter your name first',
+    allRoles: 'All Roles',
+    allRolesTitle: 'Trouble Brewing — All Roles',
+    close: 'Close',
+    leaveGame: 'Leave Game',
+    leaveConfirm: "Leave this game? You'll go back to the join/create screen.",
+    connecting: 'Connecting…',
+    lobby: 'Lobby',
+    shareCode: 'Share this code with everyone at the table.',
+    seating: 'Seating',
+    seatingIntro: 'Go around the table — everyone just answers who is sitting to their right.',
+    whoRight: 'Who is sitting to your RIGHT?',
+    chooseOption: '— choose —',
+    needAtLeast3: 'Need at least 3 players before seating can be set.',
+    seatingConfirmed: '✓ Seating confirmed — order is locked in.',
+    waitingOnSeating: (names) => `Waiting on seating from: ${names}`,
+    notFullCircle: "⚠️ Not a full circle yet — someone's answer doesn't line up. Check the diagram below.",
+    seated: '✓ seated',
+    seatingEllipsis: '… seating',
+    startGame: (n) => `Start Game (${n} players)`,
+    need5to15: (n) => `Need 5-15 players (${n})`,
+    waitingOnSeatingConfirm: 'Waiting on seating to be confirmed',
+    waitingHost: 'Waiting for the host to start…',
+    you: ' (you)',
+    youAlive: '🟢 You are alive',
+    youDeadOneVote: '💀 You are dead — you can still vote one more time this game',
+    youDeadNoVote: '💀 You are dead — you already used your final vote',
+    day: (n) => `Day ${n}`,
+    night: (n) => `Night ${n}`,
+    yourInformation: 'Your Information',
+    yourTurn: 'Your Turn',
+    confirm: 'Confirm',
+    gotIt: 'Got it',
+    yourResult: 'Your Result',
+    continueBtn: 'Continue',
+    nothingToDo: "You have nothing to do this moment — someone else's turn is happening.",
+    tapAnyway: "Tap the dot when it appears anyway, so everyone's phone looks the same and nobody can tell who's really doing something.",
+    deadRest: 'You are dead and rest peacefully.',
+    practiceDotsHidden: 'Practice dots are hidden. Keep your eyes on your screen anyway.',
+    hidePracticeDots: 'Hide practice dots (testing)',
+    showPracticeDots: 'Show practice dots',
+    accuses: (a, b) => `${a} accuses ${b}`,
+    makingCase: (name, s) => `${name} is making their case… (${s}s)`,
+    doneMoveDefense: 'Done — move to defense',
+    responding: (name, s) => `${name} is responding… (${s}s)`,
+    doneStartVote: 'Done — start the vote',
+    yourTurnVote: (name) => `It's your turn. Do you want to execute ${name}? Say your answer out loud too — everyone can see it here either way.`,
+    yesExecute: (name) => `Yes, execute ${name}`,
+    no: 'No',
+    waitingOnVoter: (name) => `Waiting on ${name} to vote…`,
+    waitingDots: '· waiting',
+    votingEllipsis: 'voting…',
+    voteYes: '✓ Yes',
+    voteNo: '✗ No',
+    endTheDay: 'End the Day',
+    readyToMoveOn: (ready, alive, names) => `${ready}/${alive} players ready to move on${names}`,
+    changedMind: 'Changed my mind — keep talking',
+    readyToEnd: "I'm ready to end the day",
+    onBlock: (name) => `${name} currently has the most votes and will be executed tonight, unless someone else gets more votes first.`,
+    tapToNominate: 'Tap a player to nominate them for execution.',
+    deadNoVoteLeft: "You're dead and already used your final vote — you can only watch from here.",
+    deadOneVoteLeft: "You're dead, but you still have one vote left to use before the game ends.",
+    slayerShot: 'Slayer Shot',
+    slayerDesc: 'Once per game: publicly choose a player. If they are the Demon, they die.',
+    publiclyAccuse: (name) => `Publicly accuse ${name} as the Demon?`,
+    goodWins: 'Good Wins!',
+    evilWins: 'Evil Wins!',
+    langLabel: 'FR',
+    readyForAccusation: 'Get ready to hear the accusation.',
+    readyForDefense: 'Get ready to hear the defense.',
+    readyCount: (ready, total) => `${ready}/${total} players ready`,
+    imReady: "I'm ready to listen",
+    cancelReady: 'Actually, not ready yet',
+  },
+  fr: {
+    heroTagline: 'Narrateur entièrement automatique. Jouez en personne, sur vos téléphones.',
+    yourName: 'Votre nom',
+    roomCode: 'Code de la partie',
+    joinGame: 'Rejoindre',
+    createNewGame: 'Créer une partie',
+    or: 'ou',
+    enterNameCode: 'Entrez votre nom et un code de partie',
+    enterNameFirst: "Entrez d'abord votre nom",
+    allRoles: 'Tous les rôles',
+    allRolesTitle: 'Trouble Brewing — Tous les rôles',
+    close: 'Fermer',
+    leaveGame: 'Quitter',
+    leaveConfirm: "Quitter cette partie ? Vous retournerez à l'écran d'accueil.",
+    connecting: 'Connexion…',
+    lobby: 'Salon',
+    shareCode: 'Partagez ce code avec tout le monde à la table.',
+    seating: 'Placement',
+    seatingIntro: 'Faites le tour de la table — chacun indique simplement qui est assis à sa droite.',
+    whoRight: 'Qui est assis à votre DROITE ?',
+    chooseOption: '— choisir —',
+    needAtLeast3: 'Il faut au moins 3 joueurs avant de pouvoir définir le placement.',
+    seatingConfirmed: '✓ Placement confirmé — l\'ordre est fixé.',
+    waitingOnSeating: (names) => `En attente du placement de : ${names}`,
+    notFullCircle: "⚠️ Le cercle n'est pas encore complet — une réponse ne correspond pas. Regardez le schéma ci-dessous.",
+    seated: '✓ placé',
+    seatingEllipsis: '… en cours',
+    startGame: (n) => `Démarrer la partie (${n} joueurs)`,
+    need5to15: (n) => `Il faut 5 à 15 joueurs (${n})`,
+    waitingOnSeatingConfirm: 'En attente de la confirmation du placement',
+    waitingHost: "En attente que l'hôte démarre…",
+    you: ' (vous)',
+    youAlive: '🟢 Vous êtes vivant',
+    youDeadOneVote: '💀 Vous êtes mort — il vous reste un dernier vote pour cette partie',
+    youDeadNoVote: '💀 Vous êtes mort — vous avez déjà utilisé votre dernier vote',
+    day: (n) => `Jour ${n}`,
+    night: (n) => `Nuit ${n}`,
+    yourInformation: 'Vos informations',
+    yourTurn: 'Votre tour',
+    confirm: 'Confirmer',
+    gotIt: "J'ai compris",
+    yourResult: 'Votre résultat',
+    continueBtn: 'Continuer',
+    nothingToDo: "Vous n'avez rien à faire pour le moment — c'est le tour d'un autre joueur.",
+    tapAnyway: "Appuyez quand même sur le point quand il apparaît, pour que tous les téléphones se ressemblent et que personne ne puisse deviner qui agit vraiment.",
+    deadRest: 'Vous êtes mort et reposez en paix.',
+    practiceDotsHidden: "Les points d'entraînement sont masqués. Gardez quand même les yeux sur votre écran.",
+    hidePracticeDots: "Masquer les points d'entraînement (test)",
+    showPracticeDots: "Afficher les points d'entraînement",
+    accuses: (a, b) => `${a} accuse ${b}`,
+    makingCase: (name, s) => `${name} plaide sa cause… (${s}s)`,
+    doneMoveDefense: 'Terminé — passer à la défense',
+    responding: (name, s) => `${name} répond… (${s}s)`,
+    doneStartVote: 'Terminé — lancer le vote',
+    yourTurnVote: (name) => `C'est votre tour. Voulez-vous exécuter ${name} ? Dites aussi votre réponse à voix haute — tout le monde peut la voir ici de toute façon.`,
+    yesExecute: (name) => `Oui, exécuter ${name}`,
+    no: 'Non',
+    waitingOnVoter: (name) => `En attente du vote de ${name}…`,
+    waitingDots: '· en attente',
+    votingEllipsis: 'vote en cours…',
+    voteYes: '✓ Oui',
+    voteNo: '✗ Non',
+    endTheDay: 'Terminer la journée',
+    readyToMoveOn: (ready, alive, names) => `${ready}/${alive} joueurs prêts à passer à la suite${names}`,
+    changedMind: "J'ai changé d'avis — continuons de discuter",
+    readyToEnd: 'Je suis prêt à terminer la journée',
+    onBlock: (name) => `${name} a actuellement le plus de votes et sera exécuté ce soir, sauf si quelqu'un d'autre obtient plus de votes.`,
+    tapToNominate: 'Touchez un joueur pour le nominer à l\'exécution.',
+    deadNoVoteLeft: "Vous êtes mort et avez déjà utilisé votre dernier vote — vous ne pouvez qu'observer.",
+    deadOneVoteLeft: "Vous êtes mort, mais il vous reste un vote à utiliser avant la fin de la partie.",
+    slayerShot: 'Tir du Tueur',
+    slayerDesc: 'Une fois par partie : désignez publiquement un joueur. Si c\'est le Démon, il meurt.',
+    publiclyAccuse: (name) => `Accuser publiquement ${name} d'être le Démon ?`,
+    goodWins: 'Le Bien gagne !',
+    evilWins: 'Le Mal gagne !',
+    langLabel: 'EN',
+    readyForAccusation: "Préparez-vous à entendre l'accusation.",
+    readyForDefense: 'Préparez-vous à entendre la défense.',
+    readyCount: (ready, total) => `${ready}/${total} joueurs prêts`,
+    imReady: 'Je suis prêt à écouter',
+    cancelReady: 'Finalement, pas encore prêt',
+  },
+};
+
+function t(key, ...args) {
+  const v = (STRINGS[LANG] && STRINGS[LANG][key]) ?? STRINGS.en[key];
+  return typeof v === 'function' ? v(...args) : v;
+}
+
+// French names/abilities for every Trouble Brewing character. Ability text is an original,
+// plain-language translation of the mechanic (not copied from any rulebook) — same standard as
+// the rest of this project's content.
+const CHAR_I18N_FR = {
+  washerwoman: { name: 'Lavandière', ability: "Vous savez, dès le début, que l'un de 2 joueurs est un Villageois précis." },
+  librarian: { name: 'Bibliothécaire', ability: "Vous savez, dès le début, que l'un de 2 joueurs est un Étranger précis (ou qu'il n'y a aucun Étranger)." },
+  investigator: { name: 'Enquêteur', ability: "Vous savez, dès le début, que l'un de 2 joueurs est un Sbire précis." },
+  chef: { name: 'Chef', ability: 'Vous savez, dès le début, combien de paires de joueurs maléfiques sont assises côte à côte.' },
+  empath: { name: 'Empathe', ability: 'Chaque nuit, vous apprenez combien de vos 2 voisins vivants sont maléfiques.' },
+  fortuneteller: { name: 'Diseuse de bonne aventure', ability: "Chaque nuit, choisissez 2 joueurs : vous apprenez si l'un d'eux est le Démon. Un joueur bon peut apparaître comme le Démon à vos yeux." },
+  undertaker: { name: 'Croque-mort', ability: 'Chaque nuit*, vous apprenez quel personnage a été exécuté aujourd\'hui.' },
+  monk: { name: 'Moine', ability: 'Chaque nuit*, choisissez un joueur (pas vous-même) : il est protégé du Démon cette nuit.' },
+  ravenkeeper: { name: 'Gardien des corbeaux', ability: 'Si vous mourez pendant la nuit, vous êtes réveillé pour choisir un joueur : vous apprenez son personnage.' },
+  virgin: { name: 'Vierge', ability: 'La première fois que vous êtes nominé, si le nominateur est un Villageois, il est exécuté immédiatement.' },
+  slayer: { name: 'Tueur', ability: 'Une fois par partie, le jour, désignez publiquement un joueur : si c\'est le Démon, il meurt.' },
+  soldier: { name: 'Soldat', ability: 'Vous êtes protégé du Démon.' },
+  mayor: { name: 'Maire', ability: "S'il ne reste que 3 joueurs vivants et qu'aucune exécution n'a lieu, votre camp gagne. Si vous mourez la nuit, un autre joueur peut mourir à votre place." },
+  butler: { name: 'Majordome', ability: 'Chaque nuit, choisissez un joueur (pas vous-même) : demain, vous ne pouvez voter que si ce joueur vote aussi.' },
+  drunk: { name: 'Ivrogne', ability: "Vous ne savez pas que vous êtes l'Ivrogne. Vous pensez être un Villageois, mais votre pouvoir ne fonctionne pas." },
+  recluse: { name: 'Reclus', ability: 'Vous pouvez apparaître comme maléfique et comme un Sbire ou un Démon, même mort.' },
+  saint: { name: 'Saint', ability: 'Si vous mourez exécuté, votre camp perd.' },
+  poisoner: { name: 'Empoisonneuse', ability: 'Chaque nuit, choisissez un joueur : il est empoisonné cette nuit et le jour suivant.' },
+  spy: { name: 'Espionne', ability: 'Chaque nuit, vous voyez tout le grimoire. Vous pouvez apparaître comme bon et comme un Villageois ou un Étranger.' },
+  scarletwoman: { name: 'Femme écarlate', ability: 'S\'il y a 5 joueurs vivants ou plus et que le Démon meurt, vous devenez le Démon.' },
+  baron: { name: 'Baron', ability: 'Il y a des Étrangers supplémentaires en jeu. [+2 Étrangers]' },
+  imp: { name: 'Le Démon', ability: 'Chaque nuit*, choisissez un joueur : il meurt. Si vous vous tuez ainsi, un Sbire devient le Démon.' },
+};
+
+/** Merges the server's (English) character summary with the French override for the current language. */
+function localizeChar(c) {
+  if (!c) return c;
+  if (LANG === 'fr' && CHAR_I18N_FR[c.id]) return { ...c, ...CHAR_I18N_FR[c.id] };
+  return c;
+}
+
+const TEAM_LABELS = {
+  en: { townsfolk: 'Townsfolk', outsider: 'Outsiders', minion: 'Minions', demon: 'Demon' },
+  fr: { townsfolk: 'Villageois', outsider: 'Étrangers', minion: 'Sbires', demon: 'Démon' },
+};
+
+function teamLabel(team) {
+  return (TEAM_LABELS[LANG] || TEAM_LABELS.en)[team] || team;
+}
+
+function setLang(lang) {
+  LANG = lang;
+  localStorage.setItem('botc.lang', lang);
+  render();
+}
+
+function langButton() {
+  return el(
+    'button',
+    { class: 'secondary lang-btn', onclick: () => setLang(LANG === 'fr' ? 'en' : 'fr') },
+    t('langLabel')
+  );
+}
 
 function showRolesModal() {
   loadCharacters().then((chars) => {
     const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
-    const sections = Object.keys(TEAM_LABELS).map((team) =>
+    const teams = ['townsfolk', 'outsider', 'minion', 'demon'];
+    const sections = teams.map((team) =>
       el('div', { class: 'roles-section' }, [
-        el('h3', { class: 'roles-team ' + team }, [svgIcon(team, 'roles-team-icon'), TEAM_LABELS[team]]),
+        el('h3', { class: 'roles-team ' + team }, [svgIcon(team, 'roles-team-icon'), teamLabel(team)]),
         ...chars
           .filter((c) => c.team === team)
-          .map((c) => el('div', { class: 'roles-card' }, [el('div', { class: 'roles-name' }, c.name), el('div', { class: 'roles-ability' }, c.ability)])),
+          .map((c) => localizeChar(c))
+          .map((c) => el('div', { class: 'roles-card' }, [
+            svgIcon(c.id, 'roles-card-icon'),
+            el('div', { class: 'roles-card-text' }, [
+              el('div', { class: 'roles-name' }, c.name),
+              el('div', { class: 'roles-ability' }, c.ability),
+            ]),
+          ])),
       ])
     );
     overlay.appendChild(
       el('div', { class: 'modal' }, [
         el('div', { class: 'modal-header' }, [
-          el('h2', {}, 'Trouble Brewing — All Roles'),
-          el('button', { class: 'secondary', onclick: () => overlay.remove() }, 'Close'),
+          el('h2', {}, t('allRolesTitle')),
+          el('button', { class: 'secondary', onclick: () => overlay.remove() }, t('close')),
         ]),
         el('div', { class: 'modal-body' }, sections),
       ])
@@ -136,11 +381,11 @@ function showRolesModal() {
 }
 
 function rolesButton() {
-  return el('button', { class: 'secondary roles-btn', onclick: showRolesModal }, '📜 All Roles');
+  return el('button', { class: 'secondary roles-btn', onclick: showRolesModal }, '📜 ' + t('allRoles'));
 }
 
 function leaveGame() {
-  if (!confirm("Leave this game? You'll go back to the join/create screen.")) return;
+  if (!confirm(t('leaveConfirm'))) return;
   send({ t: 'leave' });
   sessionStorage.removeItem('botc.code');
   sessionStorage.removeItem('botc.token');
@@ -155,24 +400,30 @@ function leaveGame() {
 }
 
 function leaveButton() {
-  return el('button', { class: 'secondary leave-btn', onclick: leaveGame }, '🚪 Leave Game');
+  return el('button', { class: 'secondary leave-btn', onclick: leaveGame }, '🚪 ' + t('leaveGame'));
 }
 
+// The countdown ticker and small data updates (a vote coming in, a seating pick changing) cause
+// a full re-render every second or so. Replaying the screen's entrance animation on every one of
+// those made the UI visibly flash. Only animate when the screen's actual identity changes.
+let lastScreenSignature = null;
+let animateThisRender = true;
+
 function renderScreen(children) {
-  return el('div', { class: 'screen' }, children);
+  return el('div', { class: 'screen' + (animateThisRender ? '' : ' no-anim') }, children);
 }
 
 function aliveStatus(v) {
   let text;
   let cls;
   if (v.amIAlive) {
-    text = '🟢 You are alive';
+    text = t('youAlive');
     cls = 'alive';
   } else if (!v.myGhostVoteUsed) {
-    text = '💀 You are dead — you can still vote one more time this game';
+    text = t('youDeadOneVote');
     cls = 'dead';
   } else {
-    text = '💀 You are dead — you already used your final vote';
+    text = t('youDeadNoVote');
     cls = 'dead';
   }
   return el('div', { class: 'status-bar ' + cls }, text);
@@ -181,14 +432,14 @@ function aliveStatus(v) {
 function roleBanner(v) {
   if (!v.myCharacter) return null;
   const alignCls = v.myCharacter.alignment === 'evil' ? 'evil' : 'good';
-  const team = charactersCache && charactersCache.find((c) => c.id === v.myCharacter.id)?.team;
-  const icon = svgIcon(team || (alignCls === 'evil' ? 'demon' : 'townsfolk'), 'role-icon');
-  return el('div', { class: 'role-banner ' + alignCls }, [
+  const char = localizeChar(v.myCharacter);
+  const icon = svgIcon(ICON_PATHS[v.myCharacter.id] ? v.myCharacter.id : (alignCls === 'evil' ? 'demon' : 'townsfolk'), 'role-icon');
+  return el('div', { class: 'role-banner ' + alignCls + (animateThisRender ? '' : ' no-anim') }, [
     aliveStatus(v),
     icon,
     el('div', { class: 'align' }, v.myCharacter.alignment),
-    el('div', { class: 'name' }, v.myCharacter.name),
-    el('div', { class: 'ability' }, v.myCharacter.ability),
+    el('div', { class: 'name' }, char.name),
+    el('div', { class: 'ability' }, char.ability),
     el(
       'div',
       { class: 'neighbors' },
@@ -204,11 +455,11 @@ function secondsLeft(ts) {
 function playerRow(p, opts = {}) {
   const children = [
     el('div', { class: 'seat' }, String(p.seat + 1)),
-    el('div', {}, p.name + (p.isSelf ? ' (you)' : '')),
+    el('div', {}, p.name + (p.isSelf ? t('you') : '')),
   ];
   if (opts.showSeating) {
     children.push(
-      el('div', { class: 'vote-status ' + (p.hasDeclaredSeating ? 'yes' : 'muted') }, p.hasDeclaredSeating ? '✓ seated' : '… seating')
+      el('div', { class: 'vote-status ' + (p.hasDeclaredSeating ? 'yes' : 'muted') }, p.hasDeclaredSeating ? t('seated') : t('seatingEllipsis'))
     );
   }
   children.push(el('div', { class: 'dot ' + (p.connected ? 'on' : 'off') }));
@@ -227,8 +478,8 @@ function renderLog(v) {
 }
 
 function renderLanding() {
-  const nameInput = el('input', { placeholder: 'Your name', value: localStorage.getItem('botc.name') || '' });
-  const codeInput = el('input', { placeholder: 'Room code' });
+  const nameInput = el('input', { placeholder: t('yourName'), value: localStorage.getItem('botc.name') || '' });
+  const codeInput = el('input', { placeholder: t('roomCode') });
   codeInput.style.textTransform = 'uppercase';
 
   const joinBtn = el(
@@ -238,12 +489,12 @@ function renderLanding() {
       onclick: () => {
         const name = nameInput.value.trim();
         const code = codeInput.value.trim().toUpperCase();
-        if (!name || !code) return showError('Enter your name and a room code');
+        if (!name || !code) return showError(t('enterNameCode'));
         localStorage.setItem('botc.name', name);
         doJoin(code, name);
       },
     },
-    'Join Game'
+    t('joinGame')
   );
 
   const createBtn = el(
@@ -252,24 +503,24 @@ function renderLanding() {
       class: 'block secondary',
       onclick: async () => {
         const name = nameInput.value.trim();
-        if (!name) return showError('Enter your name first');
+        if (!name) return showError(t('enterNameFirst'));
         localStorage.setItem('botc.name', name);
         const res = await fetch('/api/rooms', { method: 'POST' });
         const data = await res.json();
         doJoin(data.code, name);
       },
     },
-    'Create New Game'
+    t('createNewGame')
   );
 
   return renderScreen([
     el('div', { class: 'hero' }, [
       el('div', { class: 'hero-icon' }, svgIcon('logo')),
       el('h1', { class: 'hero-title' }, 'Blood on the Clocktower'),
-      el('p', { class: 'hero-tagline' }, 'Fully automatic storyteller. Play in person, on your phones.'),
+      el('p', { class: 'hero-tagline' }, t('heroTagline')),
     ]),
     el('div', { class: 'card', style: 'display:flex;flex-direction:column;gap:10px;' }, [nameInput, codeInput, joinBtn]),
-    el('div', { class: 'center muted' }, 'or'),
+    el('div', { class: 'center muted' }, t('or')),
     createBtn,
   ]);
 }
@@ -283,7 +534,7 @@ function rightNeighborSelect(v) {
     'select',
     { onchange: (e) => send({ t: 'declareNeighbor', neighborId: e.target.value }) },
     [
-      el('option', { value: '', disabled: 'true', selected: current ? null : 'true' }, '— choose —'),
+      el('option', { value: '', disabled: 'true', selected: current ? null : 'true' }, t('chooseOption')),
       ...others.map((p) => el('option', { value: p.id, selected: p.id === current ? 'true' : null }, p.name)),
     ]
   );
@@ -319,15 +570,39 @@ function svgEl(tag, attrs = {}) {
   return e;
 }
 
-// Small original icon set (not the official Blood on the Clocktower artwork, which the
-// publisher's Community Created Content Policy doesn't allow in a digital tool) — a bell/moon
-// mark for the app, plus one simple emblem per team, all drawn from scratch as plain shapes.
+// Original icon set (not the official Blood on the Clocktower artwork, which the publisher's
+// Community Created Content Policy doesn't allow in a digital tool) — a bell/moon mark for the
+// app, one emblem per team, and one simple pictogram per Trouble Brewing character, all drawn
+// from scratch as plain shapes.
 const ICON_PATHS = {
   logo: '<path d="M12 2a1 1 0 0 1 1 1v1.07A7.002 7.002 0 0 1 19 11v3.38l1.45 2.9A1 1 0 0 1 19.55 19H4.45a1 1 0 0 1-.9-1.72L5 14.38V11a7.002 7.002 0 0 1 6-6.93V3a1 1 0 0 1 1-1z"/><rect x="10" y="20" width="4" height="2" rx="1"/>',
   townsfolk: '<path d="M12 2c.3 1.6-.4 2.5-1.1 3.6-.5.8-.9 1.7-.9 2.9a2.5 2.5 0 0 0 5 0c0-.9-.4-1.6-.9-2.2 1.7 1 2.9 2.8 2.9 4.7a4.5 4.5 0 1 1-9 0c0-3.6 2.6-5.9 4-9z"/><rect x="11" y="15" width="2" height="7" rx="1"/>',
   outsider: '<path d="M14.5 3a8.5 8.5 0 1 0 0 17 6.8 6.8 0 0 1 0-17z"/><circle cx="18.6" cy="6" r="1.2"/>',
   minion: '<path d="M12 1.5 13 12h-2z"/><rect x="8.5" y="12" width="7" height="2" rx="0.5"/><rect x="11" y="14.5" width="2" height="7.5" rx="1"/>',
   demon: '<circle cx="12" cy="13.5" r="6"/><path d="M6.5 10 3 3.5 9 8Z"/><path d="M17.5 10 21 3.5 15 8Z"/>',
+
+  washerwoman: '<path d="M4 15a8 8 0 0 1 16 0z"/><path d="M2.5 15h19l-1.6 5.6a1 1 0 0 1-1 .7H5.1a1 1 0 0 1-1-.7L2.5 15z"/>',
+  librarian: '<path d="M12 5.2c-1.9-1.2-4.3-1.7-6.8-1.3a1 1 0 0 0-.8 1v11.9c0 .6.5 1.1 1.2 1 2.2-.4 4.5.1 6.4 1.4V5.2z"/><path d="M12 5.2c1.9-1.2 4.3-1.7 6.8-1.3a1 1 0 0 1 .8 1v11.9c0 .6-.5 1.1-1.2 1-2.2-.4-4.5.1-6.4 1.4V5.2z"/>',
+  investigator: '<circle cx="10" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="2.6"/><rect x="16.6" y="16.6" width="3" height="7.4" rx="1.3" transform="rotate(45 18.1 20.3)"/>',
+  chef: '<path d="M12 3a4 4 0 0 1 3.9 3.2A3.6 3.6 0 0 1 18.5 9.5c0 1.3-.7 2.4-1.7 3.1V15H7.2v-2.4c-1-.7-1.7-1.8-1.7-3.1a3.6 3.6 0 0 1 2.6-3.3A4 4 0 0 1 12 3z"/><rect x="8.2" y="16" width="7.6" height="5" rx="1"/>',
+  empath: '<path d="M12 20 5.4 13.6a4.5 4.5 0 0 1 6.4-6.3l.2.2.2-.2a4.5 4.5 0 0 1 6.4 6.3z"/>',
+  fortuneteller: '<path d="M6.2 19a5.8 5.8 0 0 1 11.6 0z"/><circle cx="12" cy="10.2" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m12 7.4.9 2 2.2.3-1.6 1.5.4 2.2-1.9-1-1.9 1 .4-2.2-1.6-1.5 2.2-.3z"/>',
+  undertaker: '<rect x="11" y="2" width="2" height="12.5" rx="1"/><path d="M6.5 12.5a5.5 5.5 0 0 0 11 0z"/>',
+  monk: '<path d="M12 2.2a6 6 0 0 1 6 6v1.5c1.7.9 2.8 2.7 2.8 4.7V21H5.2v-6.6c0-2 1.1-3.8 2.8-4.7V8.2a6 6 0 0 1 4-5.9z"/>',
+  ravenkeeper: '<ellipse cx="12" cy="14" rx="6.4" ry="4"/><path d="M17.8 12 22 8.8l-3.4 5.6z"/><path d="M6.5 12.4 2.5 10l3 4.4z"/>',
+  virgin: '<circle cx="12" cy="7" r="2.3"/><circle cx="17" cy="11" r="2.3"/><circle cx="15" cy="17" r="2.3"/><circle cx="9" cy="17" r="2.3"/><circle cx="7" cy="11" r="2.3"/><circle cx="12" cy="12" r="2"/>',
+  slayer: '<rect x="11" y="2" width="2" height="19" rx="1" transform="rotate(20 12 11.5)"/><rect x="11" y="2" width="2" height="19" rx="1" transform="rotate(-20 12 11.5)"/>',
+  soldier: '<path d="M12 2 19 5v6c0 5-3.5 8.5-7 9-3.5-.5-7-4-7-9V5z"/>',
+  mayor: '<circle cx="12" cy="9" r="5.5"/><path d="m9 14-2.5 7 5.5-2.5L17.5 21 15 14z" opacity="0.85"/>',
+  butler: '<path d="M2 8v8l8-4z"/><path d="M22 8v8l-8-4z"/><rect x="10" y="9.4" width="4" height="5.2" rx="1"/>',
+  drunk: '<path d="M10 2h4v3.4l1.6 2.2c.5.7.8 1.5.8 2.4V20a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2v-10c0-.9.3-1.7.8-2.4L10 5.4z"/>',
+  recluse: '<path d="M12 2 6 21h12z"/><circle cx="12" cy="9" r="3"/>',
+  saint: '<ellipse cx="12" cy="6" rx="5" ry="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 9c-2.8 0-5 2.4-5 5.4V21h10v-6.6C17 11.4 14.8 9 12 9z"/>',
+  poisoner: '<path d="M10 2h4v5.5l3.6 8.2A2 2 0 0 1 15.8 21H8.2a2 2 0 0 1-1.8-5.3L10 7.5z"/><rect x="9" y="2" width="6" height="2" rx="0.6"/>',
+  spy: '<path fill-rule="evenodd" d="M1.4 12S5 5.4 12 5.4 22.6 12 22.6 12 19 18.6 12 18.6 1.4 12 1.4 12zm10.6 3.1a3.1 3.1 0 1 0 0-6.2 3.1 3.1 0 0 0 0 6.2z"/>',
+  scarletwoman: '<path d="M12 2c1 3-1 4-2 6-1 2 0 3 1 3.4-1-2 .5-3 1.5-4C13 9 15 10 15 13a5 5 0 0 1-10 0c0-3 2-4.6 3-6C9.5 5 10 3 12 2z"/>',
+  baron: '<path d="M4 18 3 8l4.5 3L12 5l4.5 6L21 8l-1 10z"/><circle cx="12" cy="16" r="1.3"/>',
+  imp: '<path fill-rule="evenodd" d="M12 8.2a5.8 5.8 0 1 0 0 11.6 5.8 5.8 0 0 0 0-11.6zM7.4 5 4 3l1.6 4.6zM16.6 5l3.4-2-1.6 4.6zM9.9 12.6a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2zm4.2 0a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2z"/>',
 };
 
 function svgIcon(name, extraClass) {
@@ -392,7 +667,7 @@ function renderSeatingGraph(v) {
       x: labelX, y: labelY, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
       'font-size': '11', fill: p.hasDeclaredSeating ? 'var(--text)' : 'var(--muted)',
     });
-    label.textContent = p.name + (p.id === v.selfId ? ' (you)' : '');
+    label.textContent = p.name + (p.id === v.selfId ? t('you') : '');
     svg.appendChild(label);
   }
 
@@ -405,20 +680,20 @@ function renderSeatingSetup(v) {
   const pending = v.players.filter((p) => !p.hasDeclaredSeating).map((p) => p.name);
   let status;
   if (v.players.length < 3) {
-    status = el('p', { class: 'muted center' }, 'Need at least 3 players before seating can be set.');
+    status = el('p', { class: 'muted center' }, t('needAtLeast3'));
   } else if (v.seatingConfirmed) {
-    status = el('p', { class: 'muted center' }, '✓ Seating confirmed — order is locked in.');
+    status = el('p', { class: 'muted center' }, t('seatingConfirmed'));
   } else if (pending.length) {
-    status = el('p', { class: 'muted center' }, `Waiting on seating from: ${pending.join(', ')}`);
+    status = el('p', { class: 'muted center' }, t('waitingOnSeating', pending.join(', ')));
   } else {
-    status = el('p', { class: 'muted center' }, "⚠️ Not a full circle yet — someone's answer doesn't line up. Check the diagram below.");
+    status = el('p', { class: 'muted center' }, t('notFullCircle'));
   }
 
   return el('div', { class: 'card' }, [
-    el('h2', {}, 'Seating'),
-    el('p', { class: 'muted' }, 'Go around the table — everyone just answers who is sitting to their right.'),
+    el('h2', {}, t('seating')),
+    el('p', { class: 'muted' }, t('seatingIntro')),
     el('label', { class: 'muted', style: 'display:block;margin-top:10px;font-size:0.85rem;' }, [
-      'Who is sitting to your RIGHT?',
+      t('whoRight'),
       rightNeighborSelect(v),
     ]),
     status,
@@ -431,19 +706,19 @@ function renderLobby(v) {
   const count = v.players.length;
   const countOk = count >= 5 && count <= 15;
   const canStart = countOk && v.seatingConfirmed;
-  let startLabel = `Start Game (${count} players)`;
-  if (!countOk) startLabel = `Need 5-15 players (${count})`;
-  else if (!v.seatingConfirmed) startLabel = 'Waiting on seating to be confirmed';
+  let startLabel = t('startGame', count);
+  if (!countOk) startLabel = t('need5to15', count);
+  else if (!v.seatingConfirmed) startLabel = t('waitingOnSeatingConfirm');
 
   return renderScreen([
-    el('h1', {}, 'Lobby'),
+    el('h1', {}, t('lobby')),
     el('div', { class: 'code-badge' }, v.code),
-    el('p', { class: 'muted center' }, 'Share this code with everyone at the table.'),
+    el('p', { class: 'muted center' }, t('shareCode')),
     el('div', { class: 'card player-list' }, v.players.map((p) => playerRow(p, { showSeating: true }))),
     renderSeatingSetup(v),
     isHost
       ? el('button', { class: 'block', disabled: !canStart ? 'true' : null, onclick: () => send({ t: 'start' }) }, startLabel)
-      : el('p', { class: 'muted center' }, 'Waiting for the host to start…'),
+      : el('p', { class: 'muted center' }, t('waitingHost')),
   ]);
 }
 
@@ -467,7 +742,7 @@ function submitTurn(t) {
 function renderDawnScreen(v) {
   return renderScreen([
     el('div', { class: 'moon' }, '☀️'),
-    el('h1', { class: 'center' }, `Day ${v.day}`),
+    el('h1', { class: 'center' }, t('day', v.day)),
     el('div', { class: 'card center' }, el('h2', {}, v.dawnMessage)),
     el(
       'button',
@@ -478,7 +753,7 @@ function renderDawnScreen(v) {
           render();
         },
       },
-      'Continue'
+      t('continueBtn')
     ),
   ]);
 }
@@ -486,7 +761,7 @@ function renderDawnScreen(v) {
 function renderDuskScreen(v) {
   return renderScreen([
     el('div', { class: 'moon' }, '🌙'),
-    el('h1', { class: 'center' }, `Night ${v.night}`),
+    el('h1', { class: 'center' }, t('night', v.night)),
     el('div', { class: 'card center' }, el('h2', {}, v.duskMessage)),
     el(
       'button',
@@ -497,7 +772,7 @@ function renderDuskScreen(v) {
           render();
         },
       },
-      'Continue'
+      t('continueBtn')
     ),
   ]);
 }
@@ -506,28 +781,28 @@ function renderNight(v) {
   const banner = el('div', { class: 'moon' }, '🌙');
 
   if (v.nightTurn) {
-    const t = v.nightTurn;
+    const turn = v.nightTurn;
     const children = [
       roleBanner(v),
       banner,
-      el('h1', { class: 'center' }, `Night ${v.night}`),
+      el('h1', { class: 'center' }, t('night', v.night)),
       el('div', { class: 'card' }, [
-        el('h2', {}, t.shape === 'info' ? 'Your Information' : 'Your Turn'),
-        el('p', { class: 'muted' }, t.body),
+        el('h2', {}, turn.shape === 'info' ? t('yourInformation') : t('yourTurn')),
+        el('p', { class: 'muted' }, turn.body),
       ]),
     ];
 
-    if (t.shape === 'choose') {
+    if (turn.shape === 'choose') {
       const grid = el(
         'div',
         { class: 'choice-grid' },
-        t.choices.map((c) =>
+        turn.choices.map((c) =>
           el(
             'button',
             {
               class: 'choice' + (state.selected.includes(c.id) ? ' selected' : ''),
               onclick: () => {
-                toggleChoice(c.id, t.max);
+                toggleChoice(c.id, turn.max);
                 render();
               },
             },
@@ -539,12 +814,12 @@ function renderNight(v) {
       children.push(
         el(
           'button',
-          { class: 'block', disabled: state.selected.length < t.min ? 'true' : null, onclick: () => submitTurn(t) },
-          'Confirm'
+          { class: 'block', disabled: state.selected.length < turn.min ? 'true' : null, onclick: () => submitTurn(turn) },
+          t('confirm')
         )
       );
     } else {
-      children.push(el('button', { class: 'block', onclick: () => submitTurn(t) }, 'Got it'));
+      children.push(el('button', { class: 'block', onclick: () => submitTurn(turn) }, t('gotIt')));
     }
     return renderScreen(children);
   }
@@ -553,20 +828,20 @@ function renderNight(v) {
     return renderScreen([
       roleBanner(v),
       banner,
-      el('h1', { class: 'center' }, `Night ${v.night}`),
-      el('div', { class: 'card' }, [el('h2', {}, 'Your Result'), el('p', { class: 'muted' }, v.nightResult)]),
+      el('h1', { class: 'center' }, t('night', v.night)),
+      el('div', { class: 'card' }, [el('h2', {}, t('yourResult')), el('p', { class: 'muted' }, v.nightResult)]),
     ]);
   }
 
   return renderScreen([
     roleBanner(v),
     banner,
-    el('h1', { class: 'center pulse' }, `Night ${v.night}`),
+    el('h1', { class: 'center pulse' }, t('night', v.night)),
     v.amIAlive
       ? dotsEnabled()
         ? renderWaitingDots()
-        : el('p', { class: 'muted center' }, 'Practice dots are hidden. Keep your eyes on your screen anyway.')
-      : el('p', { class: 'muted center' }, 'You are dead and rest peacefully.'),
+        : el('p', { class: 'muted center' }, t('practiceDotsHidden'))
+      : el('p', { class: 'muted center' }, t('deadRest')),
     v.amIAlive ? dotsToggle() : null,
   ]);
 }
@@ -600,7 +875,7 @@ function dotsToggle() {
         render();
       },
     },
-    enabled ? 'Hide practice dots (testing)' : 'Show practice dots'
+    enabled ? t('hidePracticeDots') : t('showPracticeDots')
   );
 }
 
@@ -625,12 +900,8 @@ function renderWaitingDots() {
   spawnDot();
 
   return el('div', { class: 'card dot-card' }, [
-    el('p', { class: 'muted center' }, "You have nothing to do this moment — someone else's turn is happening."),
-    el(
-      'p',
-      { class: 'muted center', style: 'font-size:0.8rem;margin-top:6px;' },
-      "Tap the dot when it appears anyway, so everyone's phone looks the same and nobody can tell who's really doing something."
-    ),
+    el('p', { class: 'muted center' }, t('nothingToDo')),
+    el('p', { class: 'muted center', style: 'font-size:0.8rem;margin-top:6px;' }, t('tapAnyway')),
     box,
   ]);
 }
@@ -642,17 +913,17 @@ function renderVoteList(v, n) {
     n.voteOrder.map(({ id, name }) => {
       const voted = id in n.votes;
       const isCurrent = id === n.currentVoterId;
-      let status = '· waiting';
+      let status = t('waitingDots');
       let statusClass = 'muted';
       if (voted) {
-        status = n.votes[id] ? '✓ Yes' : '✗ No';
+        status = n.votes[id] ? t('voteYes') : t('voteNo');
         statusClass = n.votes[id] ? 'yes' : 'no';
       } else if (isCurrent) {
-        status = 'voting…';
+        status = t('votingEllipsis');
         statusClass = 'current';
       }
       return el('div', { class: 'vote-row' + (isCurrent ? ' current' : '') }, [
-        el('div', {}, name + (id === v.selfId ? ' (you)' : '')),
+        el('div', {}, name + (id === v.selfId ? t('you') : '')),
         el('div', { class: 'vote-status ' + statusClass }, status),
       ]);
     })
@@ -661,35 +932,44 @@ function renderVoteList(v, n) {
 
 function renderNomination(v) {
   const n = v.nomination;
-  const card = [el('h2', {}, `${n.nominatorName} accuses ${n.nomineeName}`)];
+  const card = [el('h2', {}, t('accuses', n.nominatorName, n.nomineeName))];
 
-  if (n.state === 'accusing') {
-    card.push(el('p', { class: 'muted center' }, `${n.nominatorName} is making their case… (${secondsLeft(n.phaseEndsAt)}s)`));
+  if (n.state === 'readyForAccusation' || n.state === 'readyForDefense') {
+    // Everyone — including the dead, who are still watching — has to signal ready before the
+    // speech's timer starts, so nobody's speech begins while someone's still catching up.
+    const total = v.players.length;
+    const readyCount = n.readyBy.length;
+    const amReady = n.readyBy.includes(v.selfId);
+    card.push(el('p', { class: 'muted center' }, n.state === 'readyForAccusation' ? t('readyForAccusation') : t('readyForDefense')));
+    card.push(el('p', { class: 'muted center' }, t('readyCount', readyCount, total)));
+    card.push(
+      el(
+        'button',
+        { class: 'block' + (amReady ? ' secondary' : ''), onclick: () => send({ t: 'readySpeech' }) },
+        amReady ? t('cancelReady') : t('imReady')
+      )
+    );
+  } else if (n.state === 'accusing') {
+    card.push(el('p', { class: 'muted center' }, t('makingCase', n.nominatorName, secondsLeft(n.phaseEndsAt))));
     if (v.selfId === n.nominatorId) {
-      card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'skipSpeech' }) }, 'Done — move to defense'));
+      card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'skipSpeech' }) }, t('doneMoveDefense')));
     }
   } else if (n.state === 'defending') {
-    card.push(el('p', { class: 'muted center' }, `${n.nomineeName} is responding… (${secondsLeft(n.phaseEndsAt)}s)`));
+    card.push(el('p', { class: 'muted center' }, t('responding', n.nomineeName, secondsLeft(n.phaseEndsAt))));
     if (v.selfId === n.nomineeId) {
-      card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'skipSpeech' }) }, 'Done — start the vote'));
+      card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'skipSpeech' }) }, t('doneStartVote')));
     }
   } else if (n.state === 'voting') {
     if (v.selfId === n.currentVoterId) {
-      card.push(
-        el(
-          'p',
-          { class: 'center' },
-          `It's your turn. Do you want to execute ${n.nomineeName}? Say your answer out loud too — everyone can see it here either way.`
-        )
-      );
+      card.push(el('p', { class: 'center' }, t('yourTurnVote', n.nomineeName)));
       card.push(
         el('div', { class: 'footer-actions' }, [
-          el('button', { onclick: () => send({ t: 'vote', yes: true }) }, `Yes, execute ${n.nomineeName}`),
-          el('button', { class: 'secondary', onclick: () => send({ t: 'vote', yes: false }) }, 'No'),
+          el('button', { onclick: () => send({ t: 'vote', yes: true }) }, t('yesExecute', n.nomineeName)),
+          el('button', { class: 'secondary', onclick: () => send({ t: 'vote', yes: false }) }, t('no')),
         ])
       );
     } else {
-      card.push(el('p', { class: 'muted center pulse' }, `Waiting on ${n.currentVoterName || '…'} to vote…`));
+      card.push(el('p', { class: 'muted center pulse' }, t('waitingOnVoter', n.currentVoterName || '…')));
     }
     card.push(renderVoteList(v, n));
   }
@@ -701,29 +981,23 @@ function renderEndDayConsensus(v) {
   if (!v.amIAlive) return null;
   const names = v.endDayReadyNames.length ? ` (${v.endDayReadyNames.join(', ')})` : '';
   return el('div', { class: 'card' }, [
-    el('h2', {}, 'End the Day'),
-    el('p', { class: 'muted' }, `${v.endDayReadyCount}/${v.endDayAliveCount} players ready to move on${names}`),
+    el('h2', {}, t('endTheDay')),
+    el('p', { class: 'muted' }, t('readyToMoveOn', v.endDayReadyCount, v.endDayAliveCount, names)),
     el(
       'button',
       { class: 'block' + (v.myEndDayReady ? ' secondary' : ''), onclick: () => send({ t: 'endDay' }) },
-      v.myEndDayReady ? "Changed my mind — keep talking" : "I'm ready to end the day"
+      v.myEndDayReady ? t('changedMind') : t('readyToEnd')
     ),
   ]);
 }
 
 function renderDay(v) {
   const self = v.players.find((p) => p.id === v.selfId);
-  const children = [el('h1', {}, `Day ${v.day}`), roleBanner(v)];
+  const children = [el('h1', {}, t('day', v.day)), roleBanner(v)];
 
   if (v.onBlockId) {
     const onBlock = v.players.find((p) => p.id === v.onBlockId);
-    children.push(
-      el(
-        'div',
-        { class: 'card center' },
-        `${onBlock ? onBlock.name : '?'} currently has the most votes and will be executed tonight, unless someone else gets more votes first.`
-      )
-    );
+    children.push(el('div', { class: 'card center' }, t('onBlock', onBlock ? onBlock.name : '?')));
   }
 
   if (v.nomination) {
@@ -731,10 +1005,10 @@ function renderDay(v) {
   } else {
     children.push(
       el('p', { class: 'muted center' }, self && self.alive
-        ? 'Tap a player to nominate them for execution.'
+        ? t('tapToNominate')
         : v.myGhostVoteUsed
-          ? "You're dead and already used your final vote — you can only watch from here."
-          : "You're dead, but you still have one vote left to use before the game ends."
+          ? t('deadNoVoteLeft')
+          : t('deadOneVoteLeft')
       )
     );
     children.push(
@@ -757,8 +1031,8 @@ function renderDay(v) {
   if (v.myCharacter && v.myCharacter.id === 'slayer' && !v.mySlayerUsed && v.amIAlive) {
     children.push(
       el('div', { class: 'card' }, [
-        el('h2', {}, 'Slayer Shot'),
-        el('p', { class: 'muted' }, 'Once per game: publicly choose a player. If they are the Demon, they die.'),
+        el('h2', {}, t('slayerShot')),
+        el('p', { class: 'muted' }, t('slayerDesc')),
         el(
           'div',
           { class: 'choice-grid' },
@@ -770,7 +1044,7 @@ function renderDay(v) {
                 {
                   class: 'choice',
                   onclick: () => {
-                    if (confirm(`Publicly accuse ${p.name} as the Demon?`)) send({ t: 'slayer', targetId: p.id });
+                    if (confirm(t('publiclyAccuse', p.name))) send({ t: 'slayer', targetId: p.id });
                   },
                 },
                 p.name
@@ -784,11 +1058,11 @@ function renderDay(v) {
   if (v.myLog && v.myLog.length) {
     children.push(
       el('div', { class: 'card' }, [
-        el('h2', {}, 'Your Information'),
+        el('h2', {}, t('yourInformation')),
         el(
           'div',
           { class: 'log' },
-          v.myLog.map((e) => el('div', { class: 'log-entry' }, `Night ${e.night}: ${e.text}`))
+          v.myLog.map((e) => el('div', { class: 'log-entry' }, `${t('night', e.night)}: ${e.text}`))
         ),
       ])
     );
@@ -803,7 +1077,7 @@ function renderEnded(v) {
   const children = [
     el('div', { class: 'winner-banner ' + (isGood ? 'good' : 'evil') }, [
       el('span', { class: 'icon' }, isGood ? '😇' : '😈'),
-      el('h1', {}, isGood ? 'Good Wins!' : 'Evil Wins!'),
+      el('h1', {}, isGood ? t('goodWins') : t('evilWins')),
     ]),
     el(
       'div',
@@ -811,9 +1085,10 @@ function renderEnded(v) {
       v.players.map((p) => {
         const team = charactersCache && charactersCache.find((c) => c.id === p.character)?.team;
         const alignCls = team === 'minion' || team === 'demon' ? 'evil' : team ? 'good' : '';
+        const localName = LANG === 'fr' && p.character && CHAR_I18N_FR[p.character] ? CHAR_I18N_FR[p.character].name : p.characterName;
         return el('div', { class: `player-row ${alignCls}` + (p.alive ? '' : ' dead') }, [
           el('div', { class: 'seat' }, String(p.seat + 1)),
-          el('div', {}, `${p.name} — ${p.characterName || '?'}`),
+          el('div', {}, `${p.name} — ${localName || '?'}`),
         ]);
       })
     ),
@@ -823,20 +1098,40 @@ function renderEnded(v) {
   return renderScreen(children);
 }
 
+function computeSignature(v) {
+  if (!v) return 'connecting';
+  if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) return `dawn-${v.day}`;
+  if (v.phase === 'night' && v.duskMessage && state.duskSeenForNight !== v.night) return `dusk-${v.night}`;
+  if (v.phase === 'lobby') return 'lobby';
+  if (v.phase === 'night') return `night-${turnKey(v)}`;
+  if (v.phase === 'day') return `day-${v.nomination ? v.nomination.state + ':' + v.nomination.nomineeId : 'none'}`;
+  if (v.phase === 'ended') return 'ended';
+  return v.phase;
+}
+
 function render() {
   stopWaitingDots(); // avoid piling up timers across re-renders; re-armed below if still waiting
+
+  const v = state.code && state.playerId ? state.view : null;
+  const signature = computeSignature(v) + ':' + LANG;
+  animateThisRender = signature !== lastScreenSignature;
+  lastScreenSignature = signature;
+
+  // The sky ambience follows the live game phase — day fades toward light/warm tones, night
+  // toward dark/cool ones — with everything before the game starts kept on the night ambience.
+  document.body.classList.toggle('phase-day', !!(v && v.phase === 'day'));
+
   app.innerHTML = '';
-  app.appendChild(rolesButton()); // always available, fixed position via CSS — a reference sheet, not part of any turn
+  const topbar = el('div', { class: 'topbar' }, [leaveButtonIfJoined(), el('div', { class: 'topbar-right' }, [langButton(), rolesButton()])]);
+  app.appendChild(topbar);
   if (!state.code || !state.playerId) {
     app.appendChild(renderLanding());
     return;
   }
-  app.appendChild(leaveButton()); // once you've joined a room, always have a way back out — reload used to strand you here
   if (!state.view) {
-    app.appendChild(renderScreen([el('p', { class: 'muted center' }, 'Connecting…')]));
+    app.appendChild(renderScreen([el('p', { class: 'muted center' }, t('connecting'))]));
     return;
   }
-  const v = state.view;
   if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) {
     app.appendChild(renderDawnScreen(v));
     return;
@@ -851,6 +1146,10 @@ function render() {
   else if (v.phase === 'ended') app.appendChild(renderEnded(v));
 }
 
+function leaveButtonIfJoined() {
+  return state.code && state.playerId ? leaveButton() : el('div');
+}
+
 // The server only pushes a new view when something actually changes, so an active countdown
 // (a speech timer, a per-voter timeout) needs its own local tick purely to refresh the display.
 setInterval(() => {
@@ -861,7 +1160,10 @@ setInterval(() => {
 // Lets toggling the practice-dots setting in one tab take effect in every other tab open on
 // this browser (localStorage writes don't fire this event in the tab that made them).
 window.addEventListener('storage', (e) => {
-  if (e.key === 'botc.dotsDisabled') render();
+  if (e.key === 'botc.dotsDisabled' || e.key === 'botc.lang') {
+    if (e.key === 'botc.lang' && e.newValue) LANG = e.newValue;
+    render();
+  }
 });
 
 connect();

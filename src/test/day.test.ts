@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { castVote, nominate, skipSpeech, toggleEndDayRequest, useSlayer } from '../game/engine.js';
-import { endDayByConsensus, fastForwardToVote, mkDay, voteInOrder } from './helpers.js';
+import { castVote, markReadyForSpeech, nominate, skipSpeech, toggleEndDayRequest, useSlayer } from '../game/engine.js';
+import { endDayByConsensus, fastForwardToVote, markAllReady, mkDay, voteInOrder } from './helpers.js';
 
 test('vote below majority does not put anyone on the block', () => {
   const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']); // 6 alive, majority=4
@@ -61,17 +61,23 @@ test('a Virgin nominated by an evil player does not proc', () => {
   nominate(s, imp.id, virgin.id);
   assert.equal(imp.alive, true);
   assert.ok(s.currentNomination, 'should proceed to a normal accusation since the nominator is evil');
+  assert.equal(s.currentNomination?.state, 'readyForAccusation');
+  markAllReady(s);
   assert.equal(s.currentNomination?.state, 'accusing');
 });
 
-test('the nomination goes through accusing -> defending -> voting, and only the current speaker can skip', () => {
+test('the nomination goes through ready -> accusing -> ready -> defending -> voting, and only the current speaker can skip', () => {
   const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
   const [, poisoner, empath] = s.players;
   nominate(s, poisoner.id, empath.id);
+  assert.equal(s.currentNomination?.state, 'readyForAccusation');
+  markAllReady(s);
   assert.equal(s.currentNomination?.state, 'accusing');
 
   assert.throws(() => skipSpeech(s, empath.id), 'the accused should not be able to skip the accusation');
   skipSpeech(s, poisoner.id); // the accuser ends their own speech early
+  assert.equal(s.currentNomination?.state, 'readyForDefense');
+  markAllReady(s);
   assert.equal(s.currentNomination?.state, 'defending');
 
   assert.throws(() => skipSpeech(s, poisoner.id), 'the accuser should not be able to skip the defense');
@@ -87,14 +93,43 @@ test('the host has no authority to skip someone else\'s speech — only the spea
   const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
   const [host, poisoner, empath] = s.players; // host (imp) is neither the accuser nor the accused
   nominate(s, poisoner.id, empath.id);
+  markAllReady(s);
 
   assert.throws(() => skipSpeech(s, host.id), "the host should not be able to skip the accuser's speech");
   skipSpeech(s, poisoner.id);
-  assert.equal(s.currentNomination?.state, 'defending');
+  assert.equal(s.currentNomination?.state, 'readyForDefense');
+  markAllReady(s);
 
   assert.throws(() => skipSpeech(s, host.id), "the host should not be able to skip the accused's defense");
   skipSpeech(s, empath.id);
   assert.equal(s.currentNomination?.state, 'voting');
+});
+
+test('the speech timer does not start until everyone — including the dead — signals ready', () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
+  const [a, b, c, d, e, f] = s.players;
+  c.alive = false; // a dead player from an earlier day, still watching
+  nominate(s, a.id, b.id);
+  assert.equal(s.currentNomination?.state, 'readyForAccusation');
+
+  markReadyForSpeech(s, a.id);
+  markReadyForSpeech(s, b.id);
+  markReadyForSpeech(s, d.id);
+  markReadyForSpeech(s, e.id);
+  markReadyForSpeech(s, f.id);
+  assert.equal(s.currentNomination?.state, 'readyForAccusation', 'the dead player has not signaled ready yet');
+
+  markReadyForSpeech(s, c.id); // the dead player finally signals ready too
+  assert.equal(s.currentNomination?.state, 'accusing');
+});
+
+test('signaling ready twice withdraws it again', () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
+  const [a, b] = s.players;
+  nominate(s, a.id, b.id);
+  markReadyForSpeech(s, a.id);
+  markReadyForSpeech(s, a.id); // changed their mind
+  assert.ok(!s.currentNomination?.readyBy.includes(a.id));
 });
 
 test('votes go around the circle in order, one at a time', () => {

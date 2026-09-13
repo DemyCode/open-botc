@@ -216,7 +216,7 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
 
   state.currentNomination = {
     id: `nom-${state.usedNominatorIds.length}`, nominatorId, nomineeId,
-    state: 'accusing', phaseEndsAt: Date.now() + ACCUSE_MS,
+    state: 'readyForAccusation', phaseEndsAt: 0, readyBy: [],
     voteOrder: [], voteIndex: -1, currentVoterId: null, voterDeadline: null,
     votes: {}, yesCount: 0,
   };
@@ -234,13 +234,47 @@ export function skipSpeech(state: GameState, playerId: string): void {
   if (!nom) throw new GameError('No nomination in progress');
   if (nom.state === 'accusing') {
     if (playerId !== nom.nominatorId) throw new GameError('Only the accuser can end their own speech early');
-    nom.state = 'defending';
-    nom.phaseEndsAt = Date.now() + DEFEND_MS;
+    nom.state = 'readyForDefense';
+    nom.readyBy = [];
   } else if (nom.state === 'defending') {
     if (playerId !== nom.nomineeId) throw new GameError('Only the accused can end their own defense early');
     startVoting(state, nom);
   } else {
     throw new GameError('Nothing to skip right now');
+  }
+}
+
+/**
+ * Before either speech (the accusation, then the defense) actually starts, every player —
+ * including the dead, who are still watching — signals they're ready to listen. Only once
+ * everyone has done so does the speech's timer actually start; this is deliberately everyone,
+ * not just the living (unlike ending the day early, which is a decision only living players get
+ * a say in). Clicking again withdraws your readiness.
+ */
+export function markReadyForSpeech(state: GameState, playerId: string): void {
+  const nom = state.currentNomination;
+  if (!nom) throw new GameError('No nomination in progress');
+  if (nom.state !== 'readyForAccusation' && nom.state !== 'readyForDefense') {
+    throw new GameError('Not waiting for readiness right now');
+  }
+  findPlayer(state, playerId); // validates it exists
+  const idx = nom.readyBy.indexOf(playerId);
+  if (idx >= 0) nom.readyBy.splice(idx, 1);
+  else nom.readyBy.push(playerId);
+  maybeAdvanceSpeechReady(state, nom);
+}
+
+function maybeAdvanceSpeechReady(state: GameState, nom: Nomination): void {
+  const everyone = state.players.map((p) => p.id);
+  if (!everyone.every((id) => nom.readyBy.includes(id))) return;
+  if (nom.state === 'readyForAccusation') {
+    nom.state = 'accusing';
+    nom.phaseEndsAt = Date.now() + ACCUSE_MS;
+    nom.readyBy = [];
+  } else if (nom.state === 'readyForDefense') {
+    nom.state = 'defending';
+    nom.phaseEndsAt = Date.now() + DEFEND_MS;
+    nom.readyBy = [];
   }
 }
 
@@ -340,8 +374,8 @@ export function tick(state: GameState, now: number): void {
   const nom = state.currentNomination;
   if (!nom) return;
   if (nom.state === 'accusing' && now >= nom.phaseEndsAt) {
-    nom.state = 'defending';
-    nom.phaseEndsAt = now + DEFEND_MS;
+    nom.state = 'readyForDefense';
+    nom.readyBy = [];
   } else if (nom.state === 'defending' && now >= nom.phaseEndsAt) {
     startVoting(state, nom);
   } else if (nom.state === 'voting' && nom.voterDeadline !== null && now >= nom.voterDeadline) {
