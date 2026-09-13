@@ -1,0 +1,162 @@
+:root {
+  color-scheme: dark;
+  --bg: #10121a;
+  --panel: #1b1e2b;
+  --panel-2: #262a3d;
+  --text: #f2f2f7;
+  --muted: #9296ab;
+  --accent: #7c5cff;
+  --accent-2: #ff5c9e;
+  --good: #4ade80;
+  --evil: #f87171;
+  --border: #333752;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 16px 24px;
+  max-width: 520px;
+  width: 100%;
+  margin: 0 auto;
+  gap: 14px;
+}
+
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.15rem; margin: 0 0 6px; }
+p { margin: 0; line-height: 1.4; }
+.muted { color: var(--muted); font-size: 0.9rem; }
+
+input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 1.05rem;
+}
+input:focus { outline: 2px solid var(--accent); }
+
+button {
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: none;
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--accent);
+  color: white;
+  transition: transform 0.05s ease, opacity 0.15s ease;
+}
+button:active { transform: scale(0.97); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.secondary { background: var(--panel-2); color: var(--text); }
+button.danger { background: var(--evil); }
+button.block { width: 100%; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.code-badge {
+  font-size: 2rem;
+  letter-spacing: 0.35em;
+  font-weight: 700;
+  text-align: center;
+  padding: 12px;
+  background: var(--panel-2);
+  border-radius: 14px;
+}
+
+.player-list { display: flex; flex-direction: column; gap: 8px; }
+.player-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border-radius: 12px;
+}
+.player-row.dead { opacity: 0.45; text-decoration: line-through; }
+.player-row .seat {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--border); color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.8rem; flex-shrink: 0;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; margin-left: auto; }
+.dot.on { background: var(--good); }
+.dot.off { background: var(--evil); }
+
+.choice-grid { display: flex; flex-direction: column; gap: 8px; }
+.choice {
+  padding: 14px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--panel-2);
+  text-align: left;
+  color: var(--text);
+  font-size: 1rem;
+}
+.choice.selected { border-color: var(--accent); background: rgba(124,92,255,0.18); }
+
+.pulse {
+  animation: pulse 2.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.log { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
+.log-entry { font-size: 0.92rem; color: var(--muted); }
+
+.moon { font-size: 3rem; text-align: center; }
+.center { text-align: center; }
+.spacer { flex: 1; }
+
+.role-banner {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-radius: 16px;
+  padding: 18px;
+  text-align: center;
+}
+.role-banner .name { font-size: 1.4rem; font-weight: 700; }
+.role-banner .align { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; opacity: 0.9; }
+
+.tag {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--panel-2);
+}
+.tag.evil { color: var(--evil); }
+.tag.good { color: var(--good); }
+
+.footer-actions { display: flex; gap: 10px; }
+.footer-actions button { flex: 1; }
