@@ -189,7 +189,9 @@ function renderLanding() {
 }
 
 function rightNeighborSelect(v) {
-  const others = v.players.filter((p) => p.id !== v.selfId);
+  // Never yourself, and never whoever already has you as their right-hand neighbor (picking
+  // them back would make the two of you a closed pair and leave everyone else out).
+  const others = v.players.filter((p) => p.id !== v.selfId && (v.players.length <= 2 || p.id !== v.mySeatLeftId));
   const current = v.mySeatRightId;
   return el(
     'select',
