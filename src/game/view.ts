@@ -1,5 +1,5 @@
 import { CHARACTERS } from './characters.js';
-import type { GameState, Nomination, NominationState, Phase, SuperlativeResult } from './types.js';
+import type { GameState, Nomination, NominationState, Phase } from './types.js';
 
 export interface PublicPlayerView {
   id: string;
@@ -22,7 +22,6 @@ export interface NightTurnChoice {
 }
 
 export interface NightTurnView {
-  kind: 'real' | 'decoy';
   shape: 'info' | 'choose';
   title: string;
   body: string;
@@ -69,34 +68,21 @@ export interface GameView {
   endDayAliveCount: number;
   myEndDayReady: boolean;
   nightTurn: NightTurnView | null;
+  /** The outcome of a "choose" ability that produces information (Fortune Teller, Ravenkeeper),
+   * shown right after answering — otherwise it would only ever surface later in myLog. */
+  nightResult: string | null;
   waitingForOthers: boolean;
   nomination: NominationView | null;
   onBlockId: string | null;
   winner: string | null;
-  superlatives: SuperlativeResult[];
 }
 
 function buildNightTurn(state: GameState, viewerId: string): NightTurnView | null {
   const t = state.pendingRealTurn;
-  if (t && t.playerIds.includes(viewerId) && !(viewerId in t.responses)) {
-    const choices: NightTurnChoice[] =
-      t.shape === 'choose' ? state.players.filter((p) => p.alive).map((p) => ({ id: p.id, name: p.name, seat: p.seat })) : [];
-    return { kind: 'real', shape: t.shape, title: 'Your turn', body: t.bodyByPlayer[viewerId] ?? '', min: t.min, max: t.max, choices };
-  }
-  const d = state.pendingDecoy;
-  if (d && d.playerIds.includes(viewerId) && !(viewerId in d.responses)) {
-    const choices: NightTurnChoice[] =
-      d.shape === 'choose' ? state.players.filter((p) => p.alive).map((p) => ({ id: p.id, name: p.name, seat: p.seat })) : [];
-    return {
-      kind: 'decoy', shape: d.shape, title: 'Your turn', body: d.prompt.question,
-      min: d.shape === 'choose' ? 1 : 0, max: d.shape === 'choose' ? 1 : 0, choices,
-    };
-  }
-  return null;
-}
-
-function buildSuperlatives(state: GameState): SuperlativeResult[] {
-  return Object.entries(state.superlativeTally).map(([question, tally]) => ({ question, tally }));
+  if (!t || !t.playerIds.includes(viewerId) || viewerId in t.responses) return null;
+  const choices: NightTurnChoice[] =
+    t.shape === 'choose' ? state.players.filter((p) => p.alive).map((p) => ({ id: p.id, name: p.name, seat: p.seat })) : [];
+  return { shape: t.shape, title: 'Your turn', body: t.bodyByPlayer[viewerId] ?? '', min: t.min, max: t.max, choices };
 }
 
 /** Fixed seating-chart neighbours (not "nearest alive" — a dead player still keeps their chair). */
@@ -147,6 +133,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
 
   const nomination = state.currentNomination ? buildNomination(state, state.currentNomination) : null;
   const nightTurn = state.phase === 'night' ? buildNightTurn(state, viewerId) : null;
+  const nightResult = state.phase === 'night' ? self?.nightResult ?? null : null;
   const neighbors = seatNeighbors(state, viewerId);
 
   return {
@@ -166,10 +153,10 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     endDayAliveCount: state.players.filter((p) => p.alive).length,
     myEndDayReady: !!self && state.endDayRequestedBy.includes(self.id),
     nightTurn,
-    waitingForOthers: state.phase === 'night' && !nightTurn && !!self?.alive,
+    nightResult,
+    waitingForOthers: state.phase === 'night' && !nightTurn && !nightResult && !!self?.alive,
     nomination,
     onBlockId: state.onBlockId,
     winner: state.winner,
-    superlatives: revealAll ? buildSuperlatives(state) : [],
   };
 }

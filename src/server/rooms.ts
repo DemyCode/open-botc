@@ -113,8 +113,8 @@ export class RoomManager {
 
   /**
    * Pushes each player their own filtered view, but only if it actually differs from what
-   * they were last sent. Every player's real turn, the night decoy round, and the 1s
-   * timeout-checking tick all end up calling this — without the dedup, a client would receive
+   * they were last sent. Every player's real turn and the 1s timeout-checking tick all end up
+   * calling this — without the dedup, a client would receive
    * a fresh (but identical) view roughly every second and re-render, wiping out any
    * in-progress local UI state (a partial night-turn selection, focus on a text input) even
    * though nothing in the game actually changed for that player.

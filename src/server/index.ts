@@ -112,9 +112,6 @@ wss.on('connection', (ws: WebSocket) => {
         case 'nightReal':
           engine.submitRealResponse(state, playerId, Array.isArray(msg.targetIds) ? (msg.targetIds as string[]) : []);
           break;
-        case 'nightDecoy':
-          engine.submitDecoyResponse(state, playerId, String(msg.targetId || ''));
-          break;
         case 'nominate':
           engine.nominate(state, playerId, String(msg.nomineeId));
           break;

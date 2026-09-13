@@ -4,7 +4,6 @@ import {
   minionInfo, ravenkeeperInfo, spyInfo, undertakerInfo,
 } from './info.js';
 import { abilityWorks } from './registration.js';
-import { stablePick } from './rng.js';
 import type { CharacterId, GameState, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
@@ -15,38 +14,6 @@ export const FIRST_NIGHT_SEQUENCE: (CharacterId | 'minion-info')[] = [
 
 export const OTHER_NIGHT_SEQUENCE: (CharacterId | 'minion-info')[] = [
   'poisoner', 'monk', 'imp', 'ravenkeeper', 'butler', 'empath', 'fortuneteller', 'undertaker', 'spy',
-];
-
-// Shown when the real event this round is a "choose a player" action (Poisoner, Monk, ...) —
-// every other living player gets one of these instead, so a "pick someone" screen fires for
-// everyone at once regardless of who (if anyone) is doing it for real.
-const DECOY_QUESTIONS = [
-  'Who is the funniest?',
-  'Who is the sexiest?',
-  'Who is the dumbest?',
-  'Who would survive a zombie apocalypse the longest?',
-  'Who has the best poker face?',
-  'Who is most likely to accidentally reveal a secret?',
-  'Who would you trust to keep a secret?',
-  'Who is the sleepiest right now?',
-  'Who talks the most during the day?',
-  'Who would make the best Storyteller?',
-  'Who is the most stylish?',
-  'Who is the most suspicious right now?',
-];
-
-// Shown when the real event this round is an "info" reveal (Washerwoman, Empath, ...) — no
-// selection needed, just flavor text and a "Got it", matching the shape of a real info round.
-const DECOY_INFO_LINES: ((name: string) => string)[] = [
-  (name) => `You dream about ${name} tonight.`,
-  (name) => `You have a feeling ${name} is hiding something.`,
-  (name) => `A vision flashes: ${name}, standing alone in the dark.`,
-  (name) => `You sense that ${name} slept poorly last night.`,
-  (name) => `Somewhere in the village, ${name} is smiling.`,
-  () => 'The village is quiet tonight.',
-  () => 'You hear an owl somewhere in the dark.',
-  () => 'Nothing seems out of place.',
-  () => 'A faint chill passes through the air.',
 ];
 
 const TURN_TIMEOUT_MS = 60_000;
@@ -112,13 +79,6 @@ function choosePromptFor(charId: CharacterId | 'minion-info'): { min: number; ma
   }
 }
 
-function pickDecoyContent(state: GameState, slot: string, shape: NightTurnShape): string {
-  if (shape === 'choose') return stablePick(state.secret, DECOY_QUESTIONS, slot, 'decoy-q');
-  const template = stablePick(state.secret, DECOY_INFO_LINES, slot, 'decoy-info');
-  const subject = stablePick(state.secret, state.players, slot, 'decoy-subject');
-  return template(subject.name);
-}
-
 function startRound(state: GameState, charId: CharacterId | 'minion-info', actors: PlayerState[]): void {
   const slot = `${charId}-n${state.night}`;
   const shape = shapeFor(state, charId);
@@ -139,23 +99,10 @@ function startRound(state: GameState, charId: CharacterId | 'minion-info', actor
     for (const p of actors) bodyByPlayer[p.id] = cfg.body;
   }
 
-  const now = Date.now();
   state.pendingRealTurn = {
     charId, playerIds: actors.map((p) => p.id), shape, min, max, bodyByPlayer,
-    responses: {}, deadline: now + TURN_TIMEOUT_MS,
+    responses: {}, deadline: Date.now() + TURN_TIMEOUT_MS,
   };
-
-  const actorIds = new Set(actors.map((p) => p.id));
-  const others = state.players.filter((p) => p.alive && !actorIds.has(p.id));
-  state.pendingDecoy = others.length
-    ? {
-        prompt: { id: slot, question: pickDecoyContent(state, slot, shape) },
-        shape,
-        playerIds: others.map((p) => p.id),
-        responses: {},
-        deadline: now + TURN_TIMEOUT_MS,
-      }
-    : null;
 }
 
 export function beginNight(state: GameState): void {
@@ -165,7 +112,7 @@ export function beginNight(state: GameState): void {
   state.monkProtectedId = null;
   state.nightSlotIndex = -1;
   state.pendingRealTurn = null;
-  state.pendingDecoy = null;
+  for (const p of state.players) p.nightResult = null;
   advanceNightSlot(state);
 }
 
@@ -186,7 +133,6 @@ export function advanceNightSlot(state: GameState): void {
 
 function finishNight(state: GameState): void {
   state.pendingRealTurn = null;
-  state.pendingDecoy = null;
   state.phase = 'day';
   state.day += 1;
   state.onBlockId = null;
@@ -244,6 +190,9 @@ function applyImpKill(state: GameState, imp: PlayerState, targetId: string): voi
   killPlayer(state, target);
 }
 
+/** Applies a choose-shape ability's effect and, for abilities that produce information from the
+ * choice (Fortune Teller, Ravenkeeper), records the result so it can be shown to the player
+ * immediately — not just written to their permanent log for later. */
 function applyRealChoice(state: GameState, charId: CharacterId | 'minion-info', playerId: string, targets: string[]): void {
   const self = findPlayer(state, playerId);
   const slot = `${charId}-n${state.night}`;
@@ -257,12 +206,18 @@ function applyRealChoice(state: GameState, charId: CharacterId | 'minion-info', 
     case 'butler':
       if (abilityWorks(state, self)) state.butlerMasterId = targets[0] ?? null;
       break;
-    case 'fortuneteller':
-      appendLog(state, playerId, fortuneTellerInfo(state, self, targets, slot));
+    case 'fortuneteller': {
+      const text = fortuneTellerInfo(state, self, targets, slot);
+      appendLog(state, playerId, text);
+      self.nightResult = text;
       break;
-    case 'ravenkeeper':
-      appendLog(state, playerId, ravenkeeperInfo(state, self, targets[0], slot));
+    }
+    case 'ravenkeeper': {
+      const text = ravenkeeperInfo(state, self, targets[0], slot);
+      appendLog(state, playerId, text);
+      self.nightResult = text;
       break;
+    }
     case 'imp':
       applyImpKill(state, self, targets[0]);
       break;
@@ -271,18 +226,9 @@ function applyRealChoice(state: GameState, charId: CharacterId | 'minion-info', 
   }
 }
 
-function tallySuperlative(state: GameState, question: string, targetId: string): void {
-  if (!targetId) return;
-  if (!state.superlativeTally[question]) state.superlativeTally[question] = {};
-  state.superlativeTally[question][targetId] = (state.superlativeTally[question][targetId] ?? 0) + 1;
-}
-
 function maybeAdvance(state: GameState): void {
   const t = state.pendingRealTurn;
-  const d = state.pendingDecoy;
-  const realDone = !t || t.playerIds.every((id) => id in t.responses);
-  const decoyDone = !d || d.playerIds.every((id) => id in d.responses);
-  if (realDone && decoyDone) advanceNightSlot(state);
+  if (t && t.playerIds.every((id) => id in t.responses)) advanceNightSlot(state);
 }
 
 export function submitRealResponse(state: GameState, playerId: string, targetIds: string[]): void {
@@ -299,15 +245,6 @@ export function submitRealResponse(state: GameState, playerId: string, targetIds
   }
   t.responses[playerId] = targetIds;
   applyRealChoice(state, t.charId, playerId, targetIds);
-  maybeAdvance(state);
-}
-
-export function submitDecoyResponse(state: GameState, playerId: string, targetId: string): void {
-  const d = state.pendingDecoy;
-  if (!d || !d.playerIds.includes(playerId)) throw new GameError('No pending decoy for this player');
-  if (playerId in d.responses) throw new GameError('Already responded');
-  d.responses[playerId] = targetId;
-  if (d.shape === 'choose') tallySuperlative(state, d.prompt.question, targetId);
   maybeAdvance(state);
 }
 
@@ -332,12 +269,6 @@ export function tick(state: GameState, now: number): void {
         t.responses[id] = fallback;
         applyRealChoice(state, t.charId, id, fallback);
       }
-    }
-  }
-  const d = state.pendingDecoy;
-  if (d && now >= d.deadline) {
-    for (const id of d.playerIds) {
-      if (!(id in d.responses)) d.responses[id] = '';
     }
   }
   maybeAdvance(state);

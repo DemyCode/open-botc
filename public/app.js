@@ -73,7 +73,9 @@ function handleMessage(msg) {
 }
 
 function turnKey(view) {
-  return view.nightTurn ? `${view.phase}-${view.night}-${view.nightTurn.kind}-${view.nightTurn.body}` : null;
+  if (view.nightTurn) return `turn-${view.phase}-${view.night}-${view.nightTurn.body}`;
+  if (view.nightResult) return `result-${view.phase}-${view.night}-${view.nightResult}`;
+  return null;
 }
 
 // The server can push a fresh view for reasons that have nothing to do with your own turn
@@ -356,8 +358,7 @@ function toggleChoice(id, max) {
 }
 
 function submitTurn(t) {
-  if (t.kind === 'decoy') send({ t: 'nightDecoy', targetId: t.shape === 'choose' ? state.selected[0] : '' });
-  else if (t.shape === 'choose') send({ t: 'nightReal', targetIds: state.selected.slice() });
+  if (t.shape === 'choose') send({ t: 'nightReal', targetIds: state.selected.slice() });
   else send({ t: 'nightReal', targetIds: [] });
   state.selected = [];
 }
@@ -407,6 +408,15 @@ function renderNight(v) {
       children.push(el('button', { class: 'block', onclick: () => submitTurn(t) }, 'Got it'));
     }
     return renderScreen(children);
+  }
+
+  if (v.nightResult) {
+    return renderScreen([
+      roleBanner(v),
+      banner,
+      el('h1', { class: 'center' }, `Night ${v.night}`),
+      el('div', { class: 'card' }, [el('h2', {}, 'Your Result'), el('p', { class: 'muted' }, v.nightResult)]),
+    ]);
   }
 
   return renderScreen([
@@ -639,16 +649,6 @@ function renderEnded(v) {
       )
     ),
   ];
-
-  if (v.superlatives && v.superlatives.length) {
-    children.push(el('h2', {}, 'Superlatives'));
-    v.superlatives.forEach((s) => {
-      const entries = Object.entries(s.tally).sort((a, b) => b[1] - a[1]);
-      const top = entries[0];
-      const name = top ? v.players.find((p) => p.id === top[0])?.name ?? '?' : '—';
-      children.push(el('div', { class: 'card' }, `${s.question} → ${name} (${top ? top[1] : 0} votes)`));
-    });
-  }
 
   children.push(renderLog(v));
   return renderScreen(children);

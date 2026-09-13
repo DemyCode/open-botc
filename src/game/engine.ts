@@ -6,7 +6,7 @@ import { dealCharacters } from './setup.js';
 import type { GameState, Nomination, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
-export { submitDecoyResponse, submitRealResponse } from './night.js';
+export { submitRealResponse } from './night.js';
 
 const ACCUSE_MS = 45_000;
 const DEFEND_MS = 45_000;
@@ -23,9 +23,9 @@ export function createGame(code: string): GameState {
     code, hostId: '', phase: 'lobby', night: 0, day: 0, players: [],
     secret: randomId() + randomId(), rngState: 0, bluffs: [],
     poisonedId: null, monkProtectedId: null, butlerMasterId: null,
-    deathsTonight: [], nightSlotIndex: -1, pendingRealTurn: null, pendingDecoy: null,
+    deathsTonight: [], nightSlotIndex: -1, pendingRealTurn: null,
     publicLog: [], currentNomination: null, onBlockId: null, highestYesToday: 0,
-    usedNominatorIds: [], usedNomineeIds: [], winner: null, superlativeTally: {},
+    usedNominatorIds: [], usedNomineeIds: [], winner: null,
     lastExecutedId: null, seatingConfirmed: false, endDayRequestedBy: [],
   };
 }
@@ -37,7 +37,7 @@ export function addPlayer(state: GameState, name: string): PlayerState {
     seatLeftId: null, seatRightId: null, connected: true,
     character: 'soldier', perceived: 'soldier', alignment: 'good', alive: true,
     ghostVoteUsed: false, isRedHerring: false, diedTonight: false,
-    virginUsed: false, slayerUsed: false, log: [],
+    virginUsed: false, slayerUsed: false, log: [], nightResult: null,
   };
   state.players.push(player);
   if (!state.hostId) state.hostId = player.id;

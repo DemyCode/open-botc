@@ -36,6 +36,14 @@ export interface PlayerState {
   virginUsed: boolean;
   slayerUsed: boolean;
   log: InfoLogEntry[];
+  /**
+   * The outcome of a "choose" ability that produces information (Fortune Teller, Ravenkeeper),
+   * shown for the rest of the night right after answering. Lives on the player, not on the
+   * round: a round only ever has one holder for these abilities, so it advances to the next
+   * round the instant they answer — storing the result on the round object would lose it before
+   * it was ever shown. Reset to null at the start of each night.
+   */
+  nightResult: string | null;
 }
 
 export type NightTurnShape = 'info' | 'choose';
@@ -49,20 +57,6 @@ export interface PendingRealTurn {
   /** Per-player prompt text, since minion-info/imp differ slightly per recipient. */
   bodyByPlayer: Record<string, string>;
   responses: Record<string, string[]>;
-  deadline: number;
-}
-
-export interface DecoyPrompt {
-  id: string;
-  question: string;
-}
-
-export interface PendingDecoyRound {
-  prompt: DecoyPrompt;
-  /** Always mirrors this round's real turn shape, so a "select someone" round never gets an "info" decoy or vice versa. */
-  shape: NightTurnShape;
-  playerIds: string[];
-  responses: Record<string, string>;
   deadline: number;
 }
 
@@ -85,11 +79,6 @@ export interface Nomination {
   yesCount: number;
 }
 
-export interface SuperlativeResult {
-  question: string;
-  tally: Record<string, number>;
-}
-
 export interface GameState {
   code: string;
   hostId: string;
@@ -106,7 +95,6 @@ export interface GameState {
   deathsTonight: string[];
   nightSlotIndex: number;
   pendingRealTurn: PendingRealTurn | null;
-  pendingDecoy: PendingDecoyRound | null;
   publicLog: string[];
   currentNomination: Nomination | null;
   onBlockId: string | null;
@@ -114,7 +102,6 @@ export interface GameState {
   usedNominatorIds: string[];
   usedNomineeIds: string[];
   winner: Alignment | null;
-  superlativeTally: Record<string, Record<string, number>>;
   lastExecutedId: string | null;
   /** True once every player's declared left/right neighbor forms one consistent circle. */
   seatingConfirmed: boolean;

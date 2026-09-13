@@ -1,25 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { CHARACTERS } from '../game/characters.js';
+import { submitRealResponse } from '../game/night.js';
 import { advanceUntil, answerRealTurn, byChar, byPerceived, mk, runFullNight, skipRound, startNight } from './helpers.js';
 
-test('the decoy always mirrors the real turn shape for that round', () => {
-  const state = mk(['imp', 'poisoner', 'washerwoman', 'empath', 'soldier', 'saint']);
-  startNight(state); // night 1
-  let steps = 0;
-  while (state.phase === 'night' && steps < 20) {
-    if (state.pendingRealTurn && state.pendingDecoy) {
-      assert.equal(
-        state.pendingDecoy.shape,
-        state.pendingRealTurn.shape,
-        `decoy shape should match the real "${state.pendingRealTurn.charId}" round's shape`
-      );
-    }
-    skipRound(state);
-    steps++;
-  }
-});
-
-test('every living player is covered exactly once by every night round (real xor decoy)', () => {
+test('a night round only ever involves the actual actor(s) for that character', () => {
   const state = mk([
     'poisoner', 'imp', 'monk', 'empath', 'fortuneteller', 'washerwoman',
     'librarian', 'investigator', 'chef', 'undertaker', 'virgin', 'soldier',
@@ -28,24 +13,21 @@ test('every living player is covered exactly once by every night round (real xor
 
   let rounds = 0;
   while (state.phase === 'night') {
-    const realIds = state.pendingRealTurn ? state.pendingRealTurn.playerIds : [];
-    const decoyIds = state.pendingDecoy ? state.pendingDecoy.playerIds : [];
-    const alive = state.players.filter((p) => p.alive).map((p) => p.id);
-
-    // no overlap between real actors and decoy recipients this round
-    for (const id of realIds) assert.ok(!decoyIds.includes(id), `${id} is both real and decoy in the same round`);
-
-    // every living player is covered by this round, one way or the other
-    const covered = new Set([...realIds, ...decoyIds]);
-    for (const id of alive) assert.ok(covered.has(id), `${id} was left out of a night round entirely`);
-
+    const t = state.pendingRealTurn;
+    if (t) {
+      const actuallyHoldIt =
+        t.charId === 'minion-info'
+          ? state.players.filter((p) => p.alive && CHARACTERS[p.character].team === 'minion').map((p) => p.id)
+          : state.players.filter((p) => p.alive && p.perceived === t.charId).map((p) => p.id);
+      assert.deepEqual(new Set(t.playerIds), new Set(actuallyHoldIt), `round for ${t.charId} should exactly match its real holders`);
+    }
     rounds++;
     skipRound(state);
   }
   assert.ok(rounds > 0, 'expected at least one night round to fire');
 });
 
-test('Ravenkeeper only gets a real turn the night they die, otherwise decoy', () => {
+test('Ravenkeeper only gets a real turn the night they die', () => {
   const state = mk(['imp', 'ravenkeeper', 'monk', 'poisoner', 'empath', 'soldier']);
   startNight(state); // night 1 — ravenkeeper never appears in the first-night sequence at all
   let steps = 0;
@@ -95,4 +77,40 @@ test("a poisoned Monk's protection silently fails", () => {
   answerRealTurn(state, [empath.id]); // poisoned monk "protects" empath — should not actually work
 
   assert.equal(state.monkProtectedId, null, 'a poisoned Monk should not successfully protect anyone');
+});
+
+test('Fortune Teller: the result of choosing is available immediately, not just in the permanent log', () => {
+  // Regression test: choosing 2 players used to only write the answer to the player's permanent
+  // log (only visible later, during the day) — their screen showed nothing right after
+  // answering, which is the bug this covers.
+  const state = mk(['imp', 'fortuneteller', 'empath', 'soldier', 'washerwoman']);
+  startNight(state);
+  const ft = byChar(state, 'fortuneteller');
+  const imp = byChar(state, 'imp');
+  const empath = byChar(state, 'empath');
+
+  advanceUntil(state, 'fortuneteller');
+  submitRealResponse(state, ft.id, [imp.id, empath.id]);
+
+  // Fortune Teller is the only holder of this round, so it has already advanced by now — the
+  // result must survive on the player, not the (already-replaced) round object.
+  assert.match(ft.nightResult ?? '', /^Yes/);
+  assert.equal(ft.nightResult, ft.log.at(-1)?.text, 'the immediate result should match what was logged');
+});
+
+test('Ravenkeeper: the result of choosing is available immediately, not just in the permanent log', () => {
+  const state = mk(['imp', 'ravenkeeper', 'chef', 'soldier', 'washerwoman']);
+  startNight(state);
+  runFullNight(state);
+  startNight(state); // night 2
+  const rk = byChar(state, 'ravenkeeper');
+  const chef = byChar(state, 'chef');
+
+  advanceUntil(state, 'imp');
+  answerRealTurn(state, [rk.id]); // kill the ravenkeeper
+
+  advanceUntil(state, 'ravenkeeper');
+  submitRealResponse(state, rk.id, [chef.id]);
+
+  assert.equal(rk.nightResult, `${chef.name} is the Chef.`);
 });
