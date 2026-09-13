@@ -59,12 +59,6 @@ export function declareNeighbor(state: GameState, playerId: string, side: 'left'
   const self = findPlayer(state, playerId);
   if (neighborId === playerId) throw new GameError('You cannot be your own neighbor');
   const neighbor = findPlayer(state, neighborId);
-  // With more than 2 players, picking whoever already has you as their right-hand neighbor
-  // would make the two of you a closed pair — nobody else could ever join the circle.
-  const other = side === 'left' ? self.seatRightId : self.seatLeftId;
-  if (other === neighborId && state.players.length > 2) {
-    throw new GameError("That would make you and them a closed pair, leaving everyone else out — pick someone else");
-  }
   if (side === 'left') {
     self.seatLeftId = neighborId;
     neighbor.seatRightId = playerId;

@@ -98,11 +98,15 @@ test('you cannot declare yourself as your own neighbor', () => {
   assert.throws(() => declareNeighbor(s, a.id, 'left', a.id));
 });
 
-test('left and right must be different people', () => {
+test('picking the same person for both sides is allowed as input, but can never resolve into a circle', () => {
+  // Input is unrestricted beyond "not yourself" — the only real check happens later, all at
+  // once, in tryResolveSeating. A mutual pair naturally just never confirms with more than
+  // 2 players, rather than being blocked at the moment someone picks it.
   const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
   const [a, b] = s.players;
   declareNeighbor(s, a.id, 'left', b.id);
-  assert.throws(() => declareNeighbor(s, a.id, 'right', b.id));
+  assert.doesNotThrow(() => declareNeighbor(s, a.id, 'right', b.id));
+  assert.equal(s.seatingConfirmed, false);
 });
 
 test('adding a new player invalidates a previously confirmed seating', () => {
