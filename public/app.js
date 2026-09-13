@@ -204,7 +204,8 @@ const STRINGS = {
     readyForAccusation: 'Get ready to hear the accusation.',
     readyForDefense: 'Get ready to hear the defense.',
     readyCount: (ready, total) => `${ready}/${total} players ready`,
-    imReady: "I'm ready to listen",
+    imReadyAccusation: (name) => `I'm ready to hear the accusation against ${name}`,
+    imReadyDefense: (name) => `I'm ready to hear ${name}'s defense`,
     cancelReady: 'Actually, not ready yet',
     hideRole: 'Hide role',
     showRole: 'Show role',
@@ -297,7 +298,8 @@ const STRINGS = {
     readyForAccusation: "Préparez-vous à entendre l'accusation.",
     readyForDefense: 'Préparez-vous à entendre la défense.',
     readyCount: (ready, total) => `${ready}/${total} joueurs prêts`,
-    imReady: 'Je suis prêt à écouter',
+    imReadyAccusation: (name) => `Je suis prêt à écouter l'accusation de ${name}`,
+    imReadyDefense: (name) => `Je suis prêt à écouter la défense de ${name}`,
     cancelReady: 'Finalement, pas encore prêt',
     hideRole: 'Masquer le rôle',
     showRole: 'Afficher le rôle',
@@ -1168,7 +1170,11 @@ function renderNomination(v) {
       el(
         'button',
         { class: 'block' + (amReady ? ' secondary' : ''), onclick: () => send({ t: 'readySpeech' }) },
-        amReady ? t('cancelReady') : t('imReady')
+        amReady
+          ? t('cancelReady')
+          : n.state === 'readyForAccusation'
+            ? t('imReadyAccusation', n.nomineeName)
+            : t('imReadyDefense', n.nomineeName)
       )
     );
   } else if (n.state === 'accusing') {
