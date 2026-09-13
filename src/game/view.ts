@@ -1,5 +1,5 @@
 import { CHARACTERS } from './characters.js';
-import type { GameState, Nomination, NominationState, Phase } from './types.js';
+import type { GameState, Nomination, NominationState, Phase, PlayerState } from './types.js';
 
 export interface PublicPlayerView {
   id: string;
@@ -70,6 +70,10 @@ export interface GameView {
   /** The outcome of a "choose" ability that produces information (Fortune Teller, Ravenkeeper),
    * shown right after answering — otherwise it would only ever surface later in myLog. */
   nightResult: string | null;
+  /** Personalized "You died tonight." / "You survived the night." — only set once day begins. */
+  dawnMessage: string | null;
+  /** "The village executed you." / "X was executed." / "Nobody has been killed today..." — only set once night begins. */
+  duskMessage: string | null;
   waitingForOthers: boolean;
   nomination: NominationView | null;
   onBlockId: string | null;
@@ -92,6 +96,21 @@ function seatNeighbors(state: GameState, viewerId: string): { left: string | nul
   const left = seated[(idx - 1 + seated.length) % seated.length];
   const right = seated[(idx + 1) % seated.length];
   return { left: left.name, right: right.name };
+}
+
+function buildDawnMessage(self: PlayerState | undefined): string | null {
+  if (!self) return null;
+  if (self.diedTonight) return 'You died tonight.';
+  if (self.alive) return 'You survived the night.';
+  return null; // already dead from an earlier night/execution — nothing new to announce
+}
+
+function buildDuskMessage(state: GameState, self: PlayerState | undefined): string | null {
+  const executedId = state.lastExecutedId;
+  if (!executedId) return 'Nobody has been killed today, the village goes to sleep.';
+  if (self && self.id === executedId) return 'The village executed you.';
+  const executed = state.players.find((p) => p.id === executedId);
+  return executed ? `${executed.name} was executed by the village.` : null;
 }
 
 function buildNomination(state: GameState, nom: Nomination): NominationView {
@@ -133,6 +152,8 @@ export function viewFor(state: GameState, viewerId: string): GameView {
   const nomination = state.currentNomination ? buildNomination(state, state.currentNomination) : null;
   const nightTurn = state.phase === 'night' ? buildNightTurn(state, viewerId) : null;
   const nightResult = state.phase === 'night' ? self?.nightResult ?? null : null;
+  const dawnMessage = state.phase === 'day' ? buildDawnMessage(self) : null;
+  const duskMessage = state.phase === 'night' ? buildDuskMessage(state, self) : null;
   const neighbors = seatNeighbors(state, viewerId);
 
   return {
@@ -152,6 +173,8 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     myEndDayReady: !!self && state.endDayRequestedBy.includes(self.id),
     nightTurn,
     nightResult,
+    dawnMessage,
+    duskMessage,
     waitingForOthers: state.phase === 'night' && !nightTurn && !nightResult && !!self?.alive,
     nomination,
     onBlockId: state.onBlockId,

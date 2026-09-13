@@ -112,7 +112,12 @@ export function beginNight(state: GameState): void {
   state.monkProtectedId = null;
   state.nightSlotIndex = -1;
   state.pendingRealTurn = null;
-  for (const p of state.players) p.nightResult = null;
+  for (const p of state.players) {
+    p.nightResult = null;
+    // Reset here (not just on death) so it accurately reflects *this* night by dawn — otherwise
+    // it would still read true forever after whichever night someone actually died.
+    p.diedTonight = false;
+  }
   advanceNightSlot(state);
 }
 

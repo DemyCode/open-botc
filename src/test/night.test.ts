@@ -114,3 +114,24 @@ test('Ravenkeeper: the result of choosing is available immediately, not just in 
 
   assert.equal(rk.nightResult, `${chef.name} is the Chef.`);
 });
+
+test('diedTonight only reflects the most recently completed night, not any death ever', () => {
+  // Regression coverage for the dawn-message feature: diedTonight used to be set on death and
+  // never reset, so it would stay true forever after whichever night someone actually died —
+  // making a dawn "You died tonight" message impossible to compute correctly on a later night.
+  const state = mk(['imp', 'ravenkeeper', 'chef', 'soldier', 'washerwoman', 'poisoner']);
+  startNight(state);
+  runFullNight(state);
+  startNight(state); // night 2
+
+  const rk = byChar(state, 'ravenkeeper');
+  advanceUntil(state, 'imp');
+  answerRealTurn(state, [rk.id]); // kill the ravenkeeper
+  assert.equal(rk.diedTonight, true, 'should be true on the night they actually died');
+
+  runFullNight(state);
+  startNight(state); // night 3 — a night where the (already dead) ravenkeeper does nothing
+
+  assert.equal(rk.diedTonight, false, 'must be reset by a later night, even though they stayed dead');
+  assert.equal(rk.alive, false, 'staying dead is unaffected by the diedTonight reset');
+});

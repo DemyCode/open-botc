@@ -5,6 +5,8 @@ const state = {
   playerId: sessionStorage.getItem('botc.playerId'),
   view: null,
   selected: [],
+  dawnSeenForDay: null,
+  duskSeenForNight: null,
 };
 
 let pendingJoin = null;
@@ -363,6 +365,44 @@ function submitTurn(t) {
   state.selected = [];
 }
 
+function renderDawnScreen(v) {
+  return renderScreen([
+    el('div', { class: 'moon' }, '☀️'),
+    el('h1', { class: 'center' }, `Day ${v.day}`),
+    el('div', { class: 'card center' }, el('h2', {}, v.dawnMessage)),
+    el(
+      'button',
+      {
+        class: 'block',
+        onclick: () => {
+          state.dawnSeenForDay = v.day;
+          render();
+        },
+      },
+      'Continue'
+    ),
+  ]);
+}
+
+function renderDuskScreen(v) {
+  return renderScreen([
+    el('div', { class: 'moon' }, '🌙'),
+    el('h1', { class: 'center' }, `Night ${v.night}`),
+    el('div', { class: 'card center' }, el('h2', {}, v.duskMessage)),
+    el(
+      'button',
+      {
+        class: 'block',
+        onclick: () => {
+          state.duskSeenForNight = v.night;
+          render();
+        },
+      },
+      'Continue'
+    ),
+  ]);
+}
+
 function renderNight(v) {
   const banner = el('div', { class: 'moon' }, '🌙');
 
@@ -666,6 +706,14 @@ function render() {
     return;
   }
   const v = state.view;
+  if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) {
+    app.appendChild(renderDawnScreen(v));
+    return;
+  }
+  if (v.phase === 'night' && v.duskMessage && state.duskSeenForNight !== v.night) {
+    app.appendChild(renderDuskScreen(v));
+    return;
+  }
   if (v.phase === 'lobby') app.appendChild(renderLobby(v));
   else if (v.phase === 'night') app.appendChild(renderNight(v));
   else if (v.phase === 'day') app.appendChild(renderDay(v));
