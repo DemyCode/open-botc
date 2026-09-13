@@ -188,20 +188,112 @@ function renderLanding() {
   ]);
 }
 
-function neighborSelect(v, side) {
-  // Never yourself, and never whoever is already picked for the other side (same person can't
-  // be both your left and right neighbor).
-  const otherSideId = side === 'left' ? v.mySeatRightId : v.mySeatLeftId;
-  const others = v.players.filter((p) => p.id !== v.selfId && p.id !== otherSideId);
-  const current = side === 'left' ? v.mySeatLeftId : v.mySeatRightId;
+function rightNeighborSelect(v) {
+  const others = v.players.filter((p) => p.id !== v.selfId);
+  const current = v.mySeatRightId;
   return el(
     'select',
-    { onchange: (e) => send({ t: 'declareNeighbor', side, neighborId: e.target.value }) },
+    { onchange: (e) => send({ t: 'declareNeighbor', side: 'right', neighborId: e.target.value }) },
     [
       el('option', { value: '', disabled: 'true', selected: current ? null : 'true' }, '— choose —'),
       ...others.map((p) => el('option', { value: p.id, selected: p.id === current ? 'true' : null }, p.name)),
     ]
   );
+}
+
+// Walks the "who's on your right" pointers into a display order for the circle diagram: chains
+// with a clear starting point (no one claims them as their right) are walked first so partial
+// progress reads left-to-right sensibly; whatever's left over must be part of a cycle (every
+// node in it has both an incoming and outgoing edge) and gets walked too. When the seating is
+// fully confirmed this always recovers the exact real circle, since every node has exactly one
+// edge in and one out.
+function computeSeatingOrder(players) {
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const hasIncoming = new Set(players.filter((p) => p.declaredRightId).map((p) => p.declaredRightId));
+  const visited = new Set();
+  const order = [];
+  const walk = (start) => {
+    let cur = start;
+    while (cur && !visited.has(cur.id)) {
+      order.push(cur);
+      visited.add(cur.id);
+      cur = cur.declaredRightId ? byId.get(cur.declaredRightId) : null;
+    }
+  };
+  for (const p of players) if (!visited.has(p.id) && !hasIncoming.has(p.id)) walk(p);
+  for (const p of players) if (!visited.has(p.id)) walk(p);
+  return order;
+}
+
+function svgEl(tag, attrs = {}) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, val] of Object.entries(attrs)) e.setAttribute(k, val);
+  return e;
+}
+
+function renderSeatingGraph(v) {
+  const order = computeSeatingOrder(v.players);
+  const n = order.length;
+  const size = 300;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = size / 2 - 56;
+  const nodeR = 16;
+  const color = v.seatingConfirmed ? 'var(--good)' : 'var(--accent)';
+
+  const pos = new Map();
+  order.forEach((p, i) => {
+    const angle = (i / n) * 2 * Math.PI - Math.PI / 2;
+    pos.set(p.id, {
+      x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle),
+      labelX: cx + (r + 30) * Math.cos(angle), labelY: cy + (r + 30) * Math.sin(angle),
+    });
+  });
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${size} ${size}`, class: 'seating-graph' });
+
+  const defs = svgEl('defs');
+  const marker = svgEl('marker', {
+    id: 'seat-arrow', viewBox: '0 0 10 10', refX: '9', refY: '5',
+    markerWidth: '6', markerHeight: '6', orient: 'auto-start-reverse',
+  });
+  const arrowHead = svgEl('path', { d: 'M0,0 L10,5 L0,10 z', fill: color });
+  marker.appendChild(arrowHead);
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+
+  for (const p of order) {
+    if (!p.declaredRightId) continue;
+    const from = pos.get(p.id);
+    const to = pos.get(p.declaredRightId);
+    if (!from || !to) continue;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const line = svgEl('line', {
+      x1: from.x + (dx / dist) * nodeR, y1: from.y + (dy / dist) * nodeR,
+      x2: to.x - (dx / dist) * (nodeR + 7), y2: to.y - (dy / dist) * (nodeR + 7),
+      stroke: color, 'stroke-width': '2', 'marker-end': 'url(#seat-arrow)',
+    });
+    svg.appendChild(line);
+  }
+
+  for (const p of order) {
+    const { x, y, labelX, labelY } = pos.get(p.id);
+    svg.appendChild(
+      svgEl('circle', { cx: x, cy: y, r: nodeR, fill: p.id === v.selfId ? 'var(--accent)' : 'var(--panel-2)', stroke: 'var(--border)' })
+    );
+    const label = svgEl('text', {
+      x: labelX, y: labelY, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
+      'font-size': '11', fill: p.hasDeclaredSeating ? 'var(--text)' : 'var(--muted)',
+    });
+    label.textContent = p.name + (p.id === v.selfId ? ' (you)' : '');
+    svg.appendChild(label);
+  }
+
+  const wrapper = el('div', { class: 'seating-graph-wrap' });
+  wrapper.appendChild(svg);
+  return wrapper;
 }
 
 function renderSeatingSetup(v) {
@@ -214,21 +306,18 @@ function renderSeatingSetup(v) {
   } else if (pending.length) {
     status = el('p', { class: 'muted center' }, `Waiting on seating from: ${pending.join(', ')}`);
   } else {
-    status = el('p', { class: 'muted center' }, "⚠️ Seating doesn't form a full circle yet — double check with the table.");
+    status = el('p', { class: 'muted center' }, "⚠️ Not a full circle yet — someone's answer doesn't line up. Check the diagram below.");
   }
 
   return el('div', { class: 'card' }, [
     el('h2', {}, 'Seating'),
-    el('p', { class: 'muted' }, 'Go around the table — everyone answers who is sitting to their left and right.'),
-    el('label', { class: 'muted', style: 'display:block;margin-top:10px;font-size:0.85rem;' }, [
-      'Who is sitting to your LEFT?',
-      neighborSelect(v, 'left'),
-    ]),
+    el('p', { class: 'muted' }, 'Go around the table — everyone just answers who is sitting to their right.'),
     el('label', { class: 'muted', style: 'display:block;margin-top:10px;font-size:0.85rem;' }, [
       'Who is sitting to your RIGHT?',
-      neighborSelect(v, 'right'),
+      rightNeighborSelect(v),
     ]),
     status,
+    v.players.length >= 3 ? renderSeatingGraph(v) : null,
   ]);
 }
 

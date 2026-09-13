@@ -9,6 +9,8 @@ export interface PublicPlayerView {
   connected: boolean;
   isSelf: boolean;
   hasDeclaredSeating: boolean;
+  /** Who this player currently says is sitting to their right — public (it's physical seating, not a secret), used to draw the seating circle. */
+  declaredRightId: string | null;
   character?: string;
   characterName?: string;
 }
@@ -134,7 +136,10 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     const charId = revealAll ? p.character : isSelf ? p.perceived : undefined;
     return {
       id: p.id, name: p.name, seat: p.seat, alive: p.alive, connected: p.connected, isSelf,
-      hasDeclaredSeating: !!(p.seatLeftId && p.seatRightId),
+      // Only "who's on your right" is ever actively asked — the left side is derived via
+      // reciprocal auto-fill in declareNeighbor, so it's not part of what counts as "done".
+      hasDeclaredSeating: !!p.seatRightId,
+      declaredRightId: p.seatRightId,
       character: charId,
       characterName: charId ? CHARACTERS[charId].name : undefined,
     };
