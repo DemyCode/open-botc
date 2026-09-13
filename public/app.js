@@ -1,8 +1,8 @@
 const state = {
   ws: null,
-  code: sessionStorage.getItem('botc.code'),
-  token: sessionStorage.getItem('botc.token'),
-  playerId: sessionStorage.getItem('botc.playerId'),
+  code: localStorage.getItem('botc.code'),
+  token: localStorage.getItem('botc.token'),
+  playerId: localStorage.getItem('botc.playerId'),
   view: null,
   selected: [],
   dawnSeenForDay: null,
@@ -62,9 +62,9 @@ function handleMessage(msg) {
     state.code = msg.code;
     state.token = msg.token;
     state.playerId = msg.playerId;
-    sessionStorage.setItem('botc.code', msg.code);
-    sessionStorage.setItem('botc.token', msg.token);
-    sessionStorage.setItem('botc.playerId', msg.playerId);
+    localStorage.setItem('botc.code', msg.code);
+    localStorage.setItem('botc.token', msg.token);
+    localStorage.setItem('botc.playerId', msg.playerId);
   } else if (msg.t === 'view') {
     state.view = msg.view;
     handleTurnChange(msg.view);
@@ -142,9 +142,9 @@ function rolesButton() {
 function leaveGame() {
   if (!confirm("Leave this game? You'll go back to the join/create screen.")) return;
   send({ t: 'leave' });
-  sessionStorage.removeItem('botc.code');
-  sessionStorage.removeItem('botc.token');
-  sessionStorage.removeItem('botc.playerId');
+  localStorage.removeItem('botc.code');
+  localStorage.removeItem('botc.token');
+  localStorage.removeItem('botc.playerId');
   state.code = null;
   state.token = null;
   state.playerId = null;
@@ -180,9 +180,10 @@ function aliveStatus(v) {
 
 function roleBanner(v) {
   if (!v.myCharacter) return null;
-  return el('div', { class: 'role-banner' }, [
+  const alignCls = v.myCharacter.alignment === 'evil' ? 'evil' : 'good';
+  return el('div', { class: 'role-banner ' + alignCls }, [
     aliveStatus(v),
-    el('div', { class: 'align' }, v.myCharacter.alignment),
+    el('div', { class: 'align' }, (alignCls === 'evil' ? '😈 ' : '😇 ') + v.myCharacter.alignment),
     el('div', { class: 'name' }, v.myCharacter.name),
     el('div', { class: 'ability' }, v.myCharacter.ability),
     el(
@@ -259,8 +260,11 @@ function renderLanding() {
   );
 
   return renderScreen([
-    el('h1', {}, 'Blood on the Clocktower'),
-    el('p', { class: 'muted' }, 'Fully automatic storyteller. Play in person, on your phones.'),
+    el('div', { class: 'hero' }, [
+      el('div', { class: 'hero-icon' }, '🔔'),
+      el('h1', { class: 'hero-title' }, 'Blood on the Clocktower'),
+      el('p', { class: 'hero-tagline' }, 'Fully automatic storyteller. Play in person, on your phones.'),
+    ]),
     el('div', { class: 'card', style: 'display:flex;flex-direction:column;gap:10px;' }, [nameInput, codeInput, joinBtn]),
     el('div', { class: 'center muted' }, 'or'),
     createBtn,
@@ -775,18 +779,23 @@ function renderDay(v) {
 }
 
 function renderEnded(v) {
-  const winnerLabel = v.winner === 'good' ? 'Good Wins!' : 'Evil Wins!';
+  const isGood = v.winner === 'good';
   const children = [
-    el('h1', { class: 'center' }, winnerLabel),
+    el('div', { class: 'winner-banner ' + (isGood ? 'good' : 'evil') }, [
+      el('span', { class: 'icon' }, isGood ? '😇' : '😈'),
+      el('h1', {}, isGood ? 'Good Wins!' : 'Evil Wins!'),
+    ]),
     el(
       'div',
       { class: 'card player-list' },
-      v.players.map((p) =>
-        el('div', { class: 'player-row' + (p.alive ? '' : ' dead') }, [
+      v.players.map((p) => {
+        const team = charactersCache && charactersCache.find((c) => c.id === p.character)?.team;
+        const alignCls = team === 'minion' || team === 'demon' ? 'evil' : team ? 'good' : '';
+        return el('div', { class: `player-row ${alignCls}` + (p.alive ? '' : ' dead') }, [
           el('div', { class: 'seat' }, String(p.seat + 1)),
           el('div', {}, `${p.name} — ${p.characterName || '?'}`),
-        ])
-      )
+        ]);
+      })
     ),
   ];
 
@@ -837,3 +846,4 @@ window.addEventListener('storage', (e) => {
 
 connect();
 render();
+loadCharacters(); // warm the cache so the end-game reveal can color rows by alignment right away
