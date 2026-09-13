@@ -280,6 +280,30 @@ function renderNight(v) {
   ]);
 }
 
+function renderVoteList(v, n) {
+  return el(
+    'div',
+    { class: 'vote-list' },
+    n.voteOrder.map(({ id, name }) => {
+      const voted = id in n.votes;
+      const isCurrent = id === n.currentVoterId;
+      let status = '· waiting';
+      let statusClass = 'muted';
+      if (voted) {
+        status = n.votes[id] ? '✓ Yes' : '✗ No';
+        statusClass = n.votes[id] ? 'yes' : 'no';
+      } else if (isCurrent) {
+        status = 'voting…';
+        statusClass = 'current';
+      }
+      return el('div', { class: 'vote-row' + (isCurrent ? ' current' : '') }, [
+        el('div', {}, name + (id === v.selfId ? ' (you)' : '')),
+        el('div', { class: 'vote-status ' + statusClass }, status),
+      ]);
+    })
+  );
+}
+
 function renderNomination(v, isHost) {
   const n = v.nomination;
   const card = [el('h2', {}, `${n.nominatorName} accuses ${n.nomineeName}`)];
@@ -295,8 +319,6 @@ function renderNomination(v, isHost) {
       card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'skipSpeech' }) }, 'Done — start the vote'));
     }
   } else if (n.state === 'voting') {
-    const yesCount = Object.values(n.votes).filter(Boolean).length;
-    card.push(el('p', { class: 'muted center' }, `${yesCount} yes so far`));
     if (v.selfId === n.currentVoterId) {
       card.push(el('p', { class: 'center' }, "It's your vote — everyone can see it."));
       card.push(
@@ -308,6 +330,7 @@ function renderNomination(v, isHost) {
     } else {
       card.push(el('p', { class: 'muted center pulse' }, `Waiting on ${n.currentVoterName || '…'} to vote…`));
     }
+    card.push(renderVoteList(v, n));
     if (isHost) card.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'closeVote' }) }, 'Tally Now'));
   }
 

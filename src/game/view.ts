@@ -38,6 +38,8 @@ export interface NominationView {
   currentVoterId: string | null;
   currentVoterName: string | null;
   voterDeadline: number | null;
+  /** Seating order the vote goes around in, so the client can render everyone's vote as a list. */
+  voteOrder: { id: string; name: string }[];
   votes: Record<string, boolean>;
 }
 
@@ -108,6 +110,7 @@ function buildNomination(state: GameState, nom: Nomination): NominationView {
     currentVoterId: nom.currentVoterId,
     currentVoterName: nom.currentVoterId ? state.players.find((p) => p.id === nom.currentVoterId)?.name ?? null : null,
     voterDeadline: nom.voterDeadline,
+    voteOrder: nom.voteOrder.map((id) => ({ id, name: state.players.find((p) => p.id === id)?.name ?? '' })),
     votes: nom.votes,
   };
 }

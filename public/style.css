@@ -162,3 +162,20 @@ button.block { width: 100%; }
 
 .footer-actions { display: flex; gap: 10px; }
 .footer-actions button { flex: 1; }
+
+.vote-list { display: flex; flex-direction: column; gap: 4px; margin-top: 14px; }
+.vote-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  font-size: 0.92rem;
+}
+.vote-row.current { outline: 2px solid var(--accent); }
+.vote-status { font-weight: 700; font-size: 0.85rem; }
+.vote-status.yes { color: var(--good); }
+.vote-status.no { color: var(--evil); }
+.vote-status.current { color: var(--accent); }
+.vote-status.muted { color: var(--muted); font-weight: 500; }
