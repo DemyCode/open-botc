@@ -47,8 +47,10 @@ export function addPlayer(state: GameState, name: string): PlayerState {
 }
 
 /**
- * Each player declares who they believe sits to their left and right. Once every player has
- * declared both sides *and* those declarations agree with each other all the way around (each
+ * Each player declares who they believe sits to their left and right. Declaring one side also
+ * fills in the *other* player's opposite side automatically — if you say "X is to my left", X
+ * immediately sees you as being on their right, without X needing to say so themselves. Once
+ * every player's sides are filled and they all agree with each other all the way around (each
  * player's right-hand neighbor's left-hand neighbor is that same player), the circle is fully
  * determined and everyone's `seat` is assigned by walking it — no arbitrary join-order seating.
  */
@@ -56,13 +58,18 @@ export function declareNeighbor(state: GameState, playerId: string, side: 'left'
   if (state.phase !== 'lobby') throw new GameError('Seating can only be set before the game starts');
   const self = findPlayer(state, playerId);
   if (neighborId === playerId) throw new GameError('You cannot be your own neighbor');
-  findPlayer(state, neighborId);
+  const neighbor = findPlayer(state, neighborId);
   const other = side === 'left' ? self.seatRightId : self.seatLeftId;
   if (other === neighborId && state.players.length > 2) {
     throw new GameError('Your left and right neighbors must be different people');
   }
-  if (side === 'left') self.seatLeftId = neighborId;
-  else self.seatRightId = neighborId;
+  if (side === 'left') {
+    self.seatLeftId = neighborId;
+    neighbor.seatRightId = playerId;
+  } else {
+    self.seatRightId = neighborId;
+    neighbor.seatLeftId = playerId;
+  }
   state.seatingConfirmed = tryResolveSeating(state);
 }
 

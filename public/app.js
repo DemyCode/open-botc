@@ -189,7 +189,10 @@ function renderLanding() {
 }
 
 function neighborSelect(v, side) {
-  const others = v.players.filter((p) => p.id !== v.selfId);
+  // Never yourself, and never whoever is already picked for the other side (same person can't
+  // be both your left and right neighbor).
+  const otherSideId = side === 'left' ? v.mySeatRightId : v.mySeatLeftId;
+  const others = v.players.filter((p) => p.id !== v.selfId && p.id !== otherSideId);
   const current = side === 'left' ? v.mySeatLeftId : v.mySeatRightId;
   return el(
     'select',

@@ -56,6 +56,42 @@ test('a one-sided mismatch (right says X, but X does not say left back) does not
   assert.equal(s.seatingConfirmed, false);
 });
 
+test('declaring one side automatically fills in the reciprocal for the other player', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const [a, b] = s.players;
+  declareNeighbor(s, a.id, 'right', b.id); // "b is to my right"
+  assert.equal(b.seatLeftId, a.id, "b should automatically see a as being on b's left");
+});
+
+test('a full circle can be confirmed with only one declaration per edge, thanks to reciprocal auto-fill', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const order = s.players;
+  // Each player only declares their own right neighbor — every left side is auto-filled.
+  for (let i = 0; i < order.length; i++) {
+    declareNeighbor(s, order[i].id, 'right', order[(i + 1) % order.length].id);
+  }
+  assert.equal(s.seatingConfirmed, true);
+  assert.deepEqual(
+    s.players.slice().sort((p, q) => p.seat - q.seat).map((p) => p.id),
+    order.map((p) => p.id)
+  );
+});
+
+test('a later conflicting reciprocal overwrite correctly breaks a previously resolved circle', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const order = s.players;
+  const [a, , , d] = order;
+  for (let i = 0; i < order.length; i++) {
+    declareNeighbor(s, order[i].id, 'right', order[(i + 1) % order.length].id);
+  }
+  assert.equal(s.seatingConfirmed, true);
+
+  // d mistakenly claims a is to their right, silently overwriting a's declared left (was e).
+  declareNeighbor(s, d.id, 'right', a.id);
+  assert.equal(a.seatLeftId, d.id, "a's left should now reflect d's claim");
+  assert.equal(s.seatingConfirmed, false);
+});
+
 test('you cannot declare yourself as your own neighbor', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
   const [a] = s.players;
