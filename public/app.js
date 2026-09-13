@@ -1,8 +1,8 @@
 const state = {
   ws: null,
-  code: localStorage.getItem('botc.code'),
-  token: localStorage.getItem('botc.token'),
-  playerId: localStorage.getItem('botc.playerId'),
+  code: sessionStorage.getItem('botc.code'),
+  token: sessionStorage.getItem('botc.token'),
+  playerId: sessionStorage.getItem('botc.playerId'),
   view: null,
   selected: [],
 };
@@ -60,9 +60,9 @@ function handleMessage(msg) {
     state.code = msg.code;
     state.token = msg.token;
     state.playerId = msg.playerId;
-    localStorage.setItem('botc.code', msg.code);
-    localStorage.setItem('botc.token', msg.token);
-    localStorage.setItem('botc.playerId', msg.playerId);
+    sessionStorage.setItem('botc.code', msg.code);
+    sessionStorage.setItem('botc.token', msg.token);
+    sessionStorage.setItem('botc.playerId', msg.playerId);
   } else if (msg.t === 'view') {
     state.view = msg.view;
     maybeVibrate(msg.view);
