@@ -139,6 +139,25 @@ function rolesButton() {
   return el('button', { class: 'secondary roles-btn', onclick: showRolesModal }, '📜 All Roles');
 }
 
+function leaveGame() {
+  if (!confirm("Leave this game? You'll go back to the join/create screen.")) return;
+  send({ t: 'leave' });
+  sessionStorage.removeItem('botc.code');
+  sessionStorage.removeItem('botc.token');
+  sessionStorage.removeItem('botc.playerId');
+  state.code = null;
+  state.token = null;
+  state.playerId = null;
+  state.view = null;
+  state.dawnSeenForDay = null;
+  state.duskSeenForNight = null;
+  render();
+}
+
+function leaveButton() {
+  return el('button', { class: 'secondary leave-btn', onclick: leaveGame }, '🚪 Leave Game');
+}
+
 function renderScreen(children) {
   return el('div', { class: 'screen' }, children);
 }
@@ -783,6 +802,7 @@ function render() {
     app.appendChild(renderLanding());
     return;
   }
+  app.appendChild(leaveButton()); // once you've joined a room, always have a way back out — reload used to strand you here
   if (!state.view) {
     app.appendChild(renderScreen([el('p', { class: 'muted center' }, 'Connecting…')]));
     return;

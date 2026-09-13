@@ -106,6 +106,20 @@ wss.on('connection', (ws: WebSocket) => {
         return;
       }
 
+      if (msg.t === 'leave') {
+        if (!conn.code || !conn.playerId) return;
+        const code = conn.code;
+        const state = rooms.get(code);
+        if (state) {
+          engine.leaveRoom(state, conn.playerId);
+          rooms.forgetPlayer(code, conn.playerId);
+          rooms.broadcast(code);
+        }
+        conn.code = null;
+        conn.playerId = null;
+        return;
+      }
+
       if (!conn.code || !conn.playerId) {
         send({ t: 'error', message: 'Not joined' });
         return;

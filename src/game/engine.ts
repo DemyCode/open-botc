@@ -87,6 +87,26 @@ function tryResolveSeating(state: GameState): boolean {
   return true;
 }
 
+/**
+ * Leaving during the lobby fully removes you — the game hasn't started, so there's nothing
+ * that depends on your slot (role counts, seating, night order). Reassigns host if you were it,
+ * and invalidates seating confirmation the same way a newcomer would. Leaving after the game has
+ * started can't safely remove you (it would corrupt the dealt roles/seat order), so it's treated
+ * the same as losing connection — you're just marked disconnected, same as closing the tab.
+ */
+export function leaveRoom(state: GameState, playerId: string): void {
+  if (state.phase === 'lobby') {
+    const idx = state.players.findIndex((p) => p.id === playerId);
+    if (idx === -1) return;
+    state.players.splice(idx, 1);
+    if (state.hostId === playerId) state.hostId = state.players[0]?.id ?? '';
+    state.seatingConfirmed = false;
+    return;
+  }
+  const player = state.players.find((p) => p.id === playerId);
+  if (player) player.connected = false;
+}
+
 export function findPlayerByToken(state: GameState, token: string): PlayerState | undefined {
   return state.players.find((p) => p.token === token);
 }

@@ -111,6 +111,12 @@ export class RoomManager {
     }
   }
 
+  /** Stops tracking a player's sockets/last-sent-view entirely — used when they explicitly leave. */
+  forgetPlayer(code: string, playerId: string): void {
+    this.sockets.get(code)?.delete(playerId);
+    this.lastPayload.get(code)?.delete(playerId);
+  }
+
   /**
    * Pushes each player their own filtered view, but only if it actually differs from what
    * they were last sent. Every player's real turn and the 1s timeout-checking tick all end up

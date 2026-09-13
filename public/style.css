@@ -249,6 +249,16 @@ button.block { width: 100%; }
   opacity: 0.85;
 }
 
+.leave-btn {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  z-index: 500;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;

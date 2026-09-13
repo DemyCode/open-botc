@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addPlayer, declareNeighbor, startGame } from '../game/engine.js';
+import { addPlayer, declareNeighbor, leaveRoom, startGame } from '../game/engine.js';
 import { mk } from './helpers.js';
 
 /** Declares a full circle in the given player order: each player's right is the next in `order`. */
@@ -110,4 +110,41 @@ test('the game cannot start until seating is confirmed', () => {
   declareFullCircle(s, [a, b, c, d, e]);
   startGame(s); // should not throw now
   assert.equal(s.phase, 'night');
+});
+
+test('leaving during the lobby fully removes you from the room', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const [, b] = s.players;
+  leaveRoom(s, b.id);
+  assert.equal(s.players.length, 4);
+  assert.ok(!s.players.some((p) => p.id === b.id));
+});
+
+test('leaving as the host reassigns host to another remaining player', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const [a, b] = s.players;
+  assert.equal(s.hostId, a.id);
+  leaveRoom(s, a.id);
+  assert.equal(s.hostId, b.id);
+});
+
+test('leaving during the lobby invalidates a previously confirmed seating', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const [a, b, c, d, e] = s.players;
+  declareFullCircle(s, [a, b, c, d, e]);
+  assert.equal(s.seatingConfirmed, true);
+
+  leaveRoom(s, c.id);
+  assert.equal(s.seatingConfirmed, false);
+});
+
+test('leaving after the game has started only marks you disconnected — you stay in the game', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const [a, b, c, d, e] = s.players;
+  declareFullCircle(s, [a, b, c, d, e]);
+  startGame(s);
+
+  leaveRoom(s, b.id);
+  assert.equal(s.players.length, 5, 'removing a player mid-game would corrupt the dealt roles');
+  assert.equal(b.connected, false);
 });
