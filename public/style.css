@@ -390,8 +390,10 @@ button.block { width: 100%; }
   color: var(--muted);
   margin: 0 0 8px;
 }
-.roles-team.minion, .roles-team.demon { color: var(--evil); }
-.roles-team.townsfolk, .roles-team.outsider { color: var(--good); }
+/* Same blue/red as the role-banner good/evil gradients, not the plain green/red status colors —
+   this is about team alignment, not alive/dead or yes/no. */
+.roles-team.minion, .roles-team.demon { color: var(--evil-2); }
+.roles-team.townsfolk, .roles-team.outsider { color: var(--good-2); }
 .roles-team-icon { width: 18px; height: 18px; flex-shrink: 0; }
 .roles-card {
   display: flex;
@@ -399,11 +401,14 @@ button.block { width: 100%; }
   gap: 10px;
   background: var(--panel);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--good-2);
   border-radius: 12px;
   padding: 10px 12px;
   margin-bottom: 8px;
 }
-.roles-card-icon { width: 24px; height: 24px; flex-shrink: 0; margin-top: 2px; color: var(--accent-2); }
+.roles-card.minion, .roles-card.demon { border-left-color: var(--evil-2); }
+.roles-card-icon { width: 24px; height: 24px; flex-shrink: 0; margin-top: 2px; color: var(--good-2); }
+.roles-card.minion .roles-card-icon, .roles-card.demon .roles-card-icon { color: var(--evil-2); }
 .roles-card-text { min-width: 0; }
 .roles-name { font-weight: 700; margin-bottom: 2px; }
 .roles-ability { font-size: 0.85rem; color: var(--muted); line-height: 1.35; }

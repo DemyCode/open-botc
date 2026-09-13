@@ -498,7 +498,7 @@ function showRolesModal() {
         ...chars
           .filter((c) => c.team === team)
           .map((c) => localizeChar(c))
-          .map((c) => el('div', { class: 'roles-card' }, [
+          .map((c) => el('div', { class: 'roles-card ' + team }, [
             svgIcon(c.id, 'roles-card-icon'),
             el('div', { class: 'roles-card-text' }, [
               el('div', { class: 'roles-name' }, c.name),
