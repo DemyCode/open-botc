@@ -300,32 +300,31 @@ function t(key, ...args) {
   return typeof v === 'function' ? v(...args) : v;
 }
 
-// French names/abilities for every Trouble Brewing character. Ability text is an original,
-// plain-language translation of the mechanic (not copied from any rulebook) — same standard as
-// the rest of this project's content.
+// French names/abilities for every Trouble Brewing character, using the official French edition's
+// terminology (provided by the user) rather than home-grown translations.
 const CHAR_I18N_FR = {
-  washerwoman: { name: 'Lavandière', ability: "Vous savez, dès le début, que l'un de 2 joueurs est un Villageois précis." },
-  librarian: { name: 'Bibliothécaire', ability: "Vous savez, dès le début, que l'un de 2 joueurs est un Étranger précis (ou qu'il n'y a aucun Étranger)." },
-  investigator: { name: 'Enquêteur', ability: "Vous savez, dès le début, que l'un de 2 joueurs est un Sbire précis." },
-  chef: { name: 'Chef', ability: 'Vous savez, dès le début, combien de paires de joueurs maléfiques sont assises côte à côte.' },
-  empath: { name: 'Empathe', ability: 'Chaque nuit, vous apprenez combien de vos 2 voisins vivants sont maléfiques.' },
-  fortuneteller: { name: 'Diseuse de bonne aventure', ability: "Chaque nuit, choisissez 2 joueurs : vous apprenez si l'un d'eux est le Démon. Un joueur bon peut apparaître comme le Démon à vos yeux." },
-  undertaker: { name: 'Croque-mort', ability: 'Chaque nuit*, vous apprenez quel personnage a été exécuté aujourd\'hui.' },
-  monk: { name: 'Moine', ability: 'Chaque nuit*, choisissez un joueur (pas vous-même) : il est protégé du Démon cette nuit.' },
-  ravenkeeper: { name: 'Gardien des corbeaux', ability: 'Si vous mourez pendant la nuit, vous êtes réveillé pour choisir un joueur : vous apprenez son personnage.' },
-  virgin: { name: 'Vierge', ability: 'La première fois que vous êtes nominé, si le nominateur est un Villageois, il est exécuté immédiatement.' },
-  slayer: { name: 'Tueur', ability: 'Une fois par partie, le jour, désignez publiquement un joueur : si c\'est le Démon, il meurt.' },
+  washerwoman: { name: 'Lavandière', ability: 'Lors de votre première nuit, vous apprenez un rôle de Villageois en jeu parmi 2 joueurs.' },
+  librarian: { name: 'Archiviste', ability: 'Lors de votre première nuit, vous apprenez un rôle de Marginal en jeu parmi 2 joueurs (ou qu’aucun Marginal n’est en jeu).' },
+  investigator: { name: 'Détective', ability: 'Lors de votre première nuit, vous apprenez un rôle de Sbire en jeu parmi 2 joueurs.' },
+  chef: { name: 'Cuisinier', ability: 'Lors de votre première nuit, vous apprenez le nombre de paires de joueurs maléfiques.' },
+  empath: { name: 'Empathe', ability: 'Chaque nuit, vous apprenez combien de vos 2 voisins en vie sont maléfiques.' },
+  fortuneteller: { name: 'Voyante', ability: 'Chaque nuit, choisissez 2 joueurs et apprenez si un Démon est parmi eux. Un des joueurs bons vous apparaît comme un Démon.' },
+  undertaker: { name: 'Fossoyeur', ability: 'Chaque nuit*, vous apprenez quel rôle est mort par exécution dans la journée.' },
+  monk: { name: 'Moine', ability: 'Chaque nuit*, choisissez un joueur (sauf vous-même) : il est protégé du Démon cette nuit.' },
+  ravenkeeper: { name: 'Corneille', ability: 'Si vous mourez la nuit, vous êtes réveillée pour choisir un joueur et apprendre son rôle.' },
+  virgin: { name: 'Immaculée', ability: 'La première fois qu’un joueur vous nomme, il est exécuté immédiatement s’il s’agit d’un Villageois.' },
+  slayer: { name: 'Pourfendeuse', ability: 'Une fois par partie, dans la journée, choisissez publiquement un joueur : s’il est le Démon, il meurt.' },
   soldier: { name: 'Soldat', ability: 'Vous êtes protégé du Démon.' },
-  mayor: { name: 'Maire', ability: "S'il ne reste que 3 joueurs vivants et qu'aucune exécution n'a lieu, votre camp gagne. Si vous mourez la nuit, un autre joueur peut mourir à votre place." },
-  butler: { name: 'Majordome', ability: 'Chaque nuit, choisissez un joueur (pas vous-même) : demain, vous ne pouvez voter que si ce joueur vote aussi.' },
-  drunk: { name: 'Ivrogne', ability: "Vous ne savez pas que vous êtes l'Ivrogne. Vous pensez être un Villageois, mais votre pouvoir ne fonctionne pas." },
-  recluse: { name: 'Reclus', ability: 'Vous pouvez apparaître comme maléfique et comme un Sbire ou un Démon, même mort.' },
-  saint: { name: 'Saint', ability: 'Si vous mourez exécuté, votre camp perd.' },
-  poisoner: { name: 'Empoisonneuse', ability: 'Chaque nuit, choisissez un joueur : il est empoisonné cette nuit et le jour suivant.' },
-  spy: { name: 'Espionne', ability: 'Chaque nuit, vous voyez tout le grimoire. Vous pouvez apparaître comme bon et comme un Villageois ou un Étranger.' },
-  scarletwoman: { name: 'Femme écarlate', ability: 'S\'il y a 5 joueurs vivants ou plus et que le Démon meurt, vous devenez le Démon.' },
-  baron: { name: 'Baron', ability: 'Il y a des Étrangers supplémentaires en jeu. [+2 Étrangers]' },
-  imp: { name: 'Le Démon', ability: 'Chaque nuit*, choisissez un joueur : il meurt. Si vous vous tuez ainsi, un Sbire devient le Démon.' },
+  mayor: { name: 'Maire', ability: 'S’il n’y a que 3 joueurs en vie et pas d’exécution, votre équipe gagne. Si vous mourez la nuit, un autre joueur pourrait mourir à votre place.' },
+  butler: { name: 'Majordome', ability: 'Chaque nuit, choisissez un joueur (sauf vous-même). Le lendemain, vous pouvez voter uniquement si ce joueur vote.' },
+  drunk: { name: 'Ivrogne', ability: 'Vous ne savez pas que vous êtes l’Ivrogne. Vous pensez que vous êtes un Villageois.' },
+  recluse: { name: 'Recluse', ability: 'Vous pourriez apparaître comme maléfique et comme Sbire ou Démon, même morte.' },
+  saint: { name: 'Saint', ability: 'Si vous mourez par exécution, votre équipe perd.' },
+  poisoner: { name: 'Empoisonneur', ability: 'Chaque nuit, choisissez un joueur. Il est empoisonné cette nuit et le jour suivant.' },
+  spy: { name: 'Espionne', ability: 'Chaque nuit, vous voyez le Grimoire. Vous pourriez apparaître comme bonne et comme Villageois ou Marginal, même morte.' },
+  scarletwoman: { name: 'Femme écarlate', ability: 'S’il y a au moins 5 joueurs en vie et que le Démon meurt, vous devenez le Démon.' },
+  baron: { name: 'Baron', ability: 'Il y a deux Marginaux supplémentaires en jeu. [+2 Marginaux]' },
+  imp: { name: 'Diablotin', ability: 'Chaque nuit*, choisissez un joueur : il meurt. Si vous vous tuez de cette façon, un Sbire devient le Diablotin.' },
 };
 
 /** Merges the server's (English) character summary with the French override for the current language. */
@@ -350,11 +349,11 @@ function roleNameFor(id) {
 
 const TEAM_SINGULAR = {
   en: { townsfolk: 'Townsfolk', outsider: 'Outsider', minion: 'Minion' },
-  fr: { townsfolk: 'Villageois', outsider: 'Étranger', minion: 'Sbire' },
+  fr: { townsfolk: 'Villageois', outsider: 'Marginal', minion: 'Sbire' },
 };
 const TEAM_PLURAL = {
   en: { townsfolk: 'Townsfolk', outsider: 'Outsiders', minion: 'Minions' },
-  fr: { townsfolk: 'Villageois', outsider: 'Étrangers', minion: 'Sbires' },
+  fr: { townsfolk: 'Villageois', outsider: 'Marginaux', minion: 'Sbires' },
 };
 
 const MESSAGES = {
@@ -458,7 +457,7 @@ function tMsg(m) {
 
 const TEAM_LABELS = {
   en: { townsfolk: 'Townsfolk', outsider: 'Outsiders', minion: 'Minions', demon: 'Demon' },
-  fr: { townsfolk: 'Villageois', outsider: 'Étrangers', minion: 'Sbires', demon: 'Démon' },
+  fr: { townsfolk: 'Villageois', outsider: 'Marginaux', minion: 'Sbires', demon: 'Démons' },
 };
 
 function teamLabel(team) {
