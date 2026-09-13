@@ -227,13 +227,27 @@ button.block { width: 100%; }
   text-align: center;
   box-shadow: 0 6px 24px rgba(124, 92, 255, 0.35);
   animation: screen-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
 }
 .role-banner.good { background: linear-gradient(135deg, var(--good-1), var(--good-2)); box-shadow: 0 6px 24px rgba(37, 99, 235, 0.4); }
 .role-banner.evil { background: linear-gradient(135deg, var(--evil-1), var(--evil-2)); box-shadow: 0 6px 24px rgba(192, 38, 46, 0.4); }
+.role-banner.hidden { background: var(--panel); box-shadow: none; padding: 20px 18px; }
 .role-banner .name { font-family: var(--font-display); font-size: 1.45rem; font-weight: 700; }
 .role-banner .align { text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.8rem; opacity: 0.9; font-weight: 700; }
+.role-banner .team { text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7rem; opacity: 0.75; font-weight: 600; margin-top: 2px; }
 .role-banner .ability { font-size: 0.88rem; margin-top: 8px; opacity: 0.95; line-height: 1.35; }
-.role-banner .neighbors { font-size: 0.8rem; margin-top: 12px; opacity: 0.85; font-weight: 600; }
+.role-hide-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 6px 10px;
+  font-size: 0.7rem;
+  opacity: 0.85;
+  background: rgba(0, 0, 0, 0.22);
+  color: inherit;
+  box-shadow: none;
+}
+.role-banner.hidden .role-hide-btn { position: static; margin-top: 12px; background: var(--panel-2); }
 
 .status-bar {
   display: inline-block;

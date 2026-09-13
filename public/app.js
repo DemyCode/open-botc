@@ -7,6 +7,7 @@ const state = {
   selected: [],
   dawnSeenForDay: null,
   duskSeenForNight: null,
+  roleHidden: false,
 };
 
 let pendingJoin = null;
@@ -115,7 +116,10 @@ async function loadCharacters() {
 // rulebook), same as the rest of this project's original content.
 // ---------------------------------------------------------------------------
 
-let LANG = localStorage.getItem('botc.lang') || (navigator.language || 'en').slice(0, 2);
+// Per-tab, not per-browser: each player is their own tab/device, and testing with several tabs
+// in one browser (the same reason identity lives in sessionStorage) must let each pick their own
+// language independently rather than forcing everyone in the room onto one shared choice.
+let LANG = sessionStorage.getItem('botc.lang') || (navigator.language || 'en').slice(0, 2);
 if (LANG !== 'fr') LANG = 'en';
 
 const STRINGS = {
@@ -200,6 +204,9 @@ const STRINGS = {
     readyCount: (ready, total) => `${ready}/${total} players ready`,
     imReady: "I'm ready to listen",
     cancelReady: 'Actually, not ready yet',
+    hideRole: 'Hide role',
+    showRole: 'Show role',
+    villageLog: 'Village Log',
   },
   fr: {
     heroTagline: 'Narrateur entièrement automatique. Jouez en personne, sur vos téléphones.',
@@ -282,6 +289,9 @@ const STRINGS = {
     readyCount: (ready, total) => `${ready}/${total} joueurs prêts`,
     imReady: 'Je suis prêt à écouter',
     cancelReady: 'Finalement, pas encore prêt',
+    hideRole: 'Masquer le rôle',
+    showRole: 'Afficher le rôle',
+    villageLog: 'Journal du village',
   },
 };
 
@@ -455,9 +465,18 @@ function teamLabel(team) {
   return (TEAM_LABELS[LANG] || TEAM_LABELS.en)[team] || team;
 }
 
+const ALIGNMENT_LABELS = {
+  en: { good: 'Good', evil: 'Evil' },
+  fr: { good: 'Bon', evil: 'Maléfique' },
+};
+
+function alignmentLabel(alignment) {
+  return (ALIGNMENT_LABELS[LANG] || ALIGNMENT_LABELS.en)[alignment] || alignment;
+}
+
 function setLang(lang) {
   LANG = lang;
-  localStorage.setItem('botc.lang', lang);
+  sessionStorage.setItem('botc.lang', lang);
   render();
 }
 
@@ -552,20 +571,36 @@ function aliveStatus(v) {
 
 function roleBanner(v) {
   if (!v.myCharacter) return null;
+  const toggleBtn = el(
+    'button',
+    {
+      class: 'secondary role-hide-btn',
+      onclick: () => {
+        state.roleHidden = !state.roleHidden;
+        render();
+      },
+    },
+    state.roleHidden ? '👁 ' + t('showRole') : '🙈 ' + t('hideRole')
+  );
+
+  // Hiding shows only your alive/vote status — no alignment-colored background either, since
+  // that alone can hint good/evil to anyone glancing at the screen.
+  if (state.roleHidden) {
+    return el('div', { class: 'role-banner hidden' + (animateThisRender ? '' : ' no-anim') }, [aliveStatus(v), toggleBtn]);
+  }
+
   const alignCls = v.myCharacter.alignment === 'evil' ? 'evil' : 'good';
   const char = localizeChar(v.myCharacter);
+  const team = charactersCache && charactersCache.find((c) => c.id === v.myCharacter.id)?.team;
   const icon = svgIcon(ICON_PATHS[v.myCharacter.id] ? v.myCharacter.id : (alignCls === 'evil' ? 'demon' : 'townsfolk'), 'role-icon');
   return el('div', { class: 'role-banner ' + alignCls + (animateThisRender ? '' : ' no-anim') }, [
     aliveStatus(v),
+    toggleBtn,
     icon,
-    el('div', { class: 'align' }, v.myCharacter.alignment),
+    el('div', { class: 'align' }, alignmentLabel(v.myCharacter.alignment)),
+    team ? el('div', { class: 'team' }, teamLabel(team)) : null,
     el('div', { class: 'name' }, char.name),
     el('div', { class: 'ability' }, char.ability),
-    el(
-      'div',
-      { class: 'neighbors' },
-      `${v.leftNeighborName || '?'}  ⟵ you ⟶  ${v.rightNeighborName || '?'}`
-    ),
   ]);
 }
 
@@ -588,14 +623,18 @@ function playerRow(p, opts = {}) {
 }
 
 function renderLog(v) {
-  return el(
-    'div',
-    { class: 'card log' },
-    v.publicLog
-      .slice(-12)
-      .reverse()
-      .map((line) => el('div', { class: 'log-entry' }, tMsg(line)))
-  );
+  if (!v.publicLog.length) return null; // nothing has happened yet — an empty card here just reads as a mystery blank box
+  return el('div', { class: 'card' }, [
+    el('h2', {}, t('villageLog')),
+    el(
+      'div',
+      { class: 'log' },
+      v.publicLog
+        .slice(-12)
+        .reverse()
+        .map((line) => el('div', { class: 'log-entry' }, tMsg(line)))
+    ),
+  ]);
 }
 
 function renderLanding() {
@@ -1279,12 +1318,10 @@ setInterval(() => {
 }, 1000);
 
 // Lets toggling the practice-dots setting in one tab take effect in every other tab open on
-// this browser (localStorage writes don't fire this event in the tab that made them).
+// this browser (localStorage writes don't fire this event in the tab that made them). Language
+// lives in sessionStorage instead (each tab/player picks their own), so it never crosses tabs.
 window.addEventListener('storage', (e) => {
-  if (e.key === 'botc.dotsDisabled' || e.key === 'botc.lang') {
-    if (e.key === 'botc.lang' && e.newValue) LANG = e.newValue;
-    render();
-  }
+  if (e.key === 'botc.dotsDisabled') render();
 });
 
 connect();
