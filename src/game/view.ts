@@ -18,6 +18,12 @@ export interface PublicPlayerView {
   declaredRightId: string | null;
   character?: string;
   characterName?: string;
+  /** All public, table-visible facts: whether a dead player still holds their one ghost vote,
+   * and whether they've already nominated someone / already been nominated today — in the
+   * physical game these are all things anyone at the table can plainly see. */
+  ghostVoteUsed: boolean;
+  hasNominatedToday: boolean;
+  hasBeenNominatedToday: boolean;
 }
 
 export interface NightTurnChoice {
@@ -160,6 +166,9 @@ export function viewFor(state: GameState, viewerId: string): GameView {
       declaredRightId: p.seatRightId,
       character: charId,
       characterName: charId ? CHARACTERS[charId].name : undefined,
+      ghostVoteUsed: p.ghostVoteUsed,
+      hasNominatedToday: state.usedNominatorIds.includes(p.id),
+      hasBeenNominatedToday: state.usedNomineeIds.includes(p.id),
     };
   });
 

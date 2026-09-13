@@ -95,8 +95,10 @@ function handleTurnChange(view) {
 
 function showError(message) {
   const bar = el('div', {}, message);
+  // Starts below the topbar (leave/lang/roles buttons) instead of at the very top of the
+  // viewport, so it never covers them up and makes them briefly unclickable.
   bar.style.cssText =
-    'position:fixed;top:0;left:0;right:0;background:#f87171;color:#111;padding:10px;text-align:center;z-index:999;font-weight:600;';
+    'position:fixed;top:max(54px, calc(env(safe-area-inset-top) + 54px));left:0;right:0;background:#f87171;color:#111;padding:10px;text-align:center;z-index:400;font-weight:600;';
   document.body.appendChild(bar);
   setTimeout(() => bar.remove(), 3000);
 }
@@ -208,6 +210,13 @@ const STRINGS = {
     showRole: 'Show role',
     villageLog: 'Village Log',
     deadSuffix: ' (dead)',
+    noTalking: '🤫 No talking during the night — stay silent.',
+    voteLeftBadge: '🗳 vote left',
+    voteUsedBadge: 'vote used',
+    nominatedBadge: 'nominated ✗',
+    accusedBadge: 'accused ✗',
+    searchRoles: 'Search roles…',
+    noRolesMatch: 'No roles match your search.',
   },
   fr: {
     heroTagline: 'Narrateur entièrement automatique. Jouez en personne, sur vos téléphones.',
@@ -294,6 +303,13 @@ const STRINGS = {
     showRole: 'Afficher le rôle',
     villageLog: 'Journal du village',
     deadSuffix: ' (mort)',
+    noTalking: '🤫 Interdit de parler pendant la nuit — restez silencieux.',
+    voteLeftBadge: '🗳 vote restant',
+    voteUsedBadge: 'vote utilisé',
+    nominatedBadge: 'a nominé ✗',
+    accusedBadge: 'accusé(e) ✗',
+    searchRoles: 'Rechercher un rôle…',
+    noRolesMatch: 'Aucun rôle ne correspond à votre recherche.',
   },
 };
 
@@ -371,7 +387,7 @@ const MESSAGES = {
     ravenkeeperInfo: (v) => `${v.name} is the ${roleNameFor(v.role)}.`,
     minionInfoSolo: (v) => `You have no fellow Minions. The Demon is ${v.demon || 'unknown'}.`,
     minionInfoGroup: (v) => `Your fellow Minion${v.names.length === 1 ? ' is' : 's are'} ${v.names.join(', ')}. The Demon is ${v.demon || 'unknown'}.`,
-    demonInfo: (v) => `Your Minion${v.names.length === 1 ? ' is' : 's are'} ${v.names.join(', ') || 'no one'}. Your bluffs: ${v.bluffs.map(roleNameFor).join(', ')}.`,
+    demonInfo: (v) => `Your Minion${v.names.length === 1 ? ' is' : 's are'} ${v.names.join(', ') || 'no one'}. Those roles are not in this game: ${v.bluffs.map(roleNameFor).join(', ')}. You are safe to claim being one of them.`,
     spyGrimoire: (v) => 'Grimoire — ' + v.names.map((n, i) => `${n}: ${roleNameFor(v.roles[i])}${v.dead[i] ? ' (dead)' : ''}`).join('; ') + '.',
     poisonerChoose: () => 'Choose a player to poison.',
     monkChoose: () => 'Choose a player to protect (not yourself).',
@@ -415,7 +431,7 @@ const MESSAGES = {
     ravenkeeperInfo: (v) => `${v.name} est : ${roleNameFor(v.role)}.`,
     minionInfoSolo: (v) => `Vous n'avez aucun autre Sbire. Le Démon est ${v.demon || 'inconnu'}.`,
     minionInfoGroup: (v) => `Vos autres Sbires sont ${v.names.join(', ')}. Le Démon est ${v.demon || 'inconnu'}.`,
-    demonInfo: (v) => `Sbire(s) : ${v.names.join(', ') || 'personne'}. Vos leurres : ${v.bluffs.map(roleNameFor).join(', ')}.`,
+    demonInfo: (v) => `Sbire(s) : ${v.names.join(', ') || 'personne'}. Ces rôles ne sont pas dans cette partie : ${v.bluffs.map(roleNameFor).join(', ')}. Vous pouvez sans risque prétendre être l'un d'eux.`,
     spyGrimoire: (v) => 'Grimoire — ' + v.names.map((n, i) => `${n} : ${roleNameFor(v.roles[i])}${v.dead[i] ? ' (mort)' : ''}`).join('; ') + '.',
     poisonerChoose: () => 'Choisissez un joueur à empoisonner.',
     monkChoose: () => 'Choisissez un joueur à protéger (pas vous-même).',
@@ -493,28 +509,52 @@ function showRolesModal() {
   loadCharacters().then((chars) => {
     const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
     const teams = ['townsfolk', 'outsider', 'minion', 'demon'];
-    const sections = teams.map((team) =>
-      el('div', { class: 'roles-section' }, [
-        el('h3', { class: 'roles-team ' + team }, [svgIcon(team, 'roles-team-icon'), teamLabel(team)]),
-        ...chars
-          .filter((c) => c.team === team)
-          .map((c) => localizeChar(c))
-          .map((c) => el('div', { class: 'roles-card ' + team }, [
-            svgIcon(c.id, 'roles-card-icon'),
-            el('div', { class: 'roles-card-text' }, [
-              el('div', { class: 'roles-name' }, c.name),
-              el('div', { class: 'roles-ability' }, c.ability),
-            ]),
-          ])),
-      ])
-    );
+    const localized = chars.map((c) => localizeChar(c));
+    const body = el('div', { class: 'modal-body' });
+
+    function renderSections(query) {
+      const q = query.trim().toLowerCase();
+      body.innerHTML = '';
+      let matched = false;
+      for (const team of teams) {
+        const teamChars = localized.filter(
+          (c) => c.team === team && (!q || c.name.toLowerCase().includes(q) || c.ability.toLowerCase().includes(q))
+        );
+        if (!teamChars.length) continue;
+        matched = true;
+        body.appendChild(
+          el('div', { class: 'roles-section' }, [
+            el('h3', { class: 'roles-team ' + team }, [svgIcon(team, 'roles-team-icon'), teamLabel(team)]),
+            ...teamChars.map((c) =>
+              el('div', { class: 'roles-card ' + team }, [
+                svgIcon(c.id, 'roles-card-icon'),
+                el('div', { class: 'roles-card-text' }, [
+                  el('div', { class: 'roles-name' }, c.name),
+                  el('div', { class: 'roles-ability' }, c.ability),
+                ]),
+              ])
+            ),
+          ])
+        );
+      }
+      if (!matched) body.appendChild(el('p', { class: 'muted center' }, t('noRolesMatch')));
+    }
+
+    renderSections('');
+    const searchInput = el('input', {
+      placeholder: t('searchRoles'),
+      class: 'roles-search',
+      oninput: (e) => renderSections(e.target.value),
+    });
+
     overlay.appendChild(
       el('div', { class: 'modal' }, [
         el('div', { class: 'modal-header' }, [
           el('h2', {}, t('allRolesTitle')),
           el('button', { class: 'secondary', onclick: () => overlay.remove() }, t('close')),
         ]),
-        el('div', { class: 'modal-body' }, sections),
+        el('div', { class: 'modal-search' }, [searchInput]),
+        body,
       ])
     );
     document.body.appendChild(overlay);
@@ -618,6 +658,19 @@ function playerRow(p, opts = {}) {
     children.push(
       el('div', { class: 'vote-status ' + (p.hasDeclaredSeating ? 'yes' : 'muted') }, p.hasDeclaredSeating ? t('seated') : t('seatingEllipsis'))
     );
+  }
+  if (opts.showDayStatus) {
+    const badges = el('div', { class: 'day-badges' });
+    // Alive rows need no badge — normal (non-struck-through) styling already says "alive" —
+    // but "dead" alone doesn't say whether their one ghost vote is still available.
+    if (!p.alive) {
+      badges.appendChild(
+        el('span', { class: 'badge ' + (p.ghostVoteUsed ? 'muted' : 'yes') }, p.ghostVoteUsed ? t('voteUsedBadge') : t('voteLeftBadge'))
+      );
+    }
+    if (p.hasNominatedToday) badges.appendChild(el('span', { class: 'badge cross' }, t('nominatedBadge')));
+    if (p.hasBeenNominatedToday) badges.appendChild(el('span', { class: 'badge cross' }, t('accusedBadge')));
+    if (badges.childNodes.length) children.push(badges);
   }
   children.push(el('div', { class: 'dot ' + (p.connected ? 'on' : 'off') }));
   return el('div', { class: 'player-row' + (p.alive === false ? ' dead' : '') }, children);
@@ -919,10 +972,15 @@ function renderDawnScreen(v) {
   ]);
 }
 
+function noTalkingBanner() {
+  return el('div', { class: 'no-talking' }, t('noTalking'));
+}
+
 function renderDuskScreen(v) {
   return renderScreen([
     el('div', { class: 'moon' }, '🌙'),
     el('h1', { class: 'center' }, t('night', v.night)),
+    noTalkingBanner(),
     el('div', { class: 'card center' }, el('h2', {}, tMsg(v.duskMessage))),
     el(
       'button',
@@ -947,6 +1005,7 @@ function renderNight(v) {
       roleBanner(v),
       banner,
       el('h1', { class: 'center' }, t('night', v.night)),
+      noTalkingBanner(),
       el('div', { class: 'card' }, [
         el('h2', {}, turn.shape === 'info' ? t('yourInformation') : t('yourTurn')),
         el('p', { class: 'muted' }, tMsg(turn.body)),
@@ -990,6 +1049,7 @@ function renderNight(v) {
       roleBanner(v),
       banner,
       el('h1', { class: 'center' }, t('night', v.night)),
+      noTalkingBanner(),
       el('div', { class: 'card' }, [el('h2', {}, t('yourResult')), el('p', { class: 'muted' }, tMsg(v.nightResult))]),
     ]);
   }
@@ -998,6 +1058,7 @@ function renderNight(v) {
     roleBanner(v),
     banner,
     el('h1', { class: 'center pulse' }, t('night', v.night)),
+    noTalkingBanner(),
     v.amIAlive
       ? dotsEnabled()
         ? renderWaitingDots()
@@ -1177,7 +1238,7 @@ function renderDay(v) {
         'div',
         { class: 'card player-list' },
         v.players.map((p) => {
-          const row = playerRow(p);
+          const row = playerRow(p, { showDayStatus: true });
           if (self && self.alive && p.alive && p.id !== v.selfId) {
             row.style.cursor = 'pointer';
             row.addEventListener('click', () => send({ t: 'nominate', nomineeId: p.id }));
