@@ -337,6 +337,9 @@ button.block { width: 100%; }
 
 .roles-section { margin-bottom: 18px; }
 .roles-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -345,6 +348,7 @@ button.block { width: 100%; }
 }
 .roles-team.minion, .roles-team.demon { color: var(--evil); }
 .roles-team.townsfolk, .roles-team.outsider { color: var(--good); }
+.roles-team-icon { width: 18px; height: 18px; flex-shrink: 0; }
 .roles-card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -355,11 +359,25 @@ button.block { width: 100%; }
 .roles-name { font-weight: 700; margin-bottom: 2px; }
 .roles-ability { font-size: 0.85rem; color: var(--muted); line-height: 1.35; }
 
+.icon-svg { fill: currentColor; }
+
 .hero { text-align: center; padding: 12px 0 4px; }
 .hero-icon {
-  font-size: 3.4rem;
+  display: flex;
+  justify-content: center;
+  color: var(--accent-2);
   filter: drop-shadow(0 0 24px rgba(124, 92, 255, 0.6));
   animation: hero-float 5s ease-in-out infinite;
+}
+.hero-icon .icon-svg { width: 56px; height: 56px; }
+
+.role-icon {
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 4px;
+  display: block;
+  color: rgba(255, 255, 255, 0.92);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
 }
 @keyframes hero-float {
   0%, 100% { transform: translateY(0); }
