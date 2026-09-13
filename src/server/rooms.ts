@@ -18,6 +18,7 @@ function randomCode(): string {
 export class RoomManager {
   private rooms = new Map<string, GameState>();
   private sockets = new Map<string, Map<string, Set<WebSocket>>>();
+  private lastPayload = new Map<string, Map<string, string>>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -91,14 +92,29 @@ export class RoomManager {
     }
   }
 
+  /**
+   * Pushes each player their own filtered view, but only if it actually differs from what
+   * they were last sent. Every player's real turn, the night decoy round, and the 1s
+   * timeout-checking tick all end up calling this — without the dedup, a client would receive
+   * a fresh (but identical) view roughly every second and re-render, wiping out any
+   * in-progress local UI state (a partial night-turn selection, focus on a text input) even
+   * though nothing in the game actually changed for that player.
+   */
   broadcast(code: string): void {
     const state = this.rooms.get(code);
     const byPlayer = this.sockets.get(code);
     if (!state || !byPlayer) return;
+    let cache = this.lastPayload.get(code);
+    if (!cache) {
+      cache = new Map();
+      this.lastPayload.set(code, cache);
+    }
     for (const player of state.players) {
       const set = byPlayer.get(player.id);
       if (!set) continue;
       const payload = JSON.stringify({ t: 'view', view: viewFor(state, player.id) });
+      if (cache.get(player.id) === payload) continue;
+      cache.set(player.id, payload);
       for (const ws of set) {
         if (ws.readyState === ws.OPEN) ws.send(payload);
       }

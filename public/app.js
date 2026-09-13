@@ -65,17 +65,26 @@ function handleMessage(msg) {
     sessionStorage.setItem('botc.playerId', msg.playerId);
   } else if (msg.t === 'view') {
     state.view = msg.view;
-    maybeVibrate(msg.view);
-    state.selected = [];
+    handleTurnChange(msg.view);
   } else if (msg.t === 'error') {
     showError(msg.message);
   }
   render();
 }
 
-function maybeVibrate(view) {
-  const key = view.nightTurn ? `${view.phase}-${view.night}-${view.nightTurn.kind}-${view.nightTurn.body}` : null;
-  if (key && key !== lastTurnKey && navigator.vibrate) navigator.vibrate([180, 80, 180]);
+function turnKey(view) {
+  return view.nightTurn ? `${view.phase}-${view.night}-${view.nightTurn.kind}-${view.nightTurn.body}` : null;
+}
+
+// The server can push a fresh view for reasons that have nothing to do with your own turn
+// (another player's connection status changes, someone else answers their turn, a periodic
+// timeout check, ...). Only wipe the in-progress selection when the turn itself actually
+// changed — otherwise a routine broadcast mid-click would silently clear what you just picked.
+function handleTurnChange(view) {
+  const key = turnKey(view);
+  if (key === lastTurnKey) return;
+  if (key && navigator.vibrate) navigator.vibrate([180, 80, 180]);
+  state.selected = [];
   lastTurnKey = key;
 }
 
