@@ -322,13 +322,71 @@ function renderNight(v) {
     roleBanner(v),
     banner,
     el('h1', { class: 'center pulse' }, `Night ${v.night}`),
-    el(
-      'p',
-      { class: 'muted center' },
-      v.amIAlive
-        ? "The night is still. Keep your phone face down — it will buzz when it's your turn."
-        : 'You are dead and rest peacefully.'
-    ),
+    v.amIAlive
+      ? dotsEnabled()
+        ? renderWaitingDots()
+        : el('p', { class: 'muted center' }, 'Practice dots are hidden. Keep your eyes on your screen anyway.')
+      : el('p', { class: 'muted center' }, 'You are dead and rest peacefully.'),
+    v.amIAlive ? dotsToggle() : null,
+  ]);
+}
+
+// Purely cosmetic: gives someone who has already answered this round something to keep
+// tapping, so the moment they finish never visibly differs from someone still deliberating a
+// real choice — nobody can tell "done" from "still thinking" just by watching the table.
+// There is no penalty for missing a dot; this exists only to keep eyes on the phone.
+let waitingDotsTimer = null;
+
+function stopWaitingDots() {
+  if (waitingDotsTimer) {
+    clearTimeout(waitingDotsTimer);
+    waitingDotsTimer = null;
+  }
+}
+
+function dotsEnabled() {
+  return localStorage.getItem('botc.dotsDisabled') !== '1';
+}
+
+function dotsToggle() {
+  const enabled = dotsEnabled();
+  return el(
+    'button',
+    {
+      class: 'secondary dots-toggle',
+      onclick: () => {
+        localStorage.setItem('botc.dotsDisabled', enabled ? '1' : '0');
+        stopWaitingDots();
+        render();
+      },
+    },
+    enabled ? 'Hide practice dots (testing)' : 'Show practice dots'
+  );
+}
+
+function renderWaitingDots() {
+  const box = el('div', { class: 'dot-box' });
+
+  function spawnDot() {
+    box.innerHTML = '';
+    const x = 12 + Math.random() * 76;
+    const y = 12 + Math.random() * 76;
+    const dot = el('button', {
+      class: 'tap-dot',
+      style: `left:${x}%; top:${y}%;`,
+      onclick: (e) => {
+        e.currentTarget.classList.add('tapped');
+        e.currentTarget.disabled = true;
+      },
+    });
+    box.appendChild(dot);
+    waitingDotsTimer = setTimeout(spawnDot, 1800 + Math.random() * 2200);
+  }
+  spawnDot();
+
+  return el('div', { class: 'card dot-card' }, [
+    el('p', { class: 'muted center' }, "The night is still. Tap the dot when it appears — keep your eyes on your screen."),
+    box,
   ]);
 }
 
@@ -493,6 +551,7 @@ function renderEnded(v) {
 }
 
 function render() {
+  stopWaitingDots(); // avoid piling up timers across re-renders; re-armed below if still waiting
   app.innerHTML = '';
   if (!state.code || !state.playerId) {
     app.appendChild(renderLanding());
@@ -515,6 +574,12 @@ setInterval(() => {
   const n = state.view && state.view.nomination;
   if (n && (n.state === 'accusing' || n.state === 'defending')) render();
 }, 1000);
+
+// Lets toggling the practice-dots setting in one tab take effect in every other tab open on
+// this browser (localStorage writes don't fire this event in the tab that made them).
+window.addEventListener('storage', (e) => {
+  if (e.key === 'botc.dotsDisabled') render();
+});
 
 connect();
 render();

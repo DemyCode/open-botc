@@ -191,3 +191,36 @@ button.block { width: 100%; }
 .vote-status.no { color: var(--evil); }
 .vote-status.current { color: var(--accent); }
 .vote-status.muted { color: var(--muted); font-weight: 500; }
+
+.dot-card { text-align: center; }
+.dot-box {
+  position: relative;
+  height: 240px;
+  margin-top: 12px;
+  border-radius: 16px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.tap-dot {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+}
+.tap-dot:active { transform: translate(-50%, -50%) scale(0.85); }
+.tap-dot.tapped {
+  background: var(--good);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(1.5);
+}
+.dots-toggle {
+  margin-top: 10px;
+  font-size: 0.75rem;
+  padding: 8px 12px;
+  opacity: 0.7;
+}
