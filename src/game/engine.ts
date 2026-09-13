@@ -26,21 +26,74 @@ export function createGame(code: string): GameState {
     deathsTonight: [], nightSlotIndex: -1, pendingRealTurn: null, pendingDecoy: null,
     publicLog: [], currentNomination: null, onBlockId: null, highestYesToday: 0,
     usedNominatorIds: [], usedNomineeIds: [], winner: null, superlativeTally: {},
-    lastExecutedId: null,
+    lastExecutedId: null, seatingConfirmed: false,
   };
 }
 
 export function addPlayer(state: GameState, name: string): PlayerState {
   if (state.phase !== 'lobby') throw new GameError('Game already started');
   const player: PlayerState = {
-    id: randomId(), token: randomId() + randomId(), name, seat: state.players.length, connected: true,
+    id: randomId(), token: randomId() + randomId(), name, seat: state.players.length,
+    seatLeftId: null, seatRightId: null, connected: true,
     character: 'soldier', perceived: 'soldier', alignment: 'good', alive: true,
     ghostVoteUsed: false, isRedHerring: false, diedTonight: false,
     virginUsed: false, slayerUsed: false, log: [],
   };
   state.players.push(player);
   if (!state.hostId) state.hostId = player.id;
+  // A newcomer isn't part of anyone's declared circle yet, so any earlier confirmation is stale.
+  state.seatingConfirmed = false;
   return player;
+}
+
+/**
+ * Each player declares who they believe sits to their left and right. Once every player has
+ * declared both sides *and* those declarations agree with each other all the way around (each
+ * player's right-hand neighbor's left-hand neighbor is that same player), the circle is fully
+ * determined and everyone's `seat` is assigned by walking it — no arbitrary join-order seating.
+ */
+export function declareNeighbor(state: GameState, playerId: string, side: 'left' | 'right', neighborId: string): void {
+  if (state.phase !== 'lobby') throw new GameError('Seating can only be set before the game starts');
+  const self = findPlayer(state, playerId);
+  if (neighborId === playerId) throw new GameError('You cannot be your own neighbor');
+  findPlayer(state, neighborId);
+  const other = side === 'left' ? self.seatRightId : self.seatLeftId;
+  if (other === neighborId && state.players.length > 2) {
+    throw new GameError('Your left and right neighbors must be different people');
+  }
+  if (side === 'left') self.seatLeftId = neighborId;
+  else self.seatRightId = neighborId;
+  state.seatingConfirmed = tryResolveSeating(state);
+}
+
+function tryResolveSeating(state: GameState): boolean {
+  const players = state.players;
+  const n = players.length;
+  if (n < 3) return false;
+  if (!players.every((p) => p.seatLeftId && p.seatRightId)) return false;
+
+  const order: PlayerState[] = [players[0]];
+  const seen = new Set([players[0].id]);
+  let current = players[0];
+  for (let i = 1; i < n; i++) {
+    const next = players.find((p) => p.id === current.seatRightId);
+    if (!next || seen.has(next.id)) return false; // broken or short cycle
+    order.push(next);
+    seen.add(next.id);
+    current = next;
+  }
+  if (current.seatRightId !== players[0].id) return false; // doesn't close the loop
+
+  for (let i = 0; i < n; i++) {
+    const p = order[i];
+    const declaredLeft = order[(i - 1 + n) % n];
+    if (p.seatLeftId !== declaredLeft.id) return false; // left/right declarations disagree
+  }
+
+  order.forEach((p, i) => {
+    p.seat = i;
+  });
+  return true;
 }
 
 export function findPlayerByToken(state: GameState, token: string): PlayerState | undefined {
@@ -49,6 +102,7 @@ export function findPlayerByToken(state: GameState, token: string): PlayerState 
 
 export function startGame(state: GameState): void {
   if (state.phase !== 'lobby') throw new GameError('Game already started');
+  if (!state.seatingConfirmed) throw new GameError('Seating is not fully confirmed yet');
   const deal = dealCharacters(state.players.map((p) => p.id), state.secret);
   for (const p of state.players) {
     p.character = deal.characters[p.id];

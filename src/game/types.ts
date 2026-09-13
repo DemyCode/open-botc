@@ -21,6 +21,9 @@ export interface PlayerState {
   token: string;
   name: string;
   seat: number;
+  /** This player's own claim of who sits to their left/right — used to derive `seat` for everyone. */
+  seatLeftId: string | null;
+  seatRightId: string | null;
   connected: boolean;
   character: CharacterId;
   /** What this player believes their character is. Only differs from `character` for the Drunk. */
@@ -113,6 +116,8 @@ export interface GameState {
   winner: Alignment | null;
   superlativeTally: Record<string, Record<string, number>>;
   lastExecutedId: string | null;
+  /** True once every player's declared left/right neighbor forms one consistent circle. */
+  seatingConfirmed: boolean;
 }
 
 export class GameError extends Error {}

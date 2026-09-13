@@ -118,12 +118,18 @@ function secondsLeft(ts) {
   return Math.max(0, Math.ceil((ts - Date.now()) / 1000));
 }
 
-function playerRow(p) {
-  return el('div', { class: 'player-row' + (p.alive === false ? ' dead' : '') }, [
+function playerRow(p, opts = {}) {
+  const children = [
     el('div', { class: 'seat' }, String(p.seat + 1)),
     el('div', {}, p.name + (p.isSelf ? ' (you)' : '')),
-    el('div', { class: 'dot ' + (p.connected ? 'on' : 'off') }),
-  ]);
+  ];
+  if (opts.showSeating) {
+    children.push(
+      el('div', { class: 'vote-status ' + (p.hasDeclaredSeating ? 'yes' : 'muted') }, p.hasDeclaredSeating ? '✓ seated' : '… seating')
+    );
+  }
+  children.push(el('div', { class: 'dot ' + (p.connected ? 'on' : 'off') }));
+  return el('div', { class: 'player-row' + (p.alive === false ? ' dead' : '') }, children);
 }
 
 function renderLog(v) {
@@ -182,21 +188,64 @@ function renderLanding() {
   ]);
 }
 
+function neighborSelect(v, side) {
+  const others = v.players.filter((p) => p.id !== v.selfId);
+  const current = side === 'left' ? v.mySeatLeftId : v.mySeatRightId;
+  return el(
+    'select',
+    { onchange: (e) => send({ t: 'declareNeighbor', side, neighborId: e.target.value }) },
+    [
+      el('option', { value: '', disabled: 'true', selected: current ? null : 'true' }, '— choose —'),
+      ...others.map((p) => el('option', { value: p.id, selected: p.id === current ? 'true' : null }, p.name)),
+    ]
+  );
+}
+
+function renderSeatingSetup(v) {
+  const pending = v.players.filter((p) => !p.hasDeclaredSeating).map((p) => p.name);
+  let status;
+  if (v.players.length < 3) {
+    status = el('p', { class: 'muted center' }, 'Need at least 3 players before seating can be set.');
+  } else if (v.seatingConfirmed) {
+    status = el('p', { class: 'muted center' }, '✓ Seating confirmed — order is locked in.');
+  } else if (pending.length) {
+    status = el('p', { class: 'muted center' }, `Waiting on seating from: ${pending.join(', ')}`);
+  } else {
+    status = el('p', { class: 'muted center' }, "⚠️ Seating doesn't form a full circle yet — double check with the table.");
+  }
+
+  return el('div', { class: 'card' }, [
+    el('h2', {}, 'Seating'),
+    el('p', { class: 'muted' }, 'Go around the table — everyone answers who is sitting to their left and right.'),
+    el('label', { class: 'muted', style: 'display:block;margin-top:10px;font-size:0.85rem;' }, [
+      'Who is sitting to your LEFT?',
+      neighborSelect(v, 'left'),
+    ]),
+    el('label', { class: 'muted', style: 'display:block;margin-top:10px;font-size:0.85rem;' }, [
+      'Who is sitting to your RIGHT?',
+      neighborSelect(v, 'right'),
+    ]),
+    status,
+  ]);
+}
+
 function renderLobby(v) {
   const isHost = v.hostId === v.selfId;
   const count = v.players.length;
-  const canStart = count >= 5 && count <= 15;
+  const countOk = count >= 5 && count <= 15;
+  const canStart = countOk && v.seatingConfirmed;
+  let startLabel = `Start Game (${count} players)`;
+  if (!countOk) startLabel = `Need 5-15 players (${count})`;
+  else if (!v.seatingConfirmed) startLabel = 'Waiting on seating to be confirmed';
+
   return renderScreen([
     el('h1', {}, 'Lobby'),
     el('div', { class: 'code-badge' }, v.code),
     el('p', { class: 'muted center' }, 'Share this code with everyone at the table.'),
-    el('div', { class: 'card player-list' }, v.players.map(playerRow)),
+    el('div', { class: 'card player-list' }, v.players.map((p) => playerRow(p, { showSeating: true }))),
+    renderSeatingSetup(v),
     isHost
-      ? el(
-          'button',
-          { class: 'block', disabled: !canStart ? 'true' : null, onclick: () => send({ t: 'start' }) },
-          canStart ? `Start Game (${count} players)` : `Need 5-15 players (${count})`
-        )
+      ? el('button', { class: 'block', disabled: !canStart ? 'true' : null, onclick: () => send({ t: 'start' }) }, startLabel)
       : el('p', { class: 'muted center' }, 'Waiting for the host to start…'),
   ]);
 }

@@ -8,6 +8,7 @@ export interface PublicPlayerView {
   alive: boolean;
   connected: boolean;
   isSelf: boolean;
+  hasDeclaredSeating: boolean;
   character?: string;
   characterName?: string;
 }
@@ -58,6 +59,9 @@ export interface GameView {
   amIAlive: boolean;
   leftNeighborName: string | null;
   rightNeighborName: string | null;
+  seatingConfirmed: boolean;
+  mySeatLeftId: string | null;
+  mySeatRightId: string | null;
   nightTurn: NightTurnView | null;
   waitingForOthers: boolean;
   nomination: NominationView | null;
@@ -126,6 +130,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     const charId = revealAll ? p.character : isSelf ? p.perceived : undefined;
     return {
       id: p.id, name: p.name, seat: p.seat, alive: p.alive, connected: p.connected, isSelf,
+      hasDeclaredSeating: !!(p.seatLeftId && p.seatRightId),
       character: charId,
       characterName: charId ? CHARACTERS[charId].name : undefined,
     };
@@ -144,6 +149,9 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     amIAlive: self?.alive ?? false,
     leftNeighborName: neighbors.left,
     rightNeighborName: neighbors.right,
+    seatingConfirmed: state.seatingConfirmed,
+    mySeatLeftId: self?.seatLeftId ?? null,
+    mySeatRightId: self?.seatRightId ?? null,
     nightTurn,
     waitingForOthers: state.phase === 'night' && !nightTurn && !!self?.alive,
     nomination,

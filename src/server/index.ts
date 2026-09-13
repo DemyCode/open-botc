@@ -106,6 +106,9 @@ wss.on('connection', (ws: WebSocket) => {
           requireHost(state, playerId);
           engine.startGame(state);
           break;
+        case 'declareNeighbor':
+          engine.declareNeighbor(state, playerId, msg.side === 'left' ? 'left' : 'right', String(msg.neighborId));
+          break;
         case 'nightReal':
           engine.submitRealResponse(state, playerId, Array.isArray(msg.targetIds) ? (msg.targetIds as string[]) : []);
           break;
