@@ -207,8 +207,8 @@ const STRINGS = {
     readyForAccusation: 'Get ready to hear the accusation.',
     readyForDefense: 'Get ready to hear the defense.',
     readyCount: (ready, total) => `${ready}/${total} players ready`,
-    imReadyAccusation: (name) => `I'm ready to hear the accusation against ${name}`,
-    imReadyDefense: (name) => `I'm ready to hear ${name}'s defense`,
+    imReadyAccusation: (accuser, accused) => `I'm ready to hear ${accuser}'s accusation against ${accused}`,
+    imReadyDefense: (accused, accuser) => `I'm ready to hear ${accused}'s defense against ${accuser}`,
     cancelReady: 'Actually, not ready yet',
     hideRole: 'Hide role',
     showRole: 'Show role',
@@ -301,8 +301,8 @@ const STRINGS = {
     readyForAccusation: "Préparez-vous à entendre l'accusation.",
     readyForDefense: 'Préparez-vous à entendre la défense.',
     readyCount: (ready, total) => `${ready}/${total} joueurs prêts`,
-    imReadyAccusation: (name) => `Je suis prêt à écouter l'accusation de ${name}`,
-    imReadyDefense: (name) => `Je suis prêt à écouter la défense de ${name}`,
+    imReadyAccusation: (accuser, accused) => `Je suis prêt à écouter l'accusation de ${accuser} envers ${accused}`,
+    imReadyDefense: (accused, accuser) => `Je suis prêt à écouter la défense de ${accused} contre ${accuser}`,
     cancelReady: 'Finalement, pas encore prêt',
     hideRole: 'Masquer le rôle',
     showRole: 'Afficher le rôle',
@@ -1196,8 +1196,8 @@ function renderNomination(v) {
         amReady
           ? t('cancelReady')
           : n.state === 'readyForAccusation'
-            ? t('imReadyAccusation', n.nomineeName)
-            : t('imReadyDefense', n.nomineeName)
+            ? t('imReadyAccusation', n.nominatorName, n.nomineeName)
+            : t('imReadyDefense', n.nomineeName, n.nominatorName)
       )
     );
   } else if (n.state === 'accusing') {
