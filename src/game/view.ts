@@ -62,6 +62,10 @@ export interface GameView {
   seatingConfirmed: boolean;
   mySeatLeftId: string | null;
   mySeatRightId: string | null;
+  endDayReadyNames: string[];
+  endDayReadyCount: number;
+  endDayAliveCount: number;
+  myEndDayReady: boolean;
   nightTurn: NightTurnView | null;
   waitingForOthers: boolean;
   nomination: NominationView | null;
@@ -152,6 +156,10 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     seatingConfirmed: state.seatingConfirmed,
     mySeatLeftId: self?.seatLeftId ?? null,
     mySeatRightId: self?.seatRightId ?? null,
+    endDayReadyNames: state.endDayRequestedBy.map((id) => state.players.find((p) => p.id === id)?.name ?? ''),
+    endDayReadyCount: state.endDayRequestedBy.length,
+    endDayAliveCount: state.players.filter((p) => p.alive).length,
+    myEndDayReady: !!self && state.endDayRequestedBy.includes(self.id),
     nightTurn,
     waitingForOthers: state.phase === 'night' && !nightTurn && !!self?.alive,
     nomination,

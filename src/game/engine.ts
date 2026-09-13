@@ -26,7 +26,7 @@ export function createGame(code: string): GameState {
     deathsTonight: [], nightSlotIndex: -1, pendingRealTurn: null, pendingDecoy: null,
     publicLog: [], currentNomination: null, onBlockId: null, highestYesToday: 0,
     usedNominatorIds: [], usedNomineeIds: [], winner: null, superlativeTally: {},
-    lastExecutedId: null, seatingConfirmed: false,
+    lastExecutedId: null, seatingConfirmed: false, endDayRequestedBy: [],
   };
 }
 
@@ -197,6 +197,7 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
 
   state.usedNominatorIds.push(nominatorId);
   state.usedNomineeIds.push(nomineeId);
+  state.endDayRequestedBy = []; // a fresh nomination is new information — prior agreement to end the day is stale
 
   if (nominee.character === 'virgin' && !nominee.virginUsed) {
     nominee.virginUsed = true;
@@ -352,9 +353,29 @@ function maybeAutoEndDay(state: GameState): void {
   if (covered) endDay(state);
 }
 
-export function requestEndDay(state: GameState): void {
+/**
+ * Ending the day early is a group decision, not a host privilege — the host is just whoever
+ * created the room. Any living player can toggle their own "ready to end the day" flag; once
+ * every living player has done so, the day ends. Changing your mind un-toggles it, and any new
+ * nomination clears everyone's flag (see `nominate`), since that's new information the group
+ * hasn't weighed in on yet.
+ */
+export function toggleEndDayRequest(state: GameState, playerId: string): void {
+  if (state.phase !== 'day') throw new GameError('Not day phase');
+  const player = findPlayer(state, playerId);
+  if (!player.alive) throw new GameError('Only living players can vote to end the day');
   if (state.currentNomination) throw new GameError('Resolve the current nomination first');
-  endDay(state);
+  const idx = state.endDayRequestedBy.indexOf(playerId);
+  if (idx >= 0) state.endDayRequestedBy.splice(idx, 1);
+  else state.endDayRequestedBy.push(playerId);
+  maybeEndDayByConsensus(state);
+}
+
+function maybeEndDayByConsensus(state: GameState): void {
+  const alive = state.players.filter((p) => p.alive).map((p) => p.id);
+  if (alive.length > 0 && alive.every((id) => state.endDayRequestedBy.includes(id))) {
+    endDay(state);
+  }
 }
 
 function endDay(state: GameState): void {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { castVote, nominate, requestEndDay, skipSpeech, useSlayer } from '../game/engine.js';
-import { fastForwardToVote, mkDay, voteInOrder } from './helpers.js';
+import { castVote, nominate, skipSpeech, toggleEndDayRequest, useSlayer } from '../game/engine.js';
+import { endDayByConsensus, fastForwardToVote, mkDay, voteInOrder } from './helpers.js';
 
 test('vote below majority does not put anyone on the block', () => {
   const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']); // 6 alive, majority=4
@@ -40,7 +40,7 @@ test('ending the day executes whoever is on the block and starts the next night'
   voteInOrder(s, [a.id, c.id, d.id, e.id]);
   assert.equal(s.onBlockId, b.id);
 
-  requestEndDay(s);
+  endDayByConsensus(s);
   assert.equal(b.alive, false);
   assert.equal(s.phase, 'night');
   assert.equal(s.night, 1);
@@ -165,7 +165,7 @@ test("a Butler's yes vote counts once their master also votes yes", () => {
 
 test('Mayor wins for good if no execution happens with exactly 3 players left', () => {
   const s = mkDay(['imp', 'mayor', 'soldier']);
-  requestEndDay(s);
+  endDayByConsensus(s);
   assert.equal(s.winner, 'good');
   assert.equal(s.phase, 'ended');
 });
@@ -178,7 +178,66 @@ test('executing the Saint ends the game for evil immediately', () => {
   voteInOrder(s, [imp.id, empath.id, investigator.id, washerwoman.id]);
   assert.equal(s.onBlockId, saint.id);
 
-  requestEndDay(s);
+  endDayByConsensus(s);
   assert.equal(s.winner, 'evil');
   assert.equal(s.phase, 'ended');
+});
+
+test('ending the day early requires every living player to agree, not just one', () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const [a, b, c, d, e] = s.players;
+  toggleEndDayRequest(s, a.id);
+  toggleEndDayRequest(s, b.id);
+  toggleEndDayRequest(s, c.id);
+  toggleEndDayRequest(s, d.id);
+  assert.equal(s.phase, 'day', 'the day must not end until everyone has agreed');
+
+  toggleEndDayRequest(s, e.id); // the last holdout agrees
+  assert.equal(s.phase, 'night', 'the day ends the moment the last living player agrees');
+});
+
+test('toggling end-day again withdraws your agreement', () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const [a, b] = s.players;
+  toggleEndDayRequest(s, a.id);
+  toggleEndDayRequest(s, a.id); // change their mind
+  toggleEndDayRequest(s, b.id);
+  toggleEndDayRequest(s, s.players[2].id);
+  toggleEndDayRequest(s, s.players[3].id);
+  toggleEndDayRequest(s, s.players[4].id);
+  assert.equal(s.phase, 'day', "a withdrawn agreement should not count toward the total");
+});
+
+test('only living players are required to agree, and dead players cannot vote to end the day', () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const [, , empath] = s.players;
+  empath.alive = false; // e.g. already executed on a prior day
+
+  assert.throws(() => toggleEndDayRequest(s, empath.id), 'a dead player cannot agree to end the day');
+
+  const alive = s.players.filter((p) => p.alive);
+  assert.equal(alive.length, 4);
+  for (const p of alive.slice(0, -1)) toggleEndDayRequest(s, p.id);
+  assert.equal(s.phase, 'day', 'the dead player is not required to agree, but the rest still are');
+  toggleEndDayRequest(s, alive[alive.length - 1].id);
+  assert.equal(s.phase, 'night', 'the day ends once every currently-living player has agreed');
+});
+
+test('a new nomination clears everyone\'s prior agreement to end the day', () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const [a, b, c, d] = s.players;
+  toggleEndDayRequest(s, a.id);
+  toggleEndDayRequest(s, b.id);
+  toggleEndDayRequest(s, c.id);
+  assert.equal(s.endDayRequestedBy.length, 3);
+
+  nominate(s, d.id, a.id);
+  assert.equal(s.endDayRequestedBy.length, 0, 'a fresh nomination should reset everyone\'s agreement');
+});
+
+test('you cannot agree to end the day while a nomination is in progress', () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  const [a, b] = s.players;
+  nominate(s, a.id, b.id);
+  assert.throws(() => toggleEndDayRequest(s, a.id));
 });

@@ -118,6 +118,8 @@ export interface GameState {
   lastExecutedId: string | null;
   /** True once every player's declared left/right neighbor forms one consistent circle. */
   seatingConfirmed: boolean;
+  /** Living players who have agreed to end the day early; the day ends once this covers everyone alive. */
+  endDayRequestedBy: string[];
 }
 
 export class GameError extends Error {}

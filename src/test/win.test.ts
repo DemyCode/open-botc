@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { nominate, requestEndDay } from '../game/engine.js';
-import { fastForwardToVote, mkDay, voteInOrder } from './helpers.js';
+import { nominate } from '../game/engine.js';
+import { endDayByConsensus, fastForwardToVote, mkDay, voteInOrder } from './helpers.js';
 
 test('good wins once the Demon is executed', () => {
   const s = mkDay(['imp', 'empath', 'investigator', 'washerwoman', 'soldier']); // 5 alive, majority=3
@@ -9,7 +9,7 @@ test('good wins once the Demon is executed', () => {
   nominate(s, empath.id, imp.id);
   fastForwardToVote(s);
   voteInOrder(s, [empath.id, investigator.id, washerwoman.id]);
-  requestEndDay(s);
+  endDayByConsensus(s);
   assert.equal(s.winner, 'good');
 });
 
@@ -19,7 +19,7 @@ test('evil wins when only 2 players remain alive alongside a living Demon', () =
   nominate(s, imp.id, empath.id);
   fastForwardToVote(s);
   voteInOrder(s, [imp.id, poisoner.id]);
-  requestEndDay(s);
+  endDayByConsensus(s);
   assert.equal(s.winner, 'evil');
   assert.equal(empath.alive, false);
 });
@@ -30,7 +30,7 @@ test('Scarlet Woman is promoted to Imp when the Demon dies with 5+ players alive
   nominate(s, empath.id, imp.id);
   fastForwardToVote(s);
   voteInOrder(s, [empath.id, investigator.id, washerwoman.id, scarletwoman.id]);
-  requestEndDay(s);
+  endDayByConsensus(s);
   assert.equal(scarletwoman.character, 'imp');
   assert.equal(s.winner, null, 'evil still has a demon in play, the game continues');
 });

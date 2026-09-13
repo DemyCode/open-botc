@@ -9,6 +9,20 @@ const DATA_DIR = path.resolve('data');
 const ROOMS_FILE = path.join(DATA_DIR, 'rooms.json');
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 
+/**
+ * Bump this whenever GameState's shape changes. Persisted rooms are just a "survive an
+ * incidental restart" convenience, not a durability guarantee — a room saved under an older
+ * schema can be missing fields the current code expects, so rather than risk a startup crash
+ * (or worse, a crash later mid-game when some code path first touches the missing field), we
+ * just discard everything from a mismatched version and start fresh.
+ */
+const SCHEMA_VERSION = 1;
+
+interface PersistedFile {
+  version: number;
+  rooms: Record<string, GameState>;
+}
+
 function randomCode(): string {
   let s = '';
   for (let i = 0; i < 4; i++) s += CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)];
@@ -28,10 +42,14 @@ export class RoomManager {
   private load(): void {
     try {
       const raw = fs.readFileSync(ROOMS_FILE, 'utf8');
-      const data = JSON.parse(raw) as Record<string, GameState>;
-      for (const [code, state] of Object.entries(data)) this.rooms.set(code, state);
+      const parsed = JSON.parse(raw) as PersistedFile;
+      if (parsed.version !== SCHEMA_VERSION) {
+        console.warn(`Discarding persisted rooms from schema v${parsed.version} (current is v${SCHEMA_VERSION})`);
+        return;
+      }
+      for (const [code, state] of Object.entries(parsed.rooms)) this.rooms.set(code, state);
     } catch {
-      // no persisted data yet — fresh start
+      // no persisted data yet, or it's unreadable — fresh start either way
     }
   }
 
@@ -41,7 +59,8 @@ export class RoomManager {
       this.saveTimer = null;
       try {
         fs.mkdirSync(DATA_DIR, { recursive: true });
-        fs.writeFileSync(ROOMS_FILE, JSON.stringify(Object.fromEntries(this.rooms)));
+        const payload: PersistedFile = { version: SCHEMA_VERSION, rooms: Object.fromEntries(this.rooms) };
+        fs.writeFileSync(ROOMS_FILE, JSON.stringify(payload));
       } catch (err) {
         console.error('Failed to persist rooms', err);
       }

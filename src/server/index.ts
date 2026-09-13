@@ -125,8 +125,7 @@ wss.on('connection', (ws: WebSocket) => {
           engine.castVote(state, playerId, !!msg.yes);
           break;
         case 'endDay':
-          requireHost(state, playerId);
-          engine.requestEndDay(state);
+          engine.toggleEndDayRequest(state, playerId);
           break;
         case 'slayer':
           engine.useSlayer(state, playerId, String(msg.targetId));
@@ -152,10 +151,17 @@ wss.on('connection', (ws: WebSocket) => {
 
 setInterval(() => {
   for (const code of rooms.allCodes()) {
-    const state = rooms.get(code);
-    if (!state) continue;
-    engine.tick(state, Date.now());
-    rooms.broadcast(code);
+    // One room throwing here (a bad tick, a stale/incompatible persisted state, ...) must not
+    // stop the other rooms from ticking, and must not crash the whole process — this callback
+    // has no caller to catch it, so an uncaught exception here would take the entire server down.
+    try {
+      const state = rooms.get(code);
+      if (!state) continue;
+      engine.tick(state, Date.now());
+      rooms.broadcast(code);
+    } catch (err) {
+      console.error(`Error ticking room ${code}`, err);
+    }
   }
 }, 1000);
 

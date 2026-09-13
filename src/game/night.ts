@@ -194,6 +194,7 @@ function finishNight(state: GameState): void {
   state.usedNominatorIds = [];
   state.usedNomineeIds = [];
   state.currentNomination = null;
+  state.endDayRequestedBy = [];
   for (const id of state.deathsTonight) {
     const p = state.players.find((pl) => pl.id === id);
     if (p) state.publicLog.push(`${p.name} was found dead this morning.`);

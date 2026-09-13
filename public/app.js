@@ -446,9 +446,22 @@ function renderNomination(v) {
   return el('div', { class: 'card' }, card);
 }
 
+function renderEndDayConsensus(v) {
+  if (!v.amIAlive) return null;
+  const names = v.endDayReadyNames.length ? ` (${v.endDayReadyNames.join(', ')})` : '';
+  return el('div', { class: 'card' }, [
+    el('h2', {}, 'End the Day'),
+    el('p', { class: 'muted' }, `${v.endDayReadyCount}/${v.endDayAliveCount} players ready to move on${names}`),
+    el(
+      'button',
+      { class: 'block' + (v.myEndDayReady ? ' secondary' : ''), onclick: () => send({ t: 'endDay' }) },
+      v.myEndDayReady ? "Changed my mind — keep talking" : "I'm ready to end the day"
+    ),
+  ]);
+}
+
 function renderDay(v) {
   const self = v.players.find((p) => p.id === v.selfId);
-  const isHost = v.hostId === v.selfId;
   const children = [el('h1', {}, `Day ${v.day}`), roleBanner(v)];
 
   if (v.onBlockId) {
@@ -473,7 +486,7 @@ function renderDay(v) {
         })
       )
     );
-    if (isHost) children.push(el('button', { class: 'block secondary', onclick: () => send({ t: 'endDay' }) }, 'End Day'));
+    children.push(renderEndDayConsensus(v));
   }
 
   if (v.myCharacter && v.myCharacter.id === 'slayer' && !v.mySlayerUsed && v.amIAlive) {

@@ -1,5 +1,5 @@
 import { alignmentOfCharacter } from '../game/characters.js';
-import { addPlayer, castVote, createGame, skipSpeech } from '../game/engine.js';
+import { addPlayer, castVote, createGame, skipSpeech, toggleEndDayRequest } from '../game/engine.js';
 import { beginNight, submitDecoyResponse, submitRealResponse } from '../game/night.js';
 import type { CharacterId, GameState } from '../game/types.js';
 
@@ -108,5 +108,12 @@ export function voteInOrder(state: GameState, yesIds: string[]): void {
     const voterId = state.currentNomination.currentVoterId!;
     castVote(state, voterId, yesIds.includes(voterId));
     steps++;
+  }
+}
+
+/** Has every living player agree to end the day, which ends it once the last one does. */
+export function endDayByConsensus(state: GameState): void {
+  for (const p of state.players.filter((pl) => pl.alive)) {
+    toggleEndDayRequest(state, p.id);
   }
 }
