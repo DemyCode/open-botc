@@ -84,3 +84,36 @@ test('dusk message only appears during the night', () => {
   const view = viewFor(s, s.players[0].id);
   assert.equal(view.duskMessage, null);
 });
+
+test('a player killed tonight must not see their own death until dawn — same as the physical game', () => {
+  // Regression: amIAlive reflected the raw, live alive flag, so a freshly-killed player's status
+  // bar and night screen flipped to "you are dead" the instant the Demon acted, mid-night — a
+  // reveal the Storyteller never actually makes until morning.
+  const s = mk(['imp', 'poisoner', 'empath', 'soldier', 'washerwoman']);
+  s.phase = 'night';
+  const victim = s.players[2];
+  victim.alive = false;
+  victim.diedTonight = true;
+  assert.equal(viewFor(s, victim.id).amIAlive, true, 'must still appear alive to themselves while it is still night');
+
+  s.phase = 'day';
+  assert.equal(viewFor(s, victim.id).amIAlive, false, 'once dawn arrives the truth is revealed as normal');
+});
+
+test('a long-dead player (from an earlier night) correctly still shows as dead at night', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'soldier', 'washerwoman']);
+  s.phase = 'night';
+  const longDead = s.players[2];
+  longDead.alive = false;
+  longDead.diedTonight = false; // died on an earlier night — already public knowledge
+  assert.equal(viewFor(s, longDead.id).amIAlive, false);
+});
+
+test('the Ravenkeeper is the deliberate exception — their own death is revealed immediately, since that is the whole point of their ability', () => {
+  const s = mk(['imp', 'ravenkeeper', 'empath', 'soldier', 'washerwoman']);
+  s.phase = 'night';
+  const rk = s.players.find((p) => p.character === 'ravenkeeper')!;
+  rk.alive = false;
+  rk.diedTonight = true;
+  assert.equal(viewFor(s, rk.id).amIAlive, false, 'the Ravenkeeper must see their own death right away, unlike everyone else');
+});

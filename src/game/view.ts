@@ -95,14 +95,24 @@ export interface GameView {
   winner: string | null;
 }
 
+/**
+ * Whether `p`'s death, if any, is something anyone without special knowledge would currently
+ * know about. A death from an earlier night/day is old, already-announced public information; a
+ * death *tonight* is not — the Storyteller never reveals a night kill until dawn, so until then
+ * everyone (including, per amIAlive below, the victim themselves) must still see them as alive.
+ */
+function publiclyAlive(p: PlayerState): boolean {
+  return p.alive || p.diedTonight;
+}
+
 function buildNightTurn(state: GameState, viewerId: string): NightTurnView | null {
   const t = state.pendingRealTurn;
   if (!t || !t.playerIds.includes(viewerId) || viewerId in t.responses) return null;
   const choices: NightTurnChoice[] =
     t.shape === 'choose'
       ? state.players
-          .filter((p) => DEAD_TARGETS_ALLOWED[t.charId as keyof typeof DEAD_TARGETS_ALLOWED] || p.alive)
-          .map((p) => ({ id: p.id, name: p.name, seat: p.seat, alive: p.alive }))
+          .filter((p) => DEAD_TARGETS_ALLOWED[t.charId as keyof typeof DEAD_TARGETS_ALLOWED] || publiclyAlive(p))
+          .map((p) => ({ id: p.id, name: p.name, seat: p.seat, alive: publiclyAlive(p) }))
       : [];
   return { shape: t.shape, title: 'Your turn', body: t.bodyByPlayer[viewerId] ?? msg('empty'), min: t.min, max: t.max, choices };
 }
@@ -182,6 +192,19 @@ export function viewFor(state: GameState, viewerId: string): GameView {
   const duskMessage = state.phase === 'night' ? buildDuskMessage(state, self) : null;
   const neighbors = seatNeighbors(state, viewerId);
 
+  // A player must not learn they died tonight before dawn does — same as everyone else. This
+  // only ever needs to hide anything while it's still night: diedTonight isn't reset until the
+  // *next* beginNight, so by day it would otherwise still (wrongly) be hiding a death that dawn
+  // has already revealed. The Ravenkeeper is the deliberate exception: being woken at all only
+  // happens *because* they just died, so for them (or a Drunk perceiving Ravenkeeper) the death
+  // is the whole point of the turn they're currently being given, not something to hide.
+  const revealsOwnDeathImmediately = self?.perceived === 'ravenkeeper';
+  const amIAlive = self
+    ? state.phase === 'night' && !revealsOwnDeathImmediately
+      ? publiclyAlive(self)
+      : self.alive
+    : false;
+
   return {
     code: state.code, phase: state.phase, night: state.night, day: state.day,
     hostId: state.hostId, selfId: viewerId, players, publicLog: state.publicLog,
@@ -189,7 +212,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     myLog: self ? self.log : [],
     mySlayerUsed: self?.slayerUsed ?? false,
     myGhostVoteUsed: self?.ghostVoteUsed ?? false,
-    amIAlive: self?.alive ?? false,
+    amIAlive,
     leftNeighborName: neighbors.left,
     rightNeighborName: neighbors.right,
     seatingConfirmed: state.seatingConfirmed,
@@ -202,7 +225,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     nightResult,
     dawnMessage,
     duskMessage,
-    waitingForOthers: state.phase === 'night' && !nightTurn && !nightResult && !!self?.alive,
+    waitingForOthers: state.phase === 'night' && !nightTurn && !nightResult && amIAlive,
     nomination,
     onBlockId: state.onBlockId,
     winner: state.winner,

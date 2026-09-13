@@ -208,6 +208,43 @@ test('a night result is still delivered even when answering was the very last ac
   assert.equal(view.nightResult?.key, 'fortuneTellerYes');
 });
 
+test("a player killed earlier the same night still appears alive in the Fortune Teller's choice list — not revealed before dawn", () => {
+  // Regression: the choice list's "alive" flag came straight from the live data model, so a
+  // player the Imp killed earlier the same night (a correct, earlier step in the night order)
+  // showed up labeled "(dead)" to the Fortune Teller acting right after — leaking a death nobody
+  // is supposed to know about yet.
+  const s = mk(['imp', 'fortuneteller', 'empath', 'soldier', 'washerwoman']);
+  startNight(s);
+  runFullNight(s);
+  startNight(s); // night 2
+  const empath = byChar(s, 'empath');
+  const ft = byChar(s, 'fortuneteller');
+
+  advanceUntil(s, 'imp');
+  answerRealTurn(s, [empath.id]); // kill empath — this correctly happens before the Fortune Teller's turn
+  assert.equal(empath.alive, false);
+
+  advanceUntil(s, 'fortuneteller');
+  const view = viewFor(s, ft.id);
+  const empathChoice = view.nightTurn?.choices.find((c) => c.id === empath.id);
+  assert.ok(empathChoice, 'the freshly-killed player must still be offered as a choice');
+  assert.equal(empathChoice.alive, true, 'must not be labeled dead — that has not been revealed yet');
+});
+
+test('a player who died on an earlier night correctly still shows as dead in a later choice list', () => {
+  const s = mk(['imp', 'fortuneteller', 'empath', 'soldier', 'washerwoman']);
+  const empath = byChar(s, 'empath');
+  empath.alive = false;
+  empath.diedTonight = false; // died (and was revealed) on some earlier night
+  startNight(s);
+  const ft = byChar(s, 'fortuneteller');
+  advanceUntil(s, 'fortuneteller');
+  const view = viewFor(s, ft.id);
+  const empathChoice = view.nightTurn?.choices.find((c) => c.id === empath.id);
+  assert.ok(empathChoice);
+  assert.equal(empathChoice.alive, false, 'a death from an earlier night is already public knowledge');
+});
+
 test('Poisoner and Monk still cannot target a dead player — targeting a corpse would always be a no-op', () => {
   const state = mk(['imp', 'poisoner', 'monk', 'empath', 'soldier', 'washerwoman']);
   const empath = byChar(state, 'empath');
