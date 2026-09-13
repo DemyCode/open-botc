@@ -4,8 +4,12 @@ import {
   minionInfo, ravenkeeperInfo, spyInfo, undertakerInfo,
 } from './info.js';
 import { abilityWorks } from './registration.js';
-import type { CharacterId, GameState, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
+import type { CharacterId, GameState, Msg, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
 import { GameError } from './types.js';
+
+function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
+  return vars ? { key, vars } : { key };
+}
 
 export const FIRST_NIGHT_SEQUENCE: (CharacterId | 'minion-info')[] = [
   'minion-info', 'imp', 'poisoner', 'washerwoman', 'librarian', 'investigator',
@@ -18,9 +22,9 @@ export const OTHER_NIGHT_SEQUENCE: (CharacterId | 'minion-info')[] = [
 
 const TURN_TIMEOUT_MS = 60_000;
 
-export function appendLog(state: GameState, playerId: string, text: string): void {
+export function appendLog(state: GameState, playerId: string, m: Msg): void {
   const p = state.players.find((pl) => pl.id === playerId);
-  if (p) p.log.push({ night: state.night, text });
+  if (p) p.log.push({ night: state.night, msg: m });
 }
 
 function findPlayer(state: GameState, id: string): PlayerState {
@@ -49,7 +53,7 @@ function shapeFor(state: GameState, charId: CharacterId | 'minion-info'): NightT
   return CHARACTERS[charId].shape;
 }
 
-function computeInfoText(state: GameState, self: PlayerState, charId: CharacterId | 'minion-info', slot: string): string {
+function computeInfoText(state: GameState, self: PlayerState, charId: CharacterId | 'minion-info', slot: string): Msg {
   switch (charId) {
     case 'washerwoman': return investigativeInfo(state, self, 'townsfolk', slot);
     case 'librarian': return investigativeInfo(state, self, 'outsider', slot);
@@ -63,26 +67,26 @@ function computeInfoText(state: GameState, self: PlayerState, charId: CharacterI
     case 'minion-info': return minionInfo(state, self);
     case 'imp': return demonInfo(state, self);
     case 'spy': return spyInfo(state, self, slot);
-    default: return '';
+    default: return msg('empty');
   }
 }
 
-function choosePromptFor(charId: CharacterId | 'minion-info'): { min: number; max: number; body: string } {
+function choosePromptFor(charId: CharacterId | 'minion-info'): { min: number; max: number; body: Msg } {
   switch (charId) {
-    case 'poisoner': return { min: 1, max: 1, body: 'Choose a player to poison.' };
-    case 'monk': return { min: 1, max: 1, body: 'Choose a player to protect (not yourself).' };
-    case 'fortuneteller': return { min: 2, max: 2, body: 'Choose 2 players to check for the Demon.' };
-    case 'butler': return { min: 1, max: 1, body: 'Choose a player to be your master (not yourself).' };
-    case 'ravenkeeper': return { min: 1, max: 1, body: 'You died! Choose a player to learn their character.' };
-    case 'imp': return { min: 1, max: 1, body: 'Choose a player to kill.' };
-    default: return { min: 0, max: 0, body: '' };
+    case 'poisoner': return { min: 1, max: 1, body: msg('poisonerChoose') };
+    case 'monk': return { min: 1, max: 1, body: msg('monkChoose') };
+    case 'fortuneteller': return { min: 2, max: 2, body: msg('fortuneTellerChoose') };
+    case 'butler': return { min: 1, max: 1, body: msg('butlerChoose') };
+    case 'ravenkeeper': return { min: 1, max: 1, body: msg('ravenkeeperChoose') };
+    case 'imp': return { min: 1, max: 1, body: msg('impChoose') };
+    default: return { min: 0, max: 0, body: msg('empty') };
   }
 }
 
 function startRound(state: GameState, charId: CharacterId | 'minion-info', actors: PlayerState[]): void {
   const slot = `${charId}-n${state.night}`;
   const shape = shapeFor(state, charId);
-  const bodyByPlayer: Record<string, string> = {};
+  const bodyByPlayer: Record<string, Msg> = {};
   let min = 0;
   let max = 0;
 
@@ -148,10 +152,10 @@ function finishNight(state: GameState): void {
   state.endDayRequestedBy = [];
   for (const id of state.deathsTonight) {
     const p = state.players.find((pl) => pl.id === id);
-    if (p) state.publicLog.push(`${p.name} was found dead this morning.`);
+    if (p) state.publicLog.push(msg('foundDead', { name: p.name }));
   }
   if (state.deathsTonight.length === 0 && state.night > 1) {
-    state.publicLog.push('Nobody died last night.');
+    state.publicLog.push(msg('nobodyDiedLastNight'));
   }
 }
 
@@ -179,7 +183,8 @@ function applyImpKill(state: GameState, imp: PlayerState, targetId: string): voi
       const promoted = otherMinions[Math.floor(Math.random() * otherMinions.length)];
       promoted.character = 'imp';
       promoted.perceived = 'imp';
-      appendLog(state, promoted.id, `You are now the Imp. ${demonInfo(state, promoted)}`);
+      appendLog(state, promoted.id, msg('becameImp'));
+      appendLog(state, promoted.id, demonInfo(state, promoted));
     }
     return;
   }

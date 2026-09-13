@@ -1,14 +1,14 @@
 import { CHARACTERS } from './characters.js';
 import { abilityWorks, apparentCharacter, registersAs, type RegisterKind } from './registration.js';
 import { stableFloat, stablePick } from './rng.js';
-import type { GameState, PlayerState, Team } from './types.js';
+import type { GameState, Msg, PlayerState, Team } from './types.js';
+
+function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
+  return vars ? { key, vars } : { key };
+}
 
 function others(state: GameState, self: PlayerState): PlayerState[] {
   return state.players.filter((p) => p.alive && p.id !== self.id);
-}
-
-function teamLabel(team: Team): string {
-  return team === 'townsfolk' ? 'Townsfolk' : team === 'outsider' ? 'Outsiders' : team === 'minion' ? 'Minions' : 'Demons';
 }
 
 function pickPair(state: GameState, pool: PlayerState[], slot: string, self: string, tag: string): [PlayerState, PlayerState] {
@@ -19,29 +19,29 @@ function pickPair(state: GameState, pool: PlayerState[], slot: string, self: str
 }
 
 /** Shared shape behind Washerwoman/Librarian/Investigator: "A or B is the <character>." */
-export function investigativeInfo(state: GameState, self: PlayerState, team: Exclude<Team, 'demon'>, slot: string): string {
+export function investigativeInfo(state: GameState, self: PlayerState, team: Exclude<Team, 'demon'>, slot: string): Msg {
   const pool = others(state, self);
   const ctx = { asker: self.id, slot };
   if (abilityWorks(state, self)) {
     const candidates = pool.filter((p) => CHARACTERS[p.character].team === team);
     if (!candidates.length) {
       const [a, b] = pickPair(state, pool, slot, self.id, 'none');
-      return `Neither ${a.name} nor ${b.name} is a ${teamLabel(team).slice(0, -1)} — there are no ${teamLabel(team)} in play.`;
+      return msg('noTeamInPlay', { a: a.name, b: b.name, team });
     }
     const real = stablePick(state.secret, candidates, slot, self.id, 'target');
     const decoyPool = pool.filter((p) => p.id !== real.id);
     const decoy = decoyPool.length ? stablePick(state.secret, decoyPool, slot, self.id, 'decoy') : real;
-    const charName = CHARACTERS[apparentCharacter(state, real, team, ctx)].name;
+    const role = apparentCharacter(state, real, team, ctx);
     const pair = stableFloat(state.secret, slot, self.id, 'order') < 0.5 ? [real, decoy] : [decoy, real];
-    return `${pair[0].name} or ${pair[1].name} is the ${charName}.`;
+    return msg('investigativeInfo', { a: pair[0].name, b: pair[1].name, role });
   }
   const [a, b] = pickPair(state, pool, slot, self.id, 'fake');
   const teamChars = Object.values(CHARACTERS).filter((c) => c.team === team);
   const fake = stablePick(state.secret, teamChars, slot, self.id, 'fake-char');
-  return `${a.name} or ${b.name} is the ${fake.name}.`;
+  return msg('investigativeInfo', { a: a.name, b: b.name, role: fake.id });
 }
 
-export function chefInfo(state: GameState, self: PlayerState, slot: string): string {
+export function chefInfo(state: GameState, self: PlayerState, slot: string): Msg {
   const seated = state.players.slice().sort((a, b) => a.seat - b.seat);
   const ctx = { asker: self.id, slot };
   let count = 0;
@@ -53,7 +53,7 @@ export function chefInfo(state: GameState, self: PlayerState, slot: string): str
   if (!abilityWorks(state, self)) {
     count = Math.floor(stableFloat(state.secret, slot, self.id, 'fake') * 3);
   }
-  return `You see ${count} pair${count === 1 ? '' : 's'} of evil players sitting next to each other.`;
+  return msg('chefInfo', { count });
 }
 
 export function livingNeighbors(state: GameState, self: PlayerState): [PlayerState, PlayerState] {
@@ -70,22 +70,22 @@ export function livingNeighbors(state: GameState, self: PlayerState): [PlayerSta
   return [find(-1), find(1)];
 }
 
-export function empathInfo(state: GameState, self: PlayerState, slot: string): string {
+export function empathInfo(state: GameState, self: PlayerState, slot: string): Msg {
   const ctx = { asker: self.id, slot };
   const [left, right] = livingNeighbors(state, self);
   let count = [left, right].filter((p) => registersAs(state, p, 'evil', ctx)).length;
   if (!abilityWorks(state, self)) {
     count = Math.floor(stableFloat(state.secret, slot, self.id, 'fake') * 3);
   }
-  return `${count} of your 2 alive neighbours ${count === 1 ? 'is' : 'are'} evil.`;
+  return msg('empathInfo', { count });
 }
 
-export function fortuneTellerInfo(state: GameState, self: PlayerState, targetIds: string[], slot: string): string {
+export function fortuneTellerInfo(state: GameState, self: PlayerState, targetIds: string[], slot: string): Msg {
   const ctx = { asker: self.id, slot };
   const targets = state.players.filter((p) => targetIds.includes(p.id));
   const real = targets.some((t) => t.isRedHerring || registersAs(state, t, 'demon', ctx));
   const answer = abilityWorks(state, self) ? real : stableFloat(state.secret, slot, self.id, 'fake') < 0.5;
-  return answer ? 'Yes — one of them is the Demon.' : 'No — neither is the Demon.';
+  return msg(answer ? 'fortuneTellerYes' : 'fortuneTellerNo');
 }
 
 function apparentToObserver(state: GameState, target: PlayerState, ctx: { asker: string; slot: string }) {
@@ -98,49 +98,51 @@ function apparentToObserver(state: GameState, target: PlayerState, ctx: { asker:
   return target.character;
 }
 
-export function undertakerInfo(state: GameState, self: PlayerState, executed: PlayerState | null, slot: string): string {
-  if (!executed) return 'Nobody was executed today.';
+export function undertakerInfo(state: GameState, self: PlayerState, executed: PlayerState | null, slot: string): Msg {
+  if (!executed) return msg('undertakerNone');
   const ctx = { asker: self.id, slot };
   const shown = abilityWorks(state, self)
     ? apparentToObserver(state, executed, ctx)
     : stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake').id;
-  return `${executed.name} was the ${CHARACTERS[shown].name}.`;
+  return msg('undertakerInfo', { name: executed.name, role: shown });
 }
 
-export function ravenkeeperInfo(state: GameState, self: PlayerState, targetId: string, slot: string): string {
+export function ravenkeeperInfo(state: GameState, self: PlayerState, targetId: string, slot: string): Msg {
   const target = state.players.find((p) => p.id === targetId)!;
   const ctx = { asker: self.id, slot };
   const shown = abilityWorks(state, self)
     ? apparentToObserver(state, target, ctx)
     : stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake').id;
-  return `${target.name} is the ${CHARACTERS[shown].name}.`;
+  return msg('ravenkeeperInfo', { name: target.name, role: shown });
 }
 
-export function minionInfo(state: GameState, self: PlayerState): string {
+export function minionInfo(state: GameState, self: PlayerState): Msg {
   const demon = state.players.find((p) => CHARACTERS[p.character].team === 'demon');
   const fellow = state.players.filter((p) => CHARACTERS[p.character].team === 'minion' && p.id !== self.id);
-  const demonText = `The Demon is ${demon ? demon.name : 'unknown'}.`;
-  if (fellow.length === 0) return `You have no fellow Minions. ${demonText}`;
-  const names = fellow.map((p) => p.name).join(', ');
-  return `Your fellow Minion${fellow.length === 1 ? ' is' : 's are'} ${names}. ${demonText}`;
+  const demonName = demon ? demon.name : '';
+  if (fellow.length === 0) return msg('minionInfoSolo', { demon: demonName });
+  return msg('minionInfoGroup', { names: fellow.map((p) => p.name), demon: demonName });
 }
 
-export function demonInfo(state: GameState, self: PlayerState): string {
+export function demonInfo(state: GameState, self: PlayerState): Msg {
   const minions = state.players.filter((p) => CHARACTERS[p.character].team === 'minion');
-  const names = minions.map((p) => p.name).join(', ') || 'no one';
-  const bluffs = state.bluffs.map((id) => CHARACTERS[id].name).join(', ');
-  return `Your Minion${minions.length === 1 ? ' is' : 's are'} ${names}. Your bluffs: ${bluffs}.`;
+  return msg('demonInfo', { names: minions.map((p) => p.name), bluffs: state.bluffs });
 }
 
-export function spyInfo(state: GameState, self: PlayerState, slot: string): string {
+export function spyInfo(state: GameState, self: PlayerState, slot: string): Msg {
   if (abilityWorks(state, self)) {
-    const lines = state.players.map((p) => `${p.name}: ${CHARACTERS[p.character].name}${p.alive ? '' : ' (dead)'}`);
-    return `Grimoire — ${lines.join('; ')}.`;
+    return msg('spyGrimoire', {
+      names: state.players.map((p) => p.name),
+      roles: state.players.map((p) => p.character),
+      dead: state.players.map((p) => (p.alive ? '' : '1')),
+    });
   }
-  const lines = state.players.map(
-    (p, i) => `${p.name}: ${stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake', i).name}`
-  );
-  return `Grimoire — ${lines.join('; ')}.`;
+  const fakeRoles = state.players.map((p, i) => stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake', i).id);
+  return msg('spyGrimoire', {
+    names: state.players.map((p) => p.name),
+    roles: fakeRoles,
+    dead: state.players.map((p) => (p.alive ? '' : '1')),
+  });
 }
 
 export type { RegisterKind };

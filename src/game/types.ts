@@ -11,9 +11,20 @@ export type CharacterId =
 
 export type Phase = 'lobby' | 'night' | 'day' | 'ended';
 
+/**
+ * All game narration (log entries, night prompts, dawn/dusk messages, ...) is represented as a
+ * message key plus its data, never as a pre-rendered English sentence. The server is otherwise
+ * entirely language-agnostic — the client's translation dictionary is the single place that
+ * turns a key+vars into an actual sentence, in whichever language the viewer picked.
+ */
+export interface Msg {
+  key: string;
+  vars?: Record<string, string | number | string[]>;
+}
+
 export interface InfoLogEntry {
   night: number;
-  text: string;
+  msg: Msg;
 }
 
 export interface PlayerState {
@@ -48,7 +59,7 @@ export interface PlayerState {
    * round the instant they answer — storing the result on the round object would lose it before
    * it was ever shown. Reset to null at the start of each night.
    */
-  nightResult: string | null;
+  nightResult: Msg | null;
 }
 
 export type NightTurnShape = 'info' | 'choose';
@@ -59,8 +70,8 @@ export interface PendingRealTurn {
   shape: NightTurnShape;
   min: number;
   max: number;
-  /** Per-player prompt text, since minion-info/imp differ slightly per recipient. */
-  bodyByPlayer: Record<string, string>;
+  /** Per-player prompt, since minion-info/imp differ slightly per recipient. */
+  bodyByPlayer: Record<string, Msg>;
   responses: Record<string, string[]>;
   deadline: number;
 }
@@ -106,7 +117,7 @@ export interface GameState {
   deathsTonight: string[];
   nightSlotIndex: number;
   pendingRealTurn: PendingRealTurn | null;
-  publicLog: string[];
+  publicLog: Msg[];
   currentNomination: Nomination | null;
   onBlockId: string | null;
   highestYesToday: number;

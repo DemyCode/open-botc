@@ -1,5 +1,9 @@
 import { CHARACTERS } from './characters.js';
-import type { GameState, Nomination, NominationState, Phase, PlayerState } from './types.js';
+import type { GameState, Msg, Nomination, NominationState, Phase, PlayerState } from './types.js';
+
+function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
+  return vars ? { key, vars } : { key };
+}
 
 export interface PublicPlayerView {
   id: string;
@@ -24,7 +28,7 @@ export interface NightTurnChoice {
 export interface NightTurnView {
   shape: 'info' | 'choose';
   title: string;
-  body: string;
+  body: Msg;
   min: number;
   max: number;
   choices: NightTurnChoice[];
@@ -55,9 +59,9 @@ export interface GameView {
   hostId: string;
   selfId: string;
   players: PublicPlayerView[];
-  publicLog: string[];
+  publicLog: Msg[];
   myCharacter: { id: string; name: string; ability: string; alignment: string } | null;
-  myLog: { night: number; text: string }[];
+  myLog: { night: number; msg: Msg }[];
   mySlayerUsed: boolean;
   myGhostVoteUsed: boolean;
   amIAlive: boolean;
@@ -72,11 +76,11 @@ export interface GameView {
   nightTurn: NightTurnView | null;
   /** The outcome of a "choose" ability that produces information (Fortune Teller, Ravenkeeper),
    * shown right after answering — otherwise it would only ever surface later in myLog. */
-  nightResult: string | null;
+  nightResult: Msg | null;
   /** Personalized "You died tonight." / "You survived the night." — only set once day begins. */
-  dawnMessage: string | null;
+  dawnMessage: Msg | null;
   /** "The village executed you." / "X was executed." / "Nobody has been killed today..." — only set once night begins. */
-  duskMessage: string | null;
+  duskMessage: Msg | null;
   waitingForOthers: boolean;
   nomination: NominationView | null;
   onBlockId: string | null;
@@ -88,7 +92,7 @@ function buildNightTurn(state: GameState, viewerId: string): NightTurnView | nul
   if (!t || !t.playerIds.includes(viewerId) || viewerId in t.responses) return null;
   const choices: NightTurnChoice[] =
     t.shape === 'choose' ? state.players.filter((p) => p.alive).map((p) => ({ id: p.id, name: p.name, seat: p.seat })) : [];
-  return { shape: t.shape, title: 'Your turn', body: t.bodyByPlayer[viewerId] ?? '', min: t.min, max: t.max, choices };
+  return { shape: t.shape, title: 'Your turn', body: t.bodyByPlayer[viewerId] ?? msg('empty'), min: t.min, max: t.max, choices };
 }
 
 /** Fixed seating-chart neighbours (not "nearest alive" — a dead player still keeps their chair). */
@@ -101,19 +105,19 @@ function seatNeighbors(state: GameState, viewerId: string): { left: string | nul
   return { left: left.name, right: right.name };
 }
 
-function buildDawnMessage(self: PlayerState | undefined): string | null {
+function buildDawnMessage(self: PlayerState | undefined): Msg | null {
   if (!self) return null;
-  if (self.diedTonight) return 'You died tonight.';
-  if (self.alive) return 'You survived the night.';
+  if (self.diedTonight) return msg('diedTonight');
+  if (self.alive) return msg('survivedNight');
   return null; // already dead from an earlier night/execution — nothing new to announce
 }
 
-function buildDuskMessage(state: GameState, self: PlayerState | undefined): string | null {
+function buildDuskMessage(state: GameState, self: PlayerState | undefined): Msg | null {
   const executedId = state.lastExecutedId;
-  if (!executedId) return 'Nobody has been killed today, the village goes to sleep.';
-  if (self && self.id === executedId) return 'The village executed you.';
+  if (!executedId) return msg('noExecutionSleep');
+  if (self && self.id === executedId) return msg('executedYou');
   const executed = state.players.find((p) => p.id === executedId);
-  return executed ? `${executed.name} was executed by the village.` : null;
+  return executed ? msg('executedOther', { name: executed.name }) : null;
 }
 
 function buildNomination(state: GameState, nom: Nomination): NominationView {

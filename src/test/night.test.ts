@@ -94,8 +94,8 @@ test('Fortune Teller: the result of choosing is available immediately, not just 
 
   // Fortune Teller is the only holder of this round, so it has already advanced by now — the
   // result must survive on the player, not the (already-replaced) round object.
-  assert.match(ft.nightResult ?? '', /^Yes/);
-  assert.equal(ft.nightResult, ft.log.at(-1)?.text, 'the immediate result should match what was logged');
+  assert.equal(ft.nightResult?.key, 'fortuneTellerYes');
+  assert.deepEqual(ft.nightResult, ft.log.at(-1)?.msg, 'the immediate result should match what was logged');
 });
 
 test('Ravenkeeper: the result of choosing is available immediately, not just in the permanent log', () => {
@@ -112,7 +112,7 @@ test('Ravenkeeper: the result of choosing is available immediately, not just in 
   advanceUntil(state, 'ravenkeeper');
   submitRealResponse(state, rk.id, [chef.id]);
 
-  assert.equal(rk.nightResult, `${chef.name} is the Chef.`);
+  assert.deepEqual(rk.nightResult, { key: 'ravenkeeperInfo', vars: { name: chef.name, role: 'chef' } });
 });
 
 test('diedTonight only reflects the most recently completed night, not any death ever', () => {

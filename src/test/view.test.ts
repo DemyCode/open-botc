@@ -19,14 +19,14 @@ test('dawn message: a player who died this night sees "You died tonight."', () =
   victim.alive = false;
   victim.diedTonight = true;
   const view = viewFor(s, victim.id);
-  assert.equal(view.dawnMessage, 'You died tonight.');
+  assert.deepEqual(view.dawnMessage, { key: 'diedTonight' });
 });
 
 test('dawn message: a player who survived sees "You survived the night."', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'soldier', 'washerwoman']);
   s.phase = 'day';
   const view = viewFor(s, s.players[0].id);
-  assert.equal(view.dawnMessage, 'You survived the night.');
+  assert.deepEqual(view.dawnMessage, { key: 'survivedNight' });
 });
 
 test('dawn message: someone already dead from an earlier night gets no message (not "survived", not "died tonight")', () => {
@@ -54,7 +54,7 @@ test('dusk message: the executed player sees "The village executed you."', () =>
   executed.alive = false;
   s.lastExecutedId = executed.id;
   const view = viewFor(s, executed.id);
-  assert.equal(view.duskMessage, 'The village executed you.');
+  assert.deepEqual(view.duskMessage, { key: 'executedYou' });
 });
 
 test('dusk message: everyone else sees who was executed', () => {
@@ -65,7 +65,7 @@ test('dusk message: everyone else sees who was executed', () => {
   executed.alive = false;
   s.lastExecutedId = executed.id;
   const view = viewFor(s, s.players[0].id);
-  assert.equal(view.duskMessage, `${executed.name} was executed by the village.`);
+  assert.deepEqual(view.duskMessage, { key: 'executedOther', vars: { name: executed.name } });
 });
 
 test('dusk message: nobody executed shows the sleep message to everyone', () => {
@@ -74,7 +74,7 @@ test('dusk message: nobody executed shows the sleep message to everyone', () => 
   s.night = 2;
   s.lastExecutedId = null;
   const view = viewFor(s, s.players[0].id);
-  assert.equal(view.duskMessage, 'Nobody has been killed today, the village goes to sleep.');
+  assert.deepEqual(view.duskMessage, { key: 'noExecutionSleep' });
 });
 
 test('dusk message only appears during the night', () => {

@@ -75,8 +75,8 @@ function handleMessage(msg) {
 }
 
 function turnKey(view) {
-  if (view.nightTurn) return `turn-${view.phase}-${view.night}-${view.nightTurn.body}`;
-  if (view.nightResult) return `result-${view.phase}-${view.night}-${view.nightResult}`;
+  if (view.nightTurn) return `turn-${view.phase}-${view.night}-${JSON.stringify(view.nightTurn.body)}`;
+  if (view.nightResult) return `result-${view.phase}-${view.night}-${JSON.stringify(view.nightResult)}`;
   return null;
 }
 
@@ -325,6 +325,127 @@ function localizeChar(c) {
   return c;
 }
 
+/** Localized display name for a character id, falling back to the raw id if the cache isn't warm yet. */
+function roleNameFor(id) {
+  const c = charactersCache && charactersCache.find((x) => x.id === id);
+  return c ? localizeChar(c).name : id;
+}
+
+// ---------------------------------------------------------------------------
+// Central message authority — the server never sends a pre-rendered English sentence for game
+// narration (log entries, night prompts, dawn/dusk messages, ...), only a {key, vars} descriptor.
+// This dictionary is the ONLY place that turns one of those into an actual sentence, in whichever
+// language the viewer picked — mirroring the message keys emitted by src/game/*.ts.
+// ---------------------------------------------------------------------------
+
+const TEAM_SINGULAR = {
+  en: { townsfolk: 'Townsfolk', outsider: 'Outsider', minion: 'Minion' },
+  fr: { townsfolk: 'Villageois', outsider: 'Étranger', minion: 'Sbire' },
+};
+const TEAM_PLURAL = {
+  en: { townsfolk: 'Townsfolk', outsider: 'Outsiders', minion: 'Minions' },
+  fr: { townsfolk: 'Villageois', outsider: 'Étrangers', minion: 'Sbires' },
+};
+
+const MESSAGES = {
+  en: {
+    noTeamInPlay: (v) => `Neither ${v.a} nor ${v.b} is a ${TEAM_SINGULAR.en[v.team]} — there are no ${TEAM_PLURAL.en[v.team]} in play.`,
+    investigativeInfo: (v) => `${v.a} or ${v.b} is the ${roleNameFor(v.role)}.`,
+    chefInfo: (v) => `You see ${v.count} pair${v.count === 1 ? '' : 's'} of evil players sitting next to each other.`,
+    empathInfo: (v) => `${v.count} of your 2 alive neighbours ${v.count === 1 ? 'is' : 'are'} evil.`,
+    fortuneTellerYes: () => 'Yes — one of them is the Demon.',
+    fortuneTellerNo: () => 'No — neither is the Demon.',
+    undertakerNone: () => 'Nobody was executed today.',
+    undertakerInfo: (v) => `${v.name} was the ${roleNameFor(v.role)}.`,
+    ravenkeeperInfo: (v) => `${v.name} is the ${roleNameFor(v.role)}.`,
+    minionInfoSolo: (v) => `You have no fellow Minions. The Demon is ${v.demon || 'unknown'}.`,
+    minionInfoGroup: (v) => `Your fellow Minion${v.names.length === 1 ? ' is' : 's are'} ${v.names.join(', ')}. The Demon is ${v.demon || 'unknown'}.`,
+    demonInfo: (v) => `Your Minion${v.names.length === 1 ? ' is' : 's are'} ${v.names.join(', ') || 'no one'}. Your bluffs: ${v.bluffs.map(roleNameFor).join(', ')}.`,
+    spyGrimoire: (v) => 'Grimoire — ' + v.names.map((n, i) => `${n}: ${roleNameFor(v.roles[i])}${v.dead[i] ? ' (dead)' : ''}`).join('; ') + '.',
+    poisonerChoose: () => 'Choose a player to poison.',
+    monkChoose: () => 'Choose a player to protect (not yourself).',
+    fortuneTellerChoose: () => 'Choose 2 players to check for the Demon.',
+    butlerChoose: () => 'Choose a player to be your master (not yourself).',
+    ravenkeeperChoose: () => 'You died! Choose a player to learn their character.',
+    impChoose: () => 'Choose a player to kill.',
+    empty: () => '',
+    foundDead: (v) => `${v.name} was found dead this morning.`,
+    nobodyDiedLastNight: () => 'Nobody died last night.',
+    becameImp: () => 'You are now the Imp.',
+    scarletWomanPromoted: () => 'The Demon has died — you are now the Imp.',
+    wasExecuted: (v) => `${v.name} was executed.`,
+    saintWins: (v) => `${v.name} was the Saint — evil wins!`,
+    slayerHit: (v) => `${v.slayer} shoots ${v.target} — it was the Demon! They die.`,
+    slayerMiss: (v) => `${v.slayer} shoots ${v.target} — nothing happens.`,
+    virginExecutesNominator: (v) => `${v.name} nominated the Virgin and is executed immediately!`,
+    nominates: (v) => `${v.nominator} nominates ${v.nominee}.`,
+    onBlock: (v) => `${v.name} receives ${v.count} votes and is now on the block.`,
+    tieClearsBlock: (v) => `${v.name} ties the current highest vote count — no one is on the block.`,
+    notEnoughVotes: (v) => `${v.name} receives ${v.count} vote(s) — not enough to be on the block.`,
+    noExecutionToday: () => 'No one was executed today.',
+    goodWinsDemonDead: () => 'The Demon is dead — good wins!',
+    evilWinsTwoLeft: () => 'Only 2 players remain with the Demon alive — evil wins!',
+    goodWinsMayor: () => 'No execution with only 3 players left and the Mayor alive — good wins!',
+    diedTonight: () => 'You died tonight.',
+    survivedNight: () => 'You survived the night.',
+    noExecutionSleep: () => 'Nobody has been killed today, the village goes to sleep.',
+    executedYou: () => 'The village executed you.',
+    executedOther: (v) => `${v.name} was executed by the village.`,
+  },
+  fr: {
+    noTeamInPlay: (v) => `Ni ${v.a} ni ${v.b} n'est un ${TEAM_SINGULAR.fr[v.team]} — il n'y a aucun ${TEAM_PLURAL.fr[v.team]} en jeu.`,
+    investigativeInfo: (v) => `${v.a} ou ${v.b} : ${roleNameFor(v.role)}.`,
+    chefInfo: (v) => `Vous voyez ${v.count} paire${v.count === 1 ? '' : 's'} de joueurs maléfiques assis côte à côte.`,
+    empathInfo: (v) => `${v.count} de vos 2 voisins vivants ${v.count === 1 ? 'est' : 'sont'} maléfique${v.count === 1 ? '' : 's'}.`,
+    fortuneTellerYes: () => "Oui — l'un des deux est le Démon.",
+    fortuneTellerNo: () => "Non — aucun des deux n'est le Démon.",
+    undertakerNone: () => "Personne n'a été exécuté aujourd'hui.",
+    undertakerInfo: (v) => `${v.name} était : ${roleNameFor(v.role)}.`,
+    ravenkeeperInfo: (v) => `${v.name} est : ${roleNameFor(v.role)}.`,
+    minionInfoSolo: (v) => `Vous n'avez aucun autre Sbire. Le Démon est ${v.demon || 'inconnu'}.`,
+    minionInfoGroup: (v) => `Vos autres Sbires sont ${v.names.join(', ')}. Le Démon est ${v.demon || 'inconnu'}.`,
+    demonInfo: (v) => `Sbire(s) : ${v.names.join(', ') || 'personne'}. Vos leurres : ${v.bluffs.map(roleNameFor).join(', ')}.`,
+    spyGrimoire: (v) => 'Grimoire — ' + v.names.map((n, i) => `${n} : ${roleNameFor(v.roles[i])}${v.dead[i] ? ' (mort)' : ''}`).join('; ') + '.',
+    poisonerChoose: () => 'Choisissez un joueur à empoisonner.',
+    monkChoose: () => 'Choisissez un joueur à protéger (pas vous-même).',
+    fortuneTellerChoose: () => 'Choisissez 2 joueurs pour vérifier le Démon.',
+    butlerChoose: () => 'Choisissez un joueur qui sera votre maître (pas vous-même).',
+    ravenkeeperChoose: () => 'Vous êtes mort ! Choisissez un joueur pour apprendre son personnage.',
+    impChoose: () => 'Choisissez un joueur à tuer.',
+    empty: () => '',
+    foundDead: (v) => `${v.name} a été retrouvé(e) mort(e) ce matin.`,
+    nobodyDiedLastNight: () => "Personne n'est mort cette nuit.",
+    becameImp: () => 'Vous êtes maintenant le Démon.',
+    scarletWomanPromoted: () => 'Le Démon est mort — vous êtes maintenant le Démon.',
+    wasExecuted: (v) => `${v.name} a été exécuté(e).`,
+    saintWins: (v) => `${v.name} était le Saint — le Mal gagne !`,
+    slayerHit: (v) => `${v.slayer} tire sur ${v.target} — c'était le Démon ! Il/Elle meurt.`,
+    slayerMiss: (v) => `${v.slayer} tire sur ${v.target} — il ne se passe rien.`,
+    virginExecutesNominator: (v) => `${v.name} a nominé la Vierge et est exécuté(e) immédiatement !`,
+    nominates: (v) => `${v.nominator} accuse ${v.nominee}.`,
+    onBlock: (v) => `${v.name} reçoit ${v.count} votes et est maintenant sur le billot.`,
+    tieClearsBlock: (v) => `${v.name} égalise le score le plus élevé — personne n'est sur le billot.`,
+    notEnoughVotes: (v) => `${v.name} reçoit ${v.count} vote(s) — pas assez pour être sur le billot.`,
+    noExecutionToday: () => "Personne n'a été exécuté aujourd'hui.",
+    goodWinsDemonDead: () => 'Le Démon est mort — le Bien gagne !',
+    evilWinsTwoLeft: () => 'Il ne reste que 2 joueurs avec le Démon vivant — le Mal gagne !',
+    goodWinsMayor: () => 'Aucune exécution avec seulement 3 joueurs restants et le Maire vivant — le Bien gagne !',
+    diedTonight: () => 'Vous êtes mort cette nuit.',
+    survivedNight: () => 'Vous avez survécu à la nuit.',
+    noExecutionSleep: () => "Personne n'a été tué aujourd'hui, le village va se coucher.",
+    executedYou: () => 'Le village vous a exécuté.',
+    executedOther: (v) => `${v.name} a été exécuté(e) par le village.`,
+  },
+};
+
+/** Renders a server-sent {key, vars} message descriptor into localized text. This is the single
+ * point where game narration turns into an actual sentence — the server never sends prose. */
+function tMsg(m) {
+  if (!m) return '';
+  const fn = (MESSAGES[LANG] && MESSAGES[LANG][m.key]) || MESSAGES.en[m.key];
+  return fn ? fn(m.vars || {}) : m.key;
+}
+
 const TEAM_LABELS = {
   en: { townsfolk: 'Townsfolk', outsider: 'Outsiders', minion: 'Minions', demon: 'Demon' },
   fr: { townsfolk: 'Villageois', outsider: 'Étrangers', minion: 'Sbires', demon: 'Démon' },
@@ -473,7 +594,7 @@ function renderLog(v) {
     v.publicLog
       .slice(-12)
       .reverse()
-      .map((line) => el('div', { class: 'log-entry' }, line))
+      .map((line) => el('div', { class: 'log-entry' }, tMsg(line)))
   );
 }
 
@@ -743,7 +864,7 @@ function renderDawnScreen(v) {
   return renderScreen([
     el('div', { class: 'moon' }, '☀️'),
     el('h1', { class: 'center' }, t('day', v.day)),
-    el('div', { class: 'card center' }, el('h2', {}, v.dawnMessage)),
+    el('div', { class: 'card center' }, el('h2', {}, tMsg(v.dawnMessage))),
     el(
       'button',
       {
@@ -762,7 +883,7 @@ function renderDuskScreen(v) {
   return renderScreen([
     el('div', { class: 'moon' }, '🌙'),
     el('h1', { class: 'center' }, t('night', v.night)),
-    el('div', { class: 'card center' }, el('h2', {}, v.duskMessage)),
+    el('div', { class: 'card center' }, el('h2', {}, tMsg(v.duskMessage))),
     el(
       'button',
       {
@@ -788,7 +909,7 @@ function renderNight(v) {
       el('h1', { class: 'center' }, t('night', v.night)),
       el('div', { class: 'card' }, [
         el('h2', {}, turn.shape === 'info' ? t('yourInformation') : t('yourTurn')),
-        el('p', { class: 'muted' }, turn.body),
+        el('p', { class: 'muted' }, tMsg(turn.body)),
       ]),
     ];
 
@@ -829,7 +950,7 @@ function renderNight(v) {
       roleBanner(v),
       banner,
       el('h1', { class: 'center' }, t('night', v.night)),
-      el('div', { class: 'card' }, [el('h2', {}, t('yourResult')), el('p', { class: 'muted' }, v.nightResult)]),
+      el('div', { class: 'card' }, [el('h2', {}, t('yourResult')), el('p', { class: 'muted' }, tMsg(v.nightResult))]),
     ]);
   }
 
@@ -1062,7 +1183,7 @@ function renderDay(v) {
         el(
           'div',
           { class: 'log' },
-          v.myLog.map((e) => el('div', { class: 'log-entry' }, `${t('night', e.night)}: ${e.text}`))
+          v.myLog.map((e) => el('div', { class: 'log-entry' }, `${t('night', e.night)}: ${tMsg(e.msg)}`))
         ),
       ])
     );

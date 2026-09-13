@@ -6,6 +6,7 @@ import {
   chefInfo, demonInfo, empathInfo, fortuneTellerInfo, investigativeInfo,
   minionInfo, ravenkeeperInfo, spyInfo, undertakerInfo,
 } from '../game/info.js';
+import type { Msg } from '../game/types.js';
 import { advanceUntil, answerRealTurn, byChar, mk, mkDay, runFullNight, startNight } from './helpers.js';
 
 // This file covers every Trouble Brewing character's core ability at least once. Several
@@ -15,13 +16,12 @@ import { advanceUntil, answerRealTurn, byChar, mk, mkDay, runFullNight, startNig
 // registration.test.ts — this file fills in what those didn't touch, and is organized one
 // character at a time for easy scanning.
 
-function assertInvestigativeInfoIsGrounded(state: ReturnType<typeof mk>, msg: string, team: 'townsfolk' | 'outsider' | 'minion') {
-  const match = msg.match(/^(.+) or (.+) is the (.+)\.$/);
-  assert.ok(match, `unexpected message format: ${msg}`);
-  const [, nameA, nameB, claimedChar] = match;
+function assertInvestigativeInfoIsGrounded(state: ReturnType<typeof mk>, m: Msg, team: 'townsfolk' | 'outsider' | 'minion') {
+  assert.equal(m.key, 'investigativeInfo', `unexpected message key: ${m.key}`);
+  const { a: nameA, b: nameB, role } = m.vars as { a: string; b: string; role: string };
   const candidates = [nameA, nameB].map((n) => state.players.find((p) => p.name === n));
-  const real = candidates.find((p) => p && CHARACTERS[p.character].team === team && CHARACTERS[p.character].name === claimedChar);
-  assert.ok(real, `expected one of ${nameA}/${nameB} to really be the ${claimedChar}`);
+  const real = candidates.find((p) => p && CHARACTERS[p.character].team === team && p.character === role);
+  assert.ok(real, `expected one of ${nameA}/${nameB} to really be the ${role}`);
 }
 
 test('Washerwoman: names two players, one of whom really is a Townsfolk of the stated character', () => {
@@ -39,8 +39,9 @@ test('Librarian: names a real Outsider when one is in play', () => {
 test('Librarian: truthfully reports no Outsiders when none are in play', () => {
   const s = mk(['imp', 'librarian', 'chef', 'soldier', 'poisoner']);
   const lib = byChar(s, 'librarian');
-  const msg = investigativeInfo(s, lib, 'outsider', 'lib-slot-2');
-  assert.match(msg, /no Outsiders/i);
+  const m = investigativeInfo(s, lib, 'outsider', 'lib-slot-2');
+  assert.equal(m.key, 'noTeamInPlay');
+  assert.equal(m.vars?.team, 'outsider');
 });
 
 test('Investigator: names two players, one of whom really is the stated Minion', () => {
@@ -53,23 +54,23 @@ test('Chef: correctly counts adjacent evil pairs around the table', () => {
   // Seat order: imp, poisoner, chef, empath, soldier, washerwoman — imp/poisoner sit together (1 pair).
   const s = mk(['imp', 'poisoner', 'chef', 'empath', 'soldier', 'washerwoman']);
   const chef = byChar(s, 'chef');
-  assert.match(chefInfo(s, chef, 'chef-slot'), /^You see 1 pair of evil players/);
+  assert.deepEqual(chefInfo(s, chef, 'chef-slot'), { key: 'chefInfo', vars: { count: 1 } });
 });
 
 test('Chef: counts zero pairs when no two evil players are adjacent', () => {
   const s = mk(['chef', 'imp', 'empath', 'poisoner', 'soldier']); // evils (imp, poisoner) separated by goods
   const chef = byChar(s, 'chef');
-  assert.match(chefInfo(s, chef, 'chef-slot-2'), /^You see 0 pairs of evil players/);
+  assert.deepEqual(chefInfo(s, chef, 'chef-slot-2'), { key: 'chefInfo', vars: { count: 0 } });
 });
 
 test('Empath: counts evil among living neighbours, skipping a dead seat for the next living one', () => {
   const s = mk(['empath', 'imp', 'soldier', 'poisoner', 'washerwoman']); // seats 0..4
   const empath = byChar(s, 'empath');
   const imp = byChar(s, 'imp');
-  assert.match(empathInfo(s, empath, 'empath-slot-1'), /^1 of your 2 alive neighbours is evil\.$/);
+  assert.deepEqual(empathInfo(s, empath, 'empath-slot-1'), { key: 'empathInfo', vars: { count: 1 } });
 
   imp.alive = false; // empath's right-hand neighbour dies; soldier (good) is next living
-  assert.match(empathInfo(s, empath, 'empath-slot-2'), /^0 of your 2 alive neighbours are evil\.$/);
+  assert.deepEqual(empathInfo(s, empath, 'empath-slot-2'), { key: 'empathInfo', vars: { count: 0 } });
 });
 
 test('Fortune Teller: detects the real Demon, and the red herring always reads as one too', () => {
@@ -79,26 +80,26 @@ test('Fortune Teller: detects the real Demon, and the red herring always reads a
   const empath = byChar(s, 'empath');
   const soldier = byChar(s, 'soldier');
 
-  assert.match(fortuneTellerInfo(s, ft, [imp.id, empath.id], 'ft-1'), /^Yes/);
-  assert.match(fortuneTellerInfo(s, ft, [empath.id, soldier.id], 'ft-2'), /^No/);
+  assert.equal(fortuneTellerInfo(s, ft, [imp.id, empath.id], 'ft-1').key, 'fortuneTellerYes');
+  assert.equal(fortuneTellerInfo(s, ft, [empath.id, soldier.id], 'ft-2').key, 'fortuneTellerNo');
 
   empath.isRedHerring = true;
-  assert.match(fortuneTellerInfo(s, ft, [empath.id, soldier.id], 'ft-3'), /^Yes/);
+  assert.equal(fortuneTellerInfo(s, ft, [empath.id, soldier.id], 'ft-3').key, 'fortuneTellerYes');
 });
 
 test('Undertaker: learns the true character of whoever was executed, or that nobody was', () => {
   const s = mk(['imp', 'undertaker', 'chef', 'soldier', 'washerwoman']);
   const undertaker = byChar(s, 'undertaker');
   const chef = byChar(s, 'chef');
-  assert.equal(undertakerInfo(s, undertaker, chef, 'ut-slot'), `${chef.name} was the Chef.`);
-  assert.equal(undertakerInfo(s, undertaker, null, 'ut-slot-2'), 'Nobody was executed today.');
+  assert.deepEqual(undertakerInfo(s, undertaker, chef, 'ut-slot'), { key: 'undertakerInfo', vars: { name: chef.name, role: 'chef' } });
+  assert.deepEqual(undertakerInfo(s, undertaker, null, 'ut-slot-2'), { key: 'undertakerNone' });
 });
 
 test('Ravenkeeper: learns the true character of whoever they choose', () => {
   const s = mk(['imp', 'ravenkeeper', 'chef', 'soldier', 'washerwoman']);
   const rk = byChar(s, 'ravenkeeper');
   const chef = byChar(s, 'chef');
-  assert.equal(ravenkeeperInfo(s, rk, chef.id, 'rk-slot'), `${chef.name} is the Chef.`);
+  assert.deepEqual(ravenkeeperInfo(s, rk, chef.id, 'rk-slot'), { key: 'ravenkeeperInfo', vars: { name: chef.name, role: 'chef' } });
 });
 
 test('Monk: a working protection fully blocks the Demon, and no death is registered at all', () => {
@@ -175,8 +176,10 @@ test("Butler: their night choice sets who their vote depends on the next day", (
 test('Spy: sees the true, full grimoire when unpoisoned', () => {
   const s = mk(['imp', 'spy', 'chef', 'soldier']);
   const spy = byChar(s, 'spy');
-  const msg = spyInfo(s, spy, 'spy-slot');
-  for (const p of s.players) assert.ok(msg.includes(`${p.name}: ${CHARACTERS[p.character].name}`), msg);
+  const m = spyInfo(s, spy, 'spy-slot');
+  assert.equal(m.key, 'spyGrimoire');
+  assert.deepEqual(m.vars?.names, s.players.map((p) => p.name));
+  assert.deepEqual(m.vars?.roles, s.players.map((p) => p.character));
 });
 
 test('Minions: learn their fellow Minions and the Demon', () => {
@@ -184,8 +187,10 @@ test('Minions: learn their fellow Minions and the Demon', () => {
   const poisoner = byChar(s, 'poisoner');
   const spy = byChar(s, 'spy');
   const imp = byChar(s, 'imp');
-  const msg = minionInfo(s, poisoner);
-  assert.ok(msg.includes(spy.name) && msg.includes(imp.name), msg);
+  const m = minionInfo(s, poisoner);
+  assert.equal(m.key, 'minionInfoGroup');
+  assert.ok((m.vars?.names as string[]).includes(spy.name));
+  assert.equal(m.vars?.demon, imp.name);
 });
 
 test('Imp: learns their Minions and bluffs on the first night', () => {
@@ -193,9 +198,10 @@ test('Imp: learns their Minions and bluffs on the first night', () => {
   s.bluffs = ['mayor', 'virgin', 'saint'];
   const imp = byChar(s, 'imp');
   const poisoner = byChar(s, 'poisoner');
-  const msg = demonInfo(s, imp);
-  assert.ok(msg.includes(poisoner.name), msg);
-  assert.ok(msg.includes('Mayor') && msg.includes('Virgin') && msg.includes('Saint'), msg);
+  const m = demonInfo(s, imp);
+  assert.equal(m.key, 'demonInfo');
+  assert.deepEqual(m.vars?.names, [poisoner.name]);
+  assert.deepEqual(m.vars?.bluffs, ['mayor', 'virgin', 'saint']);
 });
 
 test('Imp: star-pass kills the Imp themselves and promotes a random Minion to Imp', () => {
@@ -211,7 +217,7 @@ test('Imp: star-pass kills the Imp themselves and promotes a random Minion to Im
   const newImp = s.players.find((p) => p.character === 'imp' && p.alive);
   assert.ok(newImp, 'a new, living Imp should exist after the star-pass');
   assert.notEqual(newImp!.id, imp.id);
-  assert.ok(newImp!.log.some((e) => e.text.includes('You are now the Imp')));
+  assert.ok(newImp!.log.some((e) => e.msg.key === 'becameImp'));
 });
 
 test('Recluse: can be legitimately killed by the Slayer when misregistering as the Demon', () => {

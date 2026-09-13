@@ -3,7 +3,7 @@ import { appendLog, beginNight, tick as nightTick } from './night.js';
 import { abilityWorks, registersAs } from './registration.js';
 import { randomId } from './rng.js';
 import { dealCharacters } from './setup.js';
-import type { GameState, Nomination, PlayerState } from './types.js';
+import type { GameState, Msg, Nomination, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
 export { submitRealResponse } from './night.js';
@@ -11,6 +11,10 @@ export { submitRealResponse } from './night.js';
 const ACCUSE_MS = 45_000;
 const DEFEND_MS = 45_000;
 const VOTER_TIMEOUT_MS = 15_000;
+
+function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
+  return vars ? { key, vars } : { key };
+}
 
 function findPlayer(state: GameState, id: string): PlayerState {
   const p = state.players.find((pl) => pl.id === id);
@@ -125,7 +129,7 @@ export function startGame(state: GameState): void {
   beginNight(state);
 }
 
-function setWinner(state: GameState, alignment: 'good' | 'evil', message: string): void {
+function setWinner(state: GameState, alignment: 'good' | 'evil', message: Msg): void {
   if (state.winner) return;
   state.winner = alignment;
   state.phase = 'ended';
@@ -137,11 +141,11 @@ function evaluateWin(state: GameState): void {
   const alive = state.players.filter((p) => p.alive);
   const demonAlive = alive.some((p) => CHARACTERS[p.character].team === 'demon');
   if (!demonAlive) {
-    setWinner(state, 'good', 'The Demon is dead — good wins!');
+    setWinner(state, 'good', msg('goodWinsDemonDead'));
     return;
   }
   if (alive.length <= 2) {
-    setWinner(state, 'evil', 'Only 2 players remain with the Demon alive — evil wins!');
+    setWinner(state, 'evil', msg('evilWinsTwoLeft'));
   }
 }
 
@@ -152,7 +156,7 @@ function checkDemonDeathPromotion(state: GameState, deadPlayer: PlayerState | nu
   if (sw && aliveCount >= 5 && abilityWorks(state, sw)) {
     sw.character = 'imp';
     sw.perceived = 'imp';
-    appendLog(state, sw.id, 'The Demon has died — you are now the Imp.');
+    appendLog(state, sw.id, msg('scarletWomanPromoted'));
   }
 }
 
@@ -160,9 +164,9 @@ function executePlayer(state: GameState, targetId: string): void {
   const p = findPlayer(state, targetId);
   p.alive = false;
   state.lastExecutedId = targetId;
-  state.publicLog.push(`${p.name} was executed.`);
+  state.publicLog.push(msg('wasExecuted', { name: p.name }));
   if (p.character === 'saint' && abilityWorks(state, p)) {
-    setWinner(state, 'evil', `${p.name} was the Saint — evil wins!`);
+    setWinner(state, 'evil', msg('saintWins', { name: p.name }));
     return;
   }
   checkDemonDeathPromotion(state, p);
@@ -181,11 +185,11 @@ export function useSlayer(state: GameState, slayerId: string, targetId: string):
   const hit = target.alive && abilityWorks(state, self) && registersAs(state, target, 'demon', ctx);
   if (hit) {
     target.alive = false;
-    state.publicLog.push(`${self.name} shoots ${target.name} — it was the Demon! They die.`);
+    state.publicLog.push(msg('slayerHit', { slayer: self.name, target: target.name }));
     checkDemonDeathPromotion(state, target);
     evaluateWin(state);
   } else {
-    state.publicLog.push(`${self.name} shoots ${target.name} — nothing happens.`);
+    state.publicLog.push(msg('slayerMiss', { slayer: self.name, target: target.name }));
   }
 }
 
@@ -207,7 +211,7 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
     nominee.virginUsed = true;
     const ctx = { asker: nominatorId, slot: `virgin-d${state.day}` };
     if (abilityWorks(state, nominee) && registersAs(state, nominator, 'townsfolk', ctx)) {
-      state.publicLog.push(`${nominator.name} nominated the Virgin and is executed immediately!`);
+      state.publicLog.push(msg('virginExecutesNominator', { name: nominator.name }));
       executePlayer(state, nominatorId);
       maybeAutoEndDay(state);
       return;
@@ -220,7 +224,7 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
     voteOrder: [], voteIndex: -1, currentVoterId: null, voterDeadline: null,
     votes: {}, yesCount: 0,
   };
-  state.publicLog.push(`${nominator.name} nominates ${nominee.name}.`);
+  state.publicLog.push(msg('nominates', { nominator: nominator.name, nominee: nominee.name }));
 }
 
 /**
@@ -353,12 +357,12 @@ function finishVoting(state: GameState, nom: Nomination): void {
   if (yesCount >= majority && yesCount > state.highestYesToday) {
     state.onBlockId = nominee.id;
     state.highestYesToday = yesCount;
-    state.publicLog.push(`${nominee.name} receives ${yesCount} votes and is now on the block.`);
+    state.publicLog.push(msg('onBlock', { name: nominee.name, count: yesCount }));
   } else if (yesCount > 0 && yesCount === state.highestYesToday) {
     state.onBlockId = null;
-    state.publicLog.push(`${nominee.name} ties the current highest vote count — no one is on the block.`);
+    state.publicLog.push(msg('tieClearsBlock', { name: nominee.name, count: yesCount }));
   } else {
-    state.publicLog.push(`${nominee.name} receives ${yesCount} vote(s) — not enough to be on the block.`);
+    state.publicLog.push(msg('notEnoughVotes', { name: nominee.name, count: yesCount }));
   }
 
   state.currentNomination = null;
@@ -423,14 +427,14 @@ function endDay(state: GameState): void {
     executePlayer(state, executedId);
   } else {
     state.lastExecutedId = null;
-    state.publicLog.push('No one was executed today.');
+    state.publicLog.push(msg('noExecutionToday'));
   }
   if (state.winner) return;
 
   const aliveCount = state.players.filter((p) => p.alive).length;
   const mayor = state.players.find((p) => p.alive && p.character === 'mayor');
   if (!executedId && aliveCount === 3 && mayor && abilityWorks(state, mayor)) {
-    setWinner(state, 'good', 'No execution with only 3 players left and the Mayor alive — good wins!');
+    setWinner(state, 'good', msg('goodWinsMayor'));
     return;
   }
 
