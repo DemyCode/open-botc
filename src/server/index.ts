@@ -38,7 +38,11 @@ const server = http.createServer((req, res) => {
       res.end('Not found');
       return;
     }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream' });
+    // This app is actively edited and redeployed on the same running server, sometimes many
+    // times in a session — a stale cached app.js/index.html looks exactly like a random,
+    // unreproducible bug ("the button doesn't work") since the browser never asks for the new
+    // one. Never cache, so every reload always gets whatever is actually on disk right now.
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.end(data);
   });
 });
