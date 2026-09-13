@@ -3,6 +3,15 @@ import { test } from 'node:test';
 import { viewFor } from '../game/view.js';
 import { mk } from './helpers.js';
 
+test('myGhostVoteUsed reflects whether this player has used their one post-death vote', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'soldier', 'washerwoman']);
+  const dead = s.players[2];
+  dead.alive = false;
+  assert.equal(viewFor(s, dead.id).myGhostVoteUsed, false);
+  dead.ghostVoteUsed = true;
+  assert.equal(viewFor(s, dead.id).myGhostVoteUsed, true);
+});
+
 test('dawn message: a player who died this night sees "You died tonight."', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'soldier', 'washerwoman']);
   s.phase = 'day';

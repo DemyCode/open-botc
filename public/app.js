@@ -104,9 +104,26 @@ function renderScreen(children) {
   return el('div', { class: 'screen' }, children);
 }
 
+function aliveStatus(v) {
+  let text;
+  let cls;
+  if (v.amIAlive) {
+    text = '🟢 You are alive';
+    cls = 'alive';
+  } else if (!v.myGhostVoteUsed) {
+    text = '💀 You are dead — you can still vote one more time this game';
+    cls = 'dead';
+  } else {
+    text = '💀 You are dead — you already used your final vote';
+    cls = 'dead';
+  }
+  return el('div', { class: 'status-bar ' + cls }, text);
+}
+
 function roleBanner(v) {
   if (!v.myCharacter) return null;
   return el('div', { class: 'role-banner' }, [
+    aliveStatus(v),
     el('div', { class: 'align' }, v.myCharacter.alignment),
     el('div', { class: 'name' }, v.myCharacter.name),
     el('div', { class: 'ability' }, v.myCharacter.ability),
@@ -526,7 +543,12 @@ function renderWaitingDots() {
   spawnDot();
 
   return el('div', { class: 'card dot-card' }, [
-    el('p', { class: 'muted center' }, "The night is still. Tap the dot when it appears — keep your eyes on your screen."),
+    el('p', { class: 'muted center' }, "You have nothing to do this moment — someone else's turn is happening."),
+    el(
+      'p',
+      { class: 'muted center', style: 'font-size:0.8rem;margin-top:6px;' },
+      "Tap the dot when it appears anyway, so everyone's phone looks the same and nobody can tell who's really doing something."
+    ),
     box,
   ]);
 }
@@ -571,10 +593,16 @@ function renderNomination(v) {
     }
   } else if (n.state === 'voting') {
     if (v.selfId === n.currentVoterId) {
-      card.push(el('p', { class: 'center' }, "It's your vote — everyone can see it."));
+      card.push(
+        el(
+          'p',
+          { class: 'center' },
+          `It's your turn. Do you want to execute ${n.nomineeName}? Say your answer out loud too — everyone can see it here either way.`
+        )
+      );
       card.push(
         el('div', { class: 'footer-actions' }, [
-          el('button', { onclick: () => send({ t: 'vote', yes: true }) }, 'Yes'),
+          el('button', { onclick: () => send({ t: 'vote', yes: true }) }, `Yes, execute ${n.nomineeName}`),
           el('button', { class: 'secondary', onclick: () => send({ t: 'vote', yes: false }) }, 'No'),
         ])
       );
@@ -607,12 +635,26 @@ function renderDay(v) {
 
   if (v.onBlockId) {
     const onBlock = v.players.find((p) => p.id === v.onBlockId);
-    children.push(el('div', { class: 'card center' }, `On the block: ${onBlock ? onBlock.name : '?'}`));
+    children.push(
+      el(
+        'div',
+        { class: 'card center' },
+        `${onBlock ? onBlock.name : '?'} currently has the most votes and will be executed tonight, unless someone else gets more votes first.`
+      )
+    );
   }
 
   if (v.nomination) {
     children.push(renderNomination(v));
   } else {
+    children.push(
+      el('p', { class: 'muted center' }, self && self.alive
+        ? 'Tap a player to nominate them for execution.'
+        : v.myGhostVoteUsed
+          ? "You're dead and already used your final vote — you can only watch from here."
+          : "You're dead, but you still have one vote left to use before the game ends."
+      )
+    );
     children.push(
       el(
         'div',

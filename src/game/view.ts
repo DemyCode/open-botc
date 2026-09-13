@@ -57,6 +57,7 @@ export interface GameView {
   myCharacter: { id: string; name: string; ability: string; alignment: string } | null;
   myLog: { night: number; text: string }[];
   mySlayerUsed: boolean;
+  myGhostVoteUsed: boolean;
   amIAlive: boolean;
   leftNeighborName: string | null;
   rightNeighborName: string | null;
@@ -162,6 +163,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     myCharacter: self ? { id: self.perceived, name: CHARACTERS[self.perceived].name, ability: CHARACTERS[self.perceived].ability, alignment: self.alignment } : null,
     myLog: self ? self.log : [],
     mySlayerUsed: self?.slayerUsed ?? false,
+    myGhostVoteUsed: self?.ghostVoteUsed ?? false,
     amIAlive: self?.alive ?? false,
     leftNeighborName: neighbors.left,
     rightNeighborName: neighbors.right,
