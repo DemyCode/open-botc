@@ -135,3 +135,55 @@ test('diedTonight only reflects the most recently completed night, not any death
   assert.equal(rk.diedTonight, false, 'must be reset by a later night, even though they stayed dead');
   assert.equal(rk.alive, false, 'staying dead is unaffected by the diedTonight reset');
 });
+
+test('Fortune Teller may legally target a dead player', () => {
+  // Regression: the generic choose-shape target validation required every target to be alive,
+  // but the Fortune Teller is explicitly allowed to check a corpse.
+  const state = mk(['imp', 'fortuneteller', 'empath', 'soldier', 'washerwoman']);
+  const empath = byChar(state, 'empath');
+  empath.alive = false; // already dead from an earlier day
+  startNight(state);
+  const ft = byChar(state, 'fortuneteller');
+  const soldier = byChar(state, 'soldier');
+  advanceUntil(state, 'fortuneteller');
+  assert.doesNotThrow(() => submitRealResponse(state, ft.id, [empath.id, soldier.id]));
+});
+
+test('Ravenkeeper may legally target a different dead player, not just themselves', () => {
+  // Regression: only self-targeting was ever possible for a dead actor under the old validation
+  // (`id !== playerId` was the only exception to "must be alive") — a second dead player could
+  // never be legally chosen.
+  const state = mk(['imp', 'ravenkeeper', 'chef', 'soldier', 'washerwoman']);
+  startNight(state);
+  runFullNight(state);
+  startNight(state); // night 2
+  const rk = byChar(state, 'ravenkeeper');
+  const chef = byChar(state, 'chef');
+  chef.alive = false; // some other player who died on an earlier day
+  advanceUntil(state, 'imp');
+  answerRealTurn(state, [rk.id]); // kill the ravenkeeper so they get their triggered turn
+  advanceUntil(state, 'ravenkeeper');
+  assert.doesNotThrow(() => submitRealResponse(state, rk.id, [chef.id]));
+  assert.deepEqual(rk.nightResult, { key: 'ravenkeeperInfo', vars: { name: chef.name, role: 'chef' } });
+});
+
+test('Butler may legally choose a dead player as their master', () => {
+  const state = mk(['imp', 'butler', 'empath', 'soldier', 'washerwoman']);
+  const empath = byChar(state, 'empath');
+  empath.alive = false;
+  startNight(state);
+  const butler = byChar(state, 'butler');
+  advanceUntil(state, 'butler');
+  assert.doesNotThrow(() => submitRealResponse(state, butler.id, [empath.id]));
+  assert.equal(state.butlerMasterId, empath.id);
+});
+
+test('Poisoner and Monk still cannot target a dead player — targeting a corpse would always be a no-op', () => {
+  const state = mk(['imp', 'poisoner', 'monk', 'empath', 'soldier', 'washerwoman']);
+  const empath = byChar(state, 'empath');
+  empath.alive = false;
+  startNight(state);
+  const poisoner = byChar(state, 'poisoner');
+  advanceUntil(state, 'poisoner');
+  assert.throws(() => submitRealResponse(state, poisoner.id, [empath.id]));
+});

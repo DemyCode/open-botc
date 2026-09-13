@@ -1,5 +1,5 @@
-import { alignmentOfCharacter, CHARACTERS } from './characters.js';
-import { appendLog, beginNight, tick as nightTick } from './night.js';
+import { alignmentOfCharacter } from './characters.js';
+import { beginNight, evaluateWin, promoteScarletWomanIfEligible, setWinner, tick as nightTick } from './night.js';
 import { abilityWorks, registersAs } from './registration.js';
 import { randomId } from './rng.js';
 import { dealCharacters } from './setup.js';
@@ -129,37 +129,6 @@ export function startGame(state: GameState): void {
   beginNight(state);
 }
 
-function setWinner(state: GameState, alignment: 'good' | 'evil', message: Msg): void {
-  if (state.winner) return;
-  state.winner = alignment;
-  state.phase = 'ended';
-  state.publicLog.push(message);
-}
-
-function evaluateWin(state: GameState): void {
-  if (state.winner) return;
-  const alive = state.players.filter((p) => p.alive);
-  const demonAlive = alive.some((p) => CHARACTERS[p.character].team === 'demon');
-  if (!demonAlive) {
-    setWinner(state, 'good', msg('goodWinsDemonDead'));
-    return;
-  }
-  if (alive.length <= 2) {
-    setWinner(state, 'evil', msg('evilWinsTwoLeft'));
-  }
-}
-
-function checkDemonDeathPromotion(state: GameState, deadPlayer: PlayerState | null): void {
-  if (!deadPlayer || CHARACTERS[deadPlayer.character].team !== 'demon') return;
-  const aliveCount = state.players.filter((p) => p.alive).length;
-  const sw = state.players.find((p) => p.alive && p.character === 'scarletwoman');
-  if (sw && aliveCount >= 5 && abilityWorks(state, sw)) {
-    sw.character = 'imp';
-    sw.perceived = 'imp';
-    appendLog(state, sw.id, msg('scarletWomanPromoted'));
-  }
-}
-
 function executePlayer(state: GameState, targetId: string): void {
   const p = findPlayer(state, targetId);
   p.alive = false;
@@ -169,7 +138,7 @@ function executePlayer(state: GameState, targetId: string): void {
     setWinner(state, 'evil', msg('saintWins', { name: p.name }));
     return;
   }
-  checkDemonDeathPromotion(state, p);
+  promoteScarletWomanIfEligible(state, p);
   evaluateWin(state);
 }
 
@@ -177,7 +146,10 @@ export function useSlayer(state: GameState, slayerId: string, targetId: string):
   if (state.phase !== 'day') throw new GameError('Slayer can only be used during the day');
   const self = findPlayer(state, slayerId);
   if (!self.alive) throw new GameError('Dead players cannot use the Slayer shot');
-  if (self.character !== 'slayer') throw new GameError('You are not the Slayer');
+  // Checks what the player *believes* they are, not their true character — a Drunk who thinks
+  // they're the Slayer must be able to go through the motions too; abilityWorks() below is what
+  // actually makes their attempt silently fail, same as every other Drunk-perceived ability.
+  if (self.perceived !== 'slayer') throw new GameError('You are not the Slayer');
   if (self.slayerUsed) throw new GameError('Slayer shot already used');
   self.slayerUsed = true;
   const target = findPlayer(state, targetId);
@@ -186,7 +158,7 @@ export function useSlayer(state: GameState, slayerId: string, targetId: string):
   if (hit) {
     target.alive = false;
     state.publicLog.push(msg('slayerHit', { slayer: self.name, target: target.name }));
-    checkDemonDeathPromotion(state, target);
+    promoteScarletWomanIfEligible(state, target);
     evaluateWin(state);
   } else {
     state.publicLog.push(msg('slayerMiss', { slayer: self.name, target: target.name }));
@@ -213,7 +185,6 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
     if (abilityWorks(state, nominee) && registersAs(state, nominator, 'townsfolk', ctx)) {
       state.publicLog.push(msg('virginExecutesNominator', { name: nominator.name }));
       executePlayer(state, nominatorId);
-      maybeAutoEndDay(state);
       return;
     }
   }
@@ -366,7 +337,6 @@ function finishVoting(state: GameState, nom: Nomination): void {
   }
 
   state.currentNomination = null;
-  maybeAutoEndDay(state);
 }
 
 export function tick(state: GameState, now: number): void {
@@ -386,13 +356,6 @@ export function tick(state: GameState, now: number): void {
     nom.votes[nom.currentVoterId!] = false;
     advanceVoter(state, nom);
   }
-}
-
-function maybeAutoEndDay(state: GameState): void {
-  if (state.currentNomination || state.winner) return;
-  const alive = state.players.filter((p) => p.alive).map((p) => p.id);
-  const covered = alive.every((id) => state.usedNominatorIds.includes(id) || state.usedNomineeIds.includes(id));
-  if (covered) endDay(state);
 }
 
 /**

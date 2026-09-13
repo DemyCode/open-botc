@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { castVote, markReadyForSpeech, nominate, skipSpeech, toggleEndDayRequest, useSlayer } from '../game/engine.js';
-import { endDayByConsensus, fastForwardToVote, markAllReady, mkDay, voteInOrder } from './helpers.js';
+import {
+  advanceUntil, answerRealTurn, byChar, endDayByConsensus, fastForwardToVote,
+  markAllReady, mk, mkDay, runFullNight, startNight, voteInOrder,
+} from './helpers.js';
 
 test('vote below majority does not put anyone on the block', () => {
   const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']); // 6 alive, majority=4
@@ -176,6 +179,60 @@ test('Slayer missing does nothing and can only be used once', () => {
   assert.equal(empath.alive, true);
   assert.equal(s.winner, null);
   assert.throws(() => useSlayer(s, slayer.id, imp.id));
+});
+
+test('a Drunk who believes they are the Slayer can attempt the ability, but it never actually works', () => {
+  // Regression: the check used the player's true character (always 'drunk', never 'slayer'),
+  // so the Drunk could never even attempt the shot — even though the client already offers it
+  // to them, since the client goes off `perceived`. abilityWorks() is what should make the
+  // attempt silently fail, not an outright rejection.
+  const s = mk(['imp', 'drunk', 'empath', 'soldier', 'washerwoman'], { drunkFakeChar: 'slayer' });
+  s.phase = 'day';
+  s.day = 1;
+  const drunk = byChar(s, 'drunk');
+  const imp = byChar(s, 'imp');
+  assert.equal(drunk.perceived, 'slayer');
+  assert.doesNotThrow(() => useSlayer(s, drunk.id, imp.id));
+  assert.equal(imp.alive, true, "the Drunk's shot must never actually work, even against the real Demon");
+  assert.equal(s.winner, null);
+});
+
+test('Mayor redirect can pick any eligible alternative, not always the same one', () => {
+  // Regression: the redirect target was always the first eligible match in player order —
+  // effectively the same player every time for a given seating, instead of a real choice.
+  const seen = new Set<string>();
+  for (let i = 0; i < 200; i++) {
+    const s = mk(['imp', 'mayor', 'empath', 'investigator', 'washerwoman', 'soldier']);
+    startNight(s);
+    runFullNight(s);
+    startNight(s); // night 2
+    const imp = byChar(s, 'imp');
+    const mayor = byChar(s, 'mayor');
+    advanceUntil(s, 'imp');
+    answerRealTurn(s, [mayor.id]);
+    assert.notEqual(s.deathsTonight[0], mayor.id, 'a working Mayor redirect must never let the Mayor die directly');
+    seen.add(s.deathsTonight[0]);
+  }
+  assert.ok(seen.size > 1, 'expected the redirect target to vary across trials, not always hit the same player');
+});
+
+test('regression: a player can still nominate even after every other living player has already nominated or been nominated', () => {
+  // Old bug: the day auto-ended once every living player had done *at least one* of (nominate,
+  // be nominated) — but someone who had only ever been a *nominee* so far still has their own
+  // nomination available and must be allowed to use it. This auto-end heuristic has since been
+  // removed entirely in favor of the explicit unanimous "ready to end the day" consensus, which
+  // doesn't have this problem.
+  const s = mkDay(['imp', 'poisoner', 'empath', 'investigator']);
+  const [a, b, c, d] = s.players;
+  nominate(s, a.id, b.id);
+  fastForwardToVote(s);
+  voteInOrder(s, []);
+  nominate(s, c.id, d.id);
+  fastForwardToVote(s);
+  voteInOrder(s, []);
+
+  assert.equal(s.phase, 'day', 'the day must not have auto-ended — b and d have never used their own nomination');
+  assert.doesNotThrow(() => nominate(s, b.id, a.id), 'b has not yet nominated anyone and must still be able to');
 });
 
 test("a Butler's yes vote is dropped if their master hasn't also voted yes", () => {

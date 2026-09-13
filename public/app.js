@@ -207,6 +207,7 @@ const STRINGS = {
     hideRole: 'Hide role',
     showRole: 'Show role',
     villageLog: 'Village Log',
+    deadSuffix: ' (dead)',
   },
   fr: {
     heroTagline: 'Narrateur entièrement automatique. Jouez en personne, sur vos téléphones.',
@@ -292,6 +293,7 @@ const STRINGS = {
     hideRole: 'Masquer le rôle',
     showRole: 'Afficher le rôle',
     villageLog: 'Journal du village',
+    deadSuffix: ' (mort)',
   },
 };
 
@@ -959,13 +961,13 @@ function renderNight(v) {
           el(
             'button',
             {
-              class: 'choice' + (state.selected.includes(c.id) ? ' selected' : ''),
+              class: 'choice' + (state.selected.includes(c.id) ? ' selected' : '') + (c.alive ? '' : ' dead'),
               onclick: () => {
                 toggleChoice(c.id, turn.max);
                 render();
               },
             },
-            `${c.seat + 1}. ${c.name}`
+            `${c.seat + 1}. ${c.name}` + (c.alive ? '' : t('deadSuffix'))
           )
         )
       );

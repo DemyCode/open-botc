@@ -11,6 +11,66 @@ function msg(key: string, vars?: Record<string, string | number | string[]>): Ms
   return vars ? { key, vars } : { key };
 }
 
+/**
+ * Characters whose choose-shape ability may legally target a dead player: the Fortune Teller can
+ * check a corpse, the Ravenkeeper (who is themselves dead when they act) can learn a dead
+ * player's character, and the Butler may pick a dead master. Poisoner/Monk/Imp are kept
+ * alive-only — targeting a corpse would be a legal no-op in the physical game, but offering it
+ * as a choice here would only ever confuse a player since it can never do anything.
+ */
+export const DEAD_TARGETS_ALLOWED: Partial<Record<CharacterId, true>> = {
+  fortuneteller: true,
+  ravenkeeper: true,
+  butler: true,
+};
+
+/** Sets the game's winner exactly once — later calls (e.g. a second condition firing the same
+ * tick) are no-ops so the first true result always stands. */
+export function setWinner(state: GameState, alignment: 'good' | 'evil', message: Msg): void {
+  if (state.winner) return;
+  state.winner = alignment;
+  state.phase = 'ended';
+  state.publicLog.push(message);
+}
+
+/** The two win conditions that can become true at any moment, not just after a day action —
+ * a night kill can just as easily leave no living Demon (a failed star-pass) or drop the alive
+ * count to 2, and both must end the game immediately, the instant they happen. */
+export function evaluateWin(state: GameState): void {
+  if (state.winner) return;
+  const alive = state.players.filter((p) => p.alive);
+  const demonAlive = alive.some((p) => CHARACTERS[p.character].team === 'demon');
+  if (!demonAlive) {
+    setWinner(state, 'good', msg('goodWinsDemonDead'));
+    return;
+  }
+  if (alive.length <= 2) {
+    setWinner(state, 'evil', msg('evilWinsTwoLeft'));
+  }
+}
+
+/**
+ * If the player who just died was the Demon, and the Scarlet Woman is alive, able, and there
+ * are still 5+ players alive, she becomes the new Demon — learning her minions and bluffs just
+ * like any demon would. Returns whether she was promoted, so a caller with its own
+ * demon-replacement fallback (the Imp's own star-pass) knows to skip it: the Scarlet Woman's
+ * passive trigger takes priority over a random minion becoming the Imp, it doesn't compete
+ * with it — only one of them ever fires.
+ */
+export function promoteScarletWomanIfEligible(state: GameState, deadPlayer: PlayerState | null): boolean {
+  if (!deadPlayer || CHARACTERS[deadPlayer.character].team !== 'demon') return false;
+  const aliveCount = state.players.filter((p) => p.alive).length;
+  const sw = state.players.find((p) => p.alive && p.character === 'scarletwoman');
+  if (sw && aliveCount >= 5 && abilityWorks(state, sw)) {
+    sw.character = 'imp';
+    sw.perceived = 'imp';
+    appendLog(state, sw.id, msg('scarletWomanPromoted'));
+    appendLog(state, sw.id, demonInfo(state, sw));
+    return true;
+  }
+  return false;
+}
+
 export const FIRST_NIGHT_SEQUENCE: (CharacterId | 'minion-info')[] = [
   'minion-info', 'imp', 'poisoner', 'washerwoman', 'librarian', 'investigator',
   'chef', 'empath', 'fortuneteller', 'butler', 'spy',
@@ -126,6 +186,7 @@ export function beginNight(state: GameState): void {
 }
 
 export function advanceNightSlot(state: GameState): void {
+  if (state.winner) return; // a kill this night already ended the game — finishNight must not flip phase back to 'day'
   const seq = sequenceFor(state);
   while (state.nightSlotIndex + 1 < seq.length) {
     state.nightSlotIndex += 1;
@@ -178,26 +239,37 @@ function applyImpKill(state: GameState, imp: PlayerState, targetId: string): voi
   if (targetId === imp.id) {
     if (isProtected(state, target)) return;
     killPlayer(state, target);
-    const otherMinions = state.players.filter((p) => p.alive && CHARACTERS[p.character].team === 'minion' && p.id !== imp.id);
-    if (otherMinions.length) {
-      const promoted = otherMinions[Math.floor(Math.random() * otherMinions.length)];
-      promoted.character = 'imp';
-      promoted.perceived = 'imp';
-      appendLog(state, promoted.id, msg('becameImp'));
-      appendLog(state, promoted.id, demonInfo(state, promoted));
+    // The Scarlet Woman's passive promotion takes priority over the star-pass — they don't both
+    // fire. Only when she isn't in play, isn't eligible, or her ability doesn't work does the
+    // star-pass fall back to promoting a random other Minion so the game still has a Demon.
+    if (!promoteScarletWomanIfEligible(state, target)) {
+      const otherMinions = state.players.filter((p) => p.alive && CHARACTERS[p.character].team === 'minion' && p.id !== imp.id);
+      if (otherMinions.length) {
+        const promoted = otherMinions[Math.floor(Math.random() * otherMinions.length)];
+        promoted.character = 'imp';
+        promoted.perceived = 'imp';
+        appendLog(state, promoted.id, msg('becameImp'));
+        appendLog(state, promoted.id, demonInfo(state, promoted));
+      }
     }
+    // Either a new Demon now exists, or none does at all (no other Minion was left to promote) —
+    // both cases must be checked immediately, not left until the next day action.
+    evaluateWin(state);
     return;
   }
 
   if (isProtected(state, target)) return;
 
   if (target.character === 'mayor' && abilityWorks(state, target)) {
-    const alt = state.players.find((p) => p.alive && p.id !== target.id && p.id !== imp.id && !isProtected(state, p));
+    const alternatives = state.players.filter((p) => p.alive && p.id !== target.id && p.id !== imp.id && !isProtected(state, p));
+    const alt = alternatives.length ? alternatives[Math.floor(Math.random() * alternatives.length)] : null;
     killPlayer(state, alt ?? target);
+    evaluateWin(state);
     return;
   }
 
   killPlayer(state, target);
+  evaluateWin(state);
 }
 
 /** Applies a choose-shape ability's effect and, for abilities that produce information from the
@@ -237,6 +309,13 @@ function applyRealChoice(state: GameState, charId: CharacterId | 'minion-info', 
 }
 
 function maybeAdvance(state: GameState): void {
+  if (state.winner) {
+    // The kill that was just applied already ended the game (evaluateWin) — stop here instead of
+    // advancing into the next slot, and clear the stale turn so viewers see the ended game, not a
+    // prompt that no longer matters.
+    state.pendingRealTurn = null;
+    return;
+  }
   const t = state.pendingRealTurn;
   if (t && t.playerIds.every((id) => id in t.responses)) advanceNightSlot(state);
 }
@@ -247,8 +326,9 @@ export function submitRealResponse(state: GameState, playerId: string, targetIds
   if (playerId in t.responses) throw new GameError('Already responded');
   if (t.shape === 'choose') {
     if (targetIds.length < t.min || targetIds.length > t.max) throw new GameError('Invalid selection count');
-    const alive = new Set(state.players.filter((p) => p.alive).map((p) => p.id));
-    for (const id of targetIds) if (!alive.has(id) && id !== playerId) throw new GameError('Invalid target');
+    const allowDead = DEAD_TARGETS_ALLOWED[t.charId as CharacterId];
+    const eligible = new Set(state.players.filter((p) => allowDead || p.alive).map((p) => p.id));
+    for (const id of targetIds) if (!eligible.has(id)) throw new GameError('Invalid target');
     if ((t.charId === 'monk' || t.charId === 'butler') && targetIds.includes(playerId)) {
       throw new GameError('Cannot choose yourself');
     }

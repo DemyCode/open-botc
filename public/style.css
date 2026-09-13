@@ -195,6 +195,7 @@ button.block { width: 100%; }
   font-size: 1rem;
 }
 .choice.selected { border-color: var(--accent); background: rgba(124,92,255,0.18); }
+.choice.dead { opacity: 0.6; font-style: italic; }
 
 .pulse {
   animation: pulse 2.2s ease-in-out infinite;
