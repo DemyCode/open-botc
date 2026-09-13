@@ -7,6 +7,7 @@ const state = {
   selected: [],
   dawnSeenForDay: null,
   duskSeenForNight: null,
+  nightResultSeenForNight: null,
   roleHidden: false,
 };
 
@@ -77,7 +78,9 @@ function handleMessage(msg) {
 
 function turnKey(view) {
   if (view.nightTurn) return `turn-${view.phase}-${view.night}-${JSON.stringify(view.nightTurn.body)}`;
-  if (view.nightResult) return `result-${view.phase}-${view.night}-${JSON.stringify(view.nightResult)}`;
+  // Deliberately not keyed on phase — a fast night can flip to 'day' while she still hasn't
+  // acknowledged the same, unchanged result, and that isn't a new turn worth buzzing for again.
+  if (view.nightResult) return `result-${view.night}-${JSON.stringify(view.nightResult)}`;
   return null;
 }
 
@@ -579,6 +582,7 @@ function leaveGame() {
   state.view = null;
   state.dawnSeenForDay = null;
   state.duskSeenForNight = null;
+  state.nightResultSeenForNight = null;
   render();
 }
 
@@ -998,6 +1002,32 @@ function renderDuskScreen(v) {
   ]);
 }
 
+// Shown for a night result (Fortune Teller / Ravenkeeper) regardless of the current phase — a
+// fast night can already have moved on to 'day' by the time this renders, but the player must
+// still get a screen they actively dismiss before seeing whatever comes next, exactly like the
+// dawn/dusk screens. Requires an explicit "Got it" tap rather than just fading away on its own,
+// so a quick game around the table can never race past it.
+function renderNightResultScreen(v) {
+  return renderScreen([
+    roleBanner(v),
+    el('div', { class: 'moon' }, '🌙'),
+    el('h1', { class: 'center' }, t('night', v.night)),
+    noTalkingBanner(),
+    el('div', { class: 'card' }, [el('h2', {}, t('yourResult')), el('p', { class: 'muted' }, tMsg(v.nightResult))]),
+    el(
+      'button',
+      {
+        class: 'block',
+        onclick: () => {
+          state.nightResultSeenForNight = v.night;
+          render();
+        },
+      },
+      t('gotIt')
+    ),
+  ]);
+}
+
 function renderNight(v) {
   const banner = el('div', { class: 'moon' }, '🌙');
 
@@ -1046,16 +1076,9 @@ function renderNight(v) {
     return renderScreen(children);
   }
 
-  if (v.nightResult) {
-    return renderScreen([
-      roleBanner(v),
-      banner,
-      el('h1', { class: 'center' }, t('night', v.night)),
-      noTalkingBanner(),
-      el('div', { class: 'card' }, [el('h2', {}, t('yourResult')), el('p', { class: 'muted' }, tMsg(v.nightResult))]),
-    ]);
-  }
-
+  // A nightResult, once acknowledged, is handled by renderNightResultScreen before render() ever
+  // reaches here — it isn't checked again in this function, since it stays set (unseen or not)
+  // until the next night resets it.
   return renderScreen([
     roleBanner(v),
     banner,
@@ -1328,6 +1351,7 @@ function renderEnded(v) {
 
 function computeSignature(v) {
   if (!v) return 'connecting';
+  if (v.nightResult && state.nightResultSeenForNight !== v.night) return `nightresult-${v.night}`;
   if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) return `dawn-${v.day}`;
   if (v.phase === 'night' && v.duskMessage && state.duskSeenForNight !== v.night) return `dusk-${v.night}`;
   if (v.phase === 'lobby') return 'lobby';
@@ -1358,6 +1382,10 @@ function render() {
   }
   if (!state.view) {
     app.appendChild(renderScreen([el('p', { class: 'muted center' }, t('connecting'))]));
+    return;
+  }
+  if (v.nightResult && state.nightResultSeenForNight !== v.night) {
+    app.appendChild(renderNightResultScreen(v));
     return;
   }
   if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) {

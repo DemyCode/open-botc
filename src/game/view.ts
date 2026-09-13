@@ -174,7 +174,10 @@ export function viewFor(state: GameState, viewerId: string): GameView {
 
   const nomination = state.currentNomination ? buildNomination(state, state.currentNomination) : null;
   const nightTurn = state.phase === 'night' ? buildNightTurn(state, viewerId) : null;
-  const nightResult = state.phase === 'night' ? self?.nightResult ?? null : null;
+  // Not gated on phase === 'night': if answering was the last thing needed to finish the whole
+  // night, the phase can already be 'day' by the time this view is built. The result must still
+  // reach the player — it's only ever cleared by the *next* beginNight, not by the day starting.
+  const nightResult = self?.nightResult ?? null;
   const dawnMessage = state.phase === 'day' ? buildDawnMessage(self) : null;
   const duskMessage = state.phase === 'night' ? buildDuskMessage(state, self) : null;
   const neighbors = seatNeighbors(state, viewerId);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CHARACTERS } from '../game/characters.js';
 import { submitRealResponse } from '../game/night.js';
+import { viewFor } from '../game/view.js';
 import { advanceUntil, answerRealTurn, byChar, byPerceived, mk, runFullNight, skipRound, startNight } from './helpers.js';
 
 test('a night round only ever involves the actual actor(s) for that character', () => {
@@ -176,6 +177,35 @@ test('Butler may legally choose a dead player as their master', () => {
   advanceUntil(state, 'butler');
   assert.doesNotThrow(() => submitRealResponse(state, butler.id, [empath.id]));
   assert.equal(state.butlerMasterId, empath.id);
+});
+
+test('a night result is still delivered even when answering was the very last action of the whole night', () => {
+  // Regression: the view used to hide nightResult once the phase left 'night'. If a player's
+  // choose-and-get-a-result turn (Fortune Teller, Ravenkeeper) happened to be the last action
+  // left for anyone that night, finishNight() ran synchronously in the same call, so the very
+  // same response that produced the result also flipped the phase to 'day' before it was ever
+  // shown — the player never saw their answer at all.
+  const s = mk(['fortuneteller', 'imp', 'empath', 'soldier', 'washerwoman']); // no butler/undertaker/spy: nobody acts after the Fortune Teller
+  startNight(s);
+  runFullNight(s);
+  startNight(s); // night 2
+  const imp = byChar(s, 'imp');
+  const empath = byChar(s, 'empath');
+  const ft = byChar(s, 'fortuneteller');
+  const soldier = byChar(s, 'soldier');
+
+  advanceUntil(s, 'imp');
+  answerRealTurn(s, [soldier.id]); // Soldier is immune, but the round still completes normally
+  advanceUntil(s, 'empath');
+  answerRealTurn(s, []); // info-shape round, just needs acknowledging
+  advanceUntil(s, 'fortuneteller');
+  submitRealResponse(s, ft.id, [imp.id, empath.id]); // the last actor of the whole night
+
+  assert.equal(s.phase, 'day', 'the night must have ended immediately — nobody else had anything left to do');
+  const view = viewFor(s, ft.id);
+  assert.equal(view.phase, 'day');
+  assert.ok(view.nightResult, 'the Fortune Teller must still receive her result even though the phase already moved to day');
+  assert.equal(view.nightResult?.key, 'fortuneTellerYes');
 });
 
 test('Poisoner and Monk still cannot target a dead player — targeting a corpse would always be a no-op', () => {
