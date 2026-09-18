@@ -192,6 +192,7 @@ export async function loadApp(lang: 'en' | 'fr' = 'en', preset: Record<string, s
   const ctx = vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.resolve('public/glossary.js'), 'utf8'), ctx, { filename: 'glossary.js' });
   vm.runInContext(fs.readFileSync(path.resolve('public/tips.js'), 'utf8'), ctx, { filename: 'tips.js' });
+  vm.runInContext(fs.readFileSync(path.resolve('public/terms.js'), 'utf8'), ctx, { filename: 'terms.js' });
   vm.runInContext(fs.readFileSync(path.resolve('public/app.js'), 'utf8'), ctx, { filename: 'app.js' });
   await new Promise((r) => setImmediate(r)); // let loadCharacters() finish
   const client: FakeClient = {

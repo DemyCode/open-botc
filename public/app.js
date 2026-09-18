@@ -284,6 +284,8 @@ const STRINGS = {
     decoyInfo: 'Nothing to learn at this step. Read this, then tap “Got it”.',
     decoyResult: 'Your answer was noted. Nothing to learn from it.',
     tipSource: 'Tip from the Blood on the Clocktower wiki',
+    bluffSource: 'Bluffing advice from the Blood on the Clocktower wiki',
+    termSource: 'Definition from the Blood on the Clocktower glossary',
     decoyTrust: 'Which player do you trust the most right now?',
     decoySuspect: 'Which player seems the most suspicious to you?',
     decoyQuiet: 'Which player has been the quietest so far?',
@@ -392,6 +394,8 @@ const STRINGS = {
     decoyInfo: "Rien à apprendre à cette étape. Lisez ceci, puis touchez « J'ai compris ».",
     decoyResult: "Votre réponse est notée. Il n'y a rien à en apprendre.",
     tipSource: 'Astuce du wiki Blood on the Clocktower',
+    bluffSource: 'Conseil de bluff du wiki Blood on the Clocktower',
+    termSource: 'Définition du glossaire Blood on the Clocktower',
     decoyTrust: 'En quel joueur avez-vous le plus confiance en ce moment ?',
     decoySuspect: 'Quel joueur vous semble le plus suspect ?',
     decoyQuiet: "Quel joueur a été le plus silencieux jusqu'ici ?",
@@ -700,32 +704,73 @@ function showRolesModal() {
 }
 
 // ---------------------------------------------------------------------------
-// Tips: where a night screen has no real information for you (a decoy), it shows a random tip for
-// YOUR character instead (see tips.js). A new tip is drawn each time a new screen appears, is
-// kept while that screen refreshes, and is never the same one twice in a row. A Drunk sees the
-// tips of the character they believe they are — the same as their role banner.
+// Reading material: where a night screen has no real information for you (a decoy), it shows
+// something to read instead — a tip or a bluffing idea for YOUR character (tips.js: every bullet of
+// the wiki page), or, one time in three, the definition of a game term (glossary.js + terms.js:
+// the whole wiki Glossary). A new entry is drawn each time a new screen appears, is kept while that
+// screen refreshes, and is never the same one twice in a row. A Drunk reads the entries of the
+// character they believe they are — the same as their role banner.
 // ---------------------------------------------------------------------------
 
-let tipPick = { key: null, character: null, index: -1 };
+let tipPick = { key: null, character: null, pick: null };
 
-/** The tip (in the current language) for this player's character on the screen identified by `key`, or null. */
+/** How often a game-term definition is drawn instead of an entry about the player's character. */
+const TERM_SHARE = 1 / 3;
+
+/** Every game term with a definition, in the current language: the app's own, then the rest of the wiki's. */
+function allTerms() {
+  const own = typeof GLOSSARY !== 'undefined' ? GLOSSARY.map((g) => g[LANG] || g.en) : [];
+  const wiki = typeof WIKI_TERMS !== 'undefined' ? WIKI_TERMS.map((g) => g[LANG] || g.en) : [];
+  return own.concat(wiki);
+}
+
+/** The reading entries of a character: [{ kind: 'tip' | 'bluff', text }] in the current language. */
+function characterEntries(id) {
+  const list = id && typeof TIPS !== 'undefined' ? TIPS[id] : null;
+  return list ? list.map((e) => ({ kind: e.kind, text: e[LANG] || e.en })) : [];
+}
+
+function samePick(a, b) {
+  return !!a && !!b && a.kind === b.kind && a.index === b.index;
+}
+
+function drawPick(id, previous) {
+  const chars = characterEntries(id).length;
+  const terms = allTerms().length;
+  for (let tries = 0; tries < 20; tries++) {
+    const kind = chars && (!terms || Math.random() >= TERM_SHARE) ? 'character' : 'term';
+    const size = kind === 'character' ? chars : terms;
+    if (!size) return null;
+    const pick = { kind, index: Math.floor(Math.random() * size) };
+    if (!samePick(pick, previous) || chars + terms < 2) return pick;
+  }
+  return null;
+}
+
+/** What to read on the screen identified by `key`: { text, source } (already worded, with its icon), or null. */
 function currentTip(v, key) {
   const id = v.myCharacter && v.myCharacter.id;
-  const entry = id && typeof TIPS !== 'undefined' ? TIPS[id] : null;
-  const list = entry ? entry[LANG] || entry.en : null;
-  if (!list || !list.length) return null;
   if (tipPick.key !== key || tipPick.character !== id) {
-    let index = Math.floor(Math.random() * list.length);
-    if (list.length > 1 && tipPick.character === id && index === tipPick.index) index = (index + 1 + Math.floor(Math.random() * (list.length - 1))) % list.length;
-    tipPick = { key, character: id, index };
+    const previous = tipPick.character === id ? tipPick.pick : null;
+    tipPick = { key, character: id, pick: drawPick(id, previous) };
   }
-  return list[Math.min(tipPick.index, list.length - 1)];
+  const pick = tipPick.pick;
+  if (!pick) return null;
+  if (pick.kind === 'term') {
+    const term = allTerms()[pick.index];
+    return term ? { text: '📖 ' + term.title + ' — ' + term.def, source: t('termSource') } : null;
+  }
+  const entry = characterEntries(id)[pick.index];
+  if (!entry) return null;
+  return entry.kind === 'bluff'
+    ? { text: '🎭 ' + entry.text, source: t('bluffSource') }
+    : { text: '💡 ' + entry.text, source: t('tipSource') };
 }
 
 function tipBlock(v, key, fallback) {
   const tip = currentTip(v, key);
   if (!tip) return el('p', { class: 'muted' }, fallback);
-  return el('div', {}, [el('p', { class: 'muted' }, glossify('💡 ' + tip)), el('p', { class: 'muted tip-source' }, t('tipSource'))]);
+  return el('div', {}, [el('p', { class: 'muted' }, glossify(tip.text)), el('p', { class: 'muted tip-source' }, tip.source)]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1229,9 +1274,9 @@ function renderNightResultScreen(v) {
 /** The decoy's stand-in for a result screen — laid out exactly like the real one. */
 function renderDecoyResultScreen(v) {
   const tip = currentTip(v, 'result-' + state.decoyResultStep);
-  return renderResultScreen(v, tip ? '💡 ' + tip : t('decoyResult'), () => {
+  return renderResultScreen(v, tip ? tip.text : t('decoyResult'), () => {
     state.decoyResultStep = null;
-  }, true, !!tip);
+  }, true, tip ? tip.source : null);
 }
 
 function renderResultScreen(v, text, onDone, isDecoy, tipShown) {
@@ -1244,7 +1289,7 @@ function renderResultScreen(v, text, onDone, isDecoy, tipShown) {
       el('h2', {}, t('yourResult')),
       el('p', { class: 'muted' }, glossify(text)),
       isDecoy ? el('p', { class: 'muted decoy-note' }, t('decoyNote')) : null,
-      isDecoy && tipShown ? el('p', { class: 'muted tip-source' }, t('tipSource')) : null,
+      isDecoy && tipShown ? el('p', { class: 'muted tip-source' }, tipShown) : null,
     ]),
     el(
       'button',

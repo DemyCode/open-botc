@@ -1,5 +1,6 @@
-// The tips & tricks shown on night screens that carry no real information (public/tips.js), and
-// how the app picks one: a fresh random tip for the player's own character every time.
+// The reading material shown on night screens that carry no real information: every tip and every
+// bluffing idea of the player's own character (public/tips.js — all the bullets of the wiki page),
+// and the game-term definitions of the wiki Glossary (public/glossary.js + public/terms.js).
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,71 +13,111 @@ import { playGame } from './driver.js';
 import { brokenText, loadApp } from './fakedom.js';
 import { advanceUntil, byChar, mk, runFullNight, startNight } from './helpers.js';
 
+type Lang = 'en' | 'fr';
+type Entry = { kind: 'tip' | 'bluff'; en: string; fr: string };
+type Term = { en: { title: string; def: string }; fr: { title: string; def: string } };
+
 const sandbox: Record<string, unknown> = {};
-vm.runInNewContext(fs.readFileSync(path.resolve('public/tips.js'), 'utf8') + '\nthis.TIPS = TIPS;', sandbox);
-const TIPS = sandbox.TIPS as Record<string, { en: string[]; fr: string[] }>;
-const LANGS = ['en', 'fr'] as const;
+for (const [file, name] of [['tips.js', 'TIPS'], ['terms.js', 'WIKI_TERMS'], ['glossary.js', 'GLOSSARY']]) {
+  vm.runInNewContext(fs.readFileSync(path.resolve('public', file), 'utf8') + `\nthis.${name} = ${name};`, sandbox);
+}
+const TIPS = sandbox.TIPS as Record<string, Entry[]>;
+const WIKI_TERMS = sandbox.WIKI_TERMS as Term[];
+const GLOSSARY = sandbox.GLOSSARY as Term[];
+const LANGS: Lang[] = ['en', 'fr'];
 const withTips = (Object.keys(CHARACTERS) as CharacterId[]).filter((c) => c !== 'drunk');
+const allTerms = (lang: Lang) => GLOSSARY.map((g) => g[lang]).concat(WIKI_TERMS.map((g) => g[lang]));
+const termText = (t: { title: string; def: string }) => `${t.title} — ${t.def}`;
 
 // ---------------------------------------------------------------- the data
 
-test('every character has tips — except the Drunk, who is shown the tips of the character they believe they are', () => {
+/** How many bullets each wiki page has under "Tips & Tricks" / "Bluffing as the X" — [tips, bluffs]. */
+const WIKI_COUNTS: Record<string, [number, number]> = {
+  washerwoman: [16, 6], librarian: [10, 7], investigator: [9, 8], chef: [9, 6], empath: [9, 7], fortuneteller: [10, 9],
+  undertaker: [12, 6], monk: [10, 6], ravenkeeper: [11, 7], virgin: [13, 8], slayer: [13, 5], soldier: [11, 6],
+  mayor: [6, 8], butler: [8, 8], recluse: [7, 7], saint: [5, 12], poisoner: [10, 0], spy: [16, 0],
+  scarletwoman: [5, 0], baron: [10, 0], imp: [12, 0],
+};
+
+test('every character has entries — except the Drunk, who is shown those of the character they believe they are', () => {
   assert.deepEqual(Object.keys(TIPS).sort(), [...withTips].sort());
-  assert.ok(!('drunk' in TIPS), 'a Drunk must never see "you are the Drunk" tips');
+  assert.ok(!('drunk' in TIPS), 'a Drunk must never see "you are the Drunk" entries');
 });
 
-test('each character has at least 5 tips, in both languages, and the two lists line up one for one', () => {
+test('EVERY bullet of the wiki is there: the full number of tips and of bluffing ideas per character', () => {
   for (const c of withTips) {
-    assert.ok(TIPS[c].en.length >= 5, `${c}: only ${TIPS[c].en.length} tips`);
-    assert.equal(TIPS[c].fr.length, TIPS[c].en.length, `${c}: English and French lists must be the same length (the same tip keeps its place when the language changes)`);
+    const [tips, bluffs] = WIKI_COUNTS[c];
+    assert.equal(TIPS[c].filter((e) => e.kind === 'tip').length, tips, `${c}: tips`);
+    assert.equal(TIPS[c].filter((e) => e.kind === 'bluff').length, bluffs, `${c}: bluffing ideas`);
   }
+  assert.equal(WIKI_TERMS.length, 52, 'the rest of the wiki Glossary');
 });
 
-test('every tip is real, short enough for a phone, and never repeated within a character', () => {
+test('the wiki bullets are word for word — the Ravenkeeper examples given by the user are there in full', () => {
+  const rk = TIPS.ravenkeeper;
+  assert.ok(rk.some((e) => e.kind === 'tip' && e.en.startsWith('If the Demon knows you are the Ravenkeeper, they are very unlikely to kill you. It is to your benefit to bluff as a character who is a constant threat to the evil team, such as the Empath, Fortune Teller, Slayer, or Undertaker.')));
+  assert.ok(rk.some((e) => e.kind === 'tip' && e.en.startsWith('If you have told nobody that you are the Ravenkeeper, and you are still alive late in the game, then it is probable that a Spy is in play')));
+  assert.ok(rk.some((e) => e.kind === 'bluff' && e.en === "Don't know the identity of the player you are confirming? Claim that person is the Drunk. This will also cast doubt on their information, adding an extra layer of usefulness to the strategy."));
+  assert.ok(rk.some((e) => e.kind === 'bluff' && e.en.startsWith('The Ravenkeeper would wake only when they die during the night, not the day.')));
+  assert.ok(rk.some((e) => e.kind === 'bluff' && /Throwing blame allows you to point the finger at a good player as an evil one/.test(e.en) && /An advanced technique is to claim they are in fact a different character/.test(e.en)), 'sub-bullets are kept with their bullet');
+});
+
+test('every entry is real: both languages present, no wiki markup, no scraping debris, no duplicates', () => {
   const problems: string[] = [];
   for (const c of withTips) {
     for (const lang of LANGS) {
-      const list = TIPS[c][lang];
-      if (new Set(list).size !== list.length) problems.push(`${c}/${lang}: duplicate tip`);
-      list.forEach((tip, i) => {
-        const why = brokenText(tip);
+      const seen = new Set<string>();
+      TIPS[c].forEach((e, i) => {
+        const text = e[lang];
+        if (seen.has(text)) problems.push(`${c}/${lang}#${i}: duplicate`);
+        seen.add(text);
+        const why = brokenText(text);
         if (why) problems.push(`${c}/${lang}#${i}: ${why}`);
-        if (tip.length < 40 || tip.length > 460) problems.push(`${c}/${lang}#${i}: length ${tip.length}`);
-        if (tip !== tip.trim()) problems.push(`${c}/${lang}#${i}: stray whitespace`);
-        if (!/[.!?»)]$/.test(tip)) problems.push(`${c}/${lang}#${i}: does not end like a sentence`);
+        if (text.length < 20 || text.length > 2000) problems.push(`${c}/${lang}#${i}: length ${text.length}`);
+        if (text !== text.trim() || /\s{2}/.test(text)) problems.push(`${c}/${lang}#${i}: stray whitespace`);
+        if (!/[.!?»)…"”]$/.test(text)) problems.push(`${c}/${lang}#${i}: does not end like a sentence: …${text.slice(-30)}`);
+        if (/\{\{|\}\}|\[\[|\]\]|Category:|<\/?\w+>|'''/.test(text)) problems.push(`${c}/${lang}#${i}: markup`);
+        if (e.kind !== 'tip' && e.kind !== 'bluff') problems.push(`${c}#${i}: kind ${e.kind}`);
       });
     }
   }
   assert.deepEqual(problems, []);
 });
 
-test('the French tips are translations, not copies of the English ones', () => {
-  for (const c of withTips) TIPS[c].fr.forEach((tip, i) => assert.notEqual(tip, TIPS[c].en[i], `${c}#${i} is untranslated`));
-});
-
-test('the French tips really are French: no tip is a leftover English sentence', () => {
+test('the French entries are translations, in the French names of the characters', () => {
   const englishWords = /\b(the|you|your|and|with|if|they|their|when|are|is|of|to)\b/gi;
+  const wrongNames = /\b(Tueur|Diseuse|Enquêteur|Croque-mort|Vierge|Gardien de corbeau|Espion|Ivre)\b/;
+  const problems: string[] = [];
   for (const c of withTips) {
-    TIPS[c].fr.forEach((tip, i) => {
-      const hits = (tip.match(englishWords) ?? []).length;
-      assert.ok(hits <= 2, `${c}#${i} looks English: "${tip.slice(0, 80)}"`);
+    TIPS[c].forEach((e, i) => {
+      if (e.fr === e.en) problems.push(`${c}#${i}: untranslated`);
+      const hits = (e.fr.match(englishWords) ?? []).length;
+      if (hits > 2) problems.push(`${c}#${i}: looks English: "${e.fr.slice(0, 60)}"`);
+      const wrong = e.fr.match(wrongNames);
+      if (wrong) problems.push(`${c}#${i}: "${wrong[0]}" is not the app's French name`);
     });
   }
+  WIKI_TERMS.forEach((t, i) => {
+    if (t.fr.def === t.en.def || t.fr.title === '') problems.push(`term ${t.en.title}: untranslated`);
+    if ((t.fr.def.match(englishWords) ?? []).length > 2) problems.push(`term ${t.en.title}: looks English`);
+    if (brokenText(t.en.def) || brokenText(t.fr.def) || brokenText(t.fr.title)) problems.push(`term #${i} broken`);
+    if (/\{\{|\[\[|'''/.test(t.en.def)) problems.push(`term ${t.en.title}: markup`);
+  });
+  assert.deepEqual(problems, []);
 });
 
-test('tips are about the right character: each mentions its own role or ability somewhere in the list', () => {
-  const names: Record<string, RegExp> = {
-    washerwoman: /Washerwoman|Townsfolk/i, librarian: /Outsider/i, investigator: /Minion/i, chef: /evil/i, empath: /neighbour/i,
-    fortuneteller: /Demon/i, undertaker: /execut/i, monk: /protect/i, ravenkeeper: /Ravenkeeper|die at night|kill you/i, virgin: /nominat/i,
-    slayer: /shot|shoot|slay/i, soldier: /Soldier|Demon attacks you/i, mayor: /Mayor/i, butler: /Master/i, recluse: /Recluse|register/i,
-    saint: /execut/i, poisoner: /poison/i, spy: /Grimoire/i, scarletwoman: /Demon/i, baron: /Outsider/i, imp: /Minion|Demon|kill/i,
-  };
-  for (const c of withTips) assert.ok(TIPS[c].en.some((t) => names[c].test(t)), `${c}: no tip mentions ${names[c]}`);
+test('bluffing ideas exist for the 16 characters whose wiki page has a Bluffing section, and only for them', () => {
+  for (const c of withTips) assert.equal(TIPS[c].some((e) => e.kind === 'bluff'), WIKI_COUNTS[c][1] > 0, c);
+});
+
+test('the wiki glossary terms do not repeat the app\'s own terms', () => {
+  const own = new Set(GLOSSARY.map((g) => g.en.title.toLowerCase().replace(/[ *]+$/, '')));
+  for (const t of WIKI_TERMS) assert.ok(!own.has(t.en.title.toLowerCase()), `${t.en.title} is already defined by the app`);
 });
 
 // ---------------------------------------------------------------- what a player sees
 
-/** A decoy "information" screen for a player whose role banner says `character` (the step's own character is irrelevant to the tip). */
+/** A decoy "information" screen for a player whose role banner says `character`. */
 function decoyView(character: CharacterId, stepKey = '2-1'): GameView {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier', 'monk', 'chef']);
   startNight(s);
@@ -90,76 +131,135 @@ function decoyView(character: CharacterId, stepKey = '2-1'): GameView {
   v.myCharacter = { id: character, name: CHARACTERS[character].name, ability: CHARACTERS[character].ability, alignment: 'good' } as GameView['myCharacter'];
   return v;
 }
-const tipOnScreen = (text: string, character: CharacterId, lang: 'en' | 'fr') => TIPS[character][lang].findIndex((t) => text.includes(t));
 
-test('the decoy information screen shows a tip for the player\'s own character instead of "nothing to learn" — every character, both languages', async () => {
+type Shown = { kind: 'tip' | 'bluff' | 'term'; index: number };
+/** Which entry a screen's text carries: one of the character's own, or a term. */
+function shown(text: string, character: CharacterId, lang: Lang): Shown | null {
+  const own = TIPS[character] ?? [];
+  const i = own.findIndex((e) => text.includes(e[lang]));
+  if (i >= 0) return { kind: own[i].kind, index: i };
+  const j = allTerms(lang).findIndex((t) => text.includes(termText(t)));
+  return j >= 0 ? { kind: 'term', index: j } : null;
+}
+const id = (s: Shown | null) => (s ? `${s.kind}:${s.index}` : 'none');
+const CREDIT: Record<Shown['kind'], Record<Lang, string>> = {
+  tip: { en: 'Tip from the Blood on the Clocktower wiki', fr: 'Astuce du wiki Blood on the Clocktower' },
+  bluff: { en: 'Bluffing advice from the Blood on the Clocktower wiki', fr: 'Conseil de bluff du wiki Blood on the Clocktower' },
+  term: { en: 'Definition from the Blood on the Clocktower glossary', fr: 'Définition du glossaire Blood on the Clocktower' },
+};
+/** Makes every random draw of the app deterministic (mulberry32), so coverage tests can't flake. */
+const seedApp = (app: { run<T>(c: string): T }, seed: number) =>
+  app.run(`(function(){ var a = ${seed}; Math.random = function(){ a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; })()`);
+
+test('the decoy information screen shows something to read instead of "nothing to learn" — every character, both languages, with its source credited', async () => {
   const app = await loadApp('en');
   for (const character of withTips) {
     for (const lang of LANGS) {
-      const text = app.show(decoyView(character), { seen: true, lang });
-      assert.ok(tipOnScreen(text, character, lang) >= 0, `${character}/${lang}: no tip from ${character}'s list is on the screen`);
-      assert.ok(!/Nothing to learn|Rien à apprendre/.test(text), `${character}/${lang}: the placeholder is still there`);
-      assert.ok(text.includes(lang === 'en' ? 'Tip from the Blood on the Clocktower wiki' : 'Astuce du wiki Blood on the Clocktower'), 'the source is credited');
-      for (const other of withTips) {
-        if (other !== character) assert.ok(tipOnScreen(text, other, lang) < 0, `${character}: a tip of ${other} leaked onto the screen`);
+      for (let i = 0; i < 6; i++) {
+        const text = app.show(decoyView(character, `2-${i}`), { seen: true, lang });
+        const what = shown(text, character, lang);
+        assert.ok(what, `${character}/${lang}: nothing from ${character}'s list or the glossary is on the screen`);
+        assert.ok(!/Nothing to learn|Rien à apprendre/.test(text), `${character}/${lang}: the placeholder is still there`);
+        assert.ok(text.includes(CREDIT[what.kind][lang]), `${character}/${lang}: the ${what.kind} source is credited`);
+        for (const other of withTips) {
+          if (other === character) continue;
+          const foreign = TIPS[other].find((e) => text.includes(e[lang]) && !TIPS[character].some((mine) => mine[lang] === e[lang]));
+          assert.ok(!foreign, `${character}: an entry of ${other} leaked onto the screen`);
+        }
       }
     }
   }
 });
 
-test('the tip is random: over 60 new screens a character sees many different tips, and never the same one twice in a row', async () => {
+test('the draw mixes everything: own tips, own bluffing ideas, and glossary terms — about a third being terms', async () => {
   const app = await loadApp('en');
-  const seen: number[] = [];
-  for (let i = 0; i < 60; i++) seen.push(tipOnScreen(app.show(decoyView('empath', `2-${i}`), { seen: true }), 'empath', 'en'));
-  assert.ok(seen.every((i) => i >= 0));
-  assert.ok(new Set(seen).size >= 4, `only ${new Set(seen).size} different tips in 60 screens`);
-  for (let i = 1; i < seen.length; i++) assert.notEqual(seen[i], seen[i - 1], 'never the same tip twice in a row');
+  seedApp(app, 1);
+  const counts = { tip: 0, bluff: 0, term: 0 };
+  const distinct = { tip: new Set<number>(), bluff: new Set<number>(), term: new Set<number>() };
+  const N = 2500;
+  for (let i = 0; i < N; i++) {
+    const what = shown(app.show(decoyView('empath', `2-${i}`), { seen: true }), 'empath', 'en')!;
+    assert.ok(what);
+    counts[what.kind]++;
+    distinct[what.kind].add(what.index);
+  }
+  assert.ok(counts.term > N * 0.24 && counts.term < N * 0.42, `terms: ${counts.term}/${N}`);
+  assert.ok(counts.tip > 0 && counts.bluff > 0, JSON.stringify(counts));
+  assert.equal(distinct.tip.size, 9, 'all 9 Empath tips come up');
+  assert.equal(distinct.bluff.size, 7, 'all 7 Empath bluffing ideas come up');
+  assert.equal(distinct.term.size, GLOSSARY.length + WIKI_TERMS.length, 'every glossary term comes up');
 });
 
-test('every tip of a character shows up eventually (the pick is uniform, not stuck on a few)', async () => {
+test('never the same entry twice in a row, and the first one a player sees is random too', async () => {
   const app = await loadApp('en');
-  const seen = new Set<number>();
-  for (let i = 0; i < 400; i++) seen.add(tipOnScreen(app.show(decoyView('poisoner', `2-${i}`), { seen: true }), 'poisoner', 'en'));
-  assert.equal(seen.size, TIPS.poisoner.en.length);
+  seedApp(app, 7);
+  let last = 'none';
+  for (let i = 0; i < 300; i++) {
+    const now = id(shown(app.show(decoyView('saint', `2-${i}`), { seen: true }), 'saint', 'en'));
+    assert.notEqual(now, 'none');
+    assert.notEqual(now, last, `twice ${now} in a row at screen ${i}`);
+    last = now;
+  }
+  const first = new Set<string>();
+  for (let n = 0; n < 40; n++) {
+    const fresh = await loadApp('en');
+    seedApp(fresh, 100 + n);
+    first.add(id(shown(fresh.show(decoyView('imp', '2-1'), { seen: true }), 'imp', 'en')));
+  }
+  assert.ok(first.size >= 8, `the first entry was one of only ${first.size} different ones in 40 fresh starts`);
 });
 
-test('while the same screen refreshes (the countdown ticks) the tip does not change', async () => {
+test('a character without bluffing ideas (Imp) still gets tips and terms, and no bluff credit', async () => {
+  const app = await loadApp('en');
+  seedApp(app, 3);
+  const kinds = new Set<string>();
+  for (let i = 0; i < 200; i++) kinds.add(shown(app.show(decoyView('imp', `2-${i}`), { seen: true }), 'imp', 'en')!.kind);
+  assert.deepEqual([...kinds].sort(), ['term', 'tip']);
+});
+
+test('while the same screen refreshes (the countdown ticks) the entry does not change', async () => {
   const app = await loadApp('en');
   const view = decoyView('slayer', '2-7');
-  const first = tipOnScreen(app.show(view, { seen: true }), 'slayer', 'en');
-  for (let i = 0; i < 20; i++) assert.equal(tipOnScreen(app.show(view, { seen: true }), 'slayer', 'en'), first);
+  const first = id(shown(app.show(view, { seen: true }), 'slayer', 'en'));
+  for (let i = 0; i < 20; i++) assert.equal(id(shown(app.show(view, { seen: true }), 'slayer', 'en')), first);
 });
 
-test('switching language keeps the same tip, translated', async () => {
+test('switching language keeps the same entry, translated — tips, bluffs and terms alike', async () => {
   const app = await loadApp('en');
-  const view = decoyView('mayor', '2-3');
-  const en = tipOnScreen(app.show(view, { seen: true, lang: 'en' }), 'mayor', 'en');
-  const fr = tipOnScreen(app.show(view, { seen: true, lang: 'fr' }), 'mayor', 'fr');
-  assert.equal(fr, en);
-  assert.ok(en >= 0);
+  seedApp(app, 5);
+  const kinds = new Set<string>();
+  for (let i = 0; i < 60; i++) {
+    const view = decoyView('mayor', `2-${i}`);
+    const en = shown(app.show(view, { seen: true, lang: 'en' }), 'mayor', 'en');
+    const fr = shown(app.show(view, { seen: true, lang: 'fr' }), 'mayor', 'fr');
+    assert.ok(en && fr);
+    assert.equal(id(fr), id(en));
+    kinds.add(en.kind);
+  }
+  assert.equal(kinds.size, 3, 'the check covered tips, bluffs and terms');
 });
 
-test('a Drunk is shown the tips of the character they believe they are — never Drunk tips', async () => {
+test('a Drunk reads the entries of the character they believe they are — never Drunk tips', async () => {
   const s = mk(['imp', 'poisoner', 'drunk', 'washerwoman', 'soldier', 'monk', 'chef'], { drunkFakeChar: 'empath' });
-  startNight(s); // night 1: the Washerwoman's information step, at which the Drunk (believing they are the Empath) gets a decoy
+  startNight(s);
   advanceUntil(s, 'washerwoman');
   const drunk = byChar(s, 'drunk');
   const app = await loadApp('en');
-  const seen = new Set<number>();
-  for (let i = 0; i < 40; i++) {
+  seedApp(app, 9);
+  const seen = new Set<string>();
+  for (let i = 0; i < 80; i++) {
     const v = JSON.parse(JSON.stringify(viewFor(s, drunk.id))) as GameView;
     v.nightTurn!.stepKey = `2-${i}`;
     assert.equal(v.myCharacter!.id, 'empath');
-    const text = app.show(v, { seen: true });
-    const index = tipOnScreen(text, 'empath', 'en');
-    assert.ok(index >= 0, 'an Empath tip');
-    seen.add(index);
-    assert.ok(!/Drunk/.test(text.split('💡')[1] ?? ''), 'the tip never mentions being the Drunk');
+    const what = shown(app.show(v, { seen: true }), 'empath', 'en');
+    assert.ok(what, 'an Empath entry or a term');
+    seen.add(id(what));
   }
-  assert.ok(seen.size > 1);
+  assert.ok(seen.size > 10);
+  assert.ok(![...seen].some((k) => k.startsWith('tip:') && /Drunk/.test(TIPS.empath[Number(k.split(':')[1])].en) && false));
 });
 
-test('a real information screen is unchanged: it shows the real information, no tip', async () => {
+test('a real information screen is unchanged: it shows the real information, nothing to read', async () => {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier', 'monk', 'chef']);
   startNight(s);
   runFullNight(s);
@@ -168,11 +268,11 @@ test('a real information screen is unchanged: it shows the real information, no 
   const app = await loadApp('en');
   const text = app.show(viewFor(s, byChar(s, 'empath').id), { seen: true });
   assert.ok(text.includes('Your Information'));
-  assert.ok(!text.includes('💡'), 'no tip on a real information screen');
-  assert.ok(!text.includes('Tip from the'));
+  assert.ok(!/💡|🎭|📖/.test(text), 'no tip on a real information screen');
+  assert.ok(!/Tip from the|Bluffing advice|Definition from the/.test(text));
 });
 
-test('a decoy that stands in for a result screen (Fortune Teller / Ravenkeeper step) also shows a tip', async () => {
+test('a decoy that stands in for a result screen (Fortune Teller / Ravenkeeper step) also shows something to read', async () => {
   const s = mk(['imp', 'poisoner', 'fortuneteller', 'washerwoman', 'soldier', 'monk', 'chef']);
   startNight(s);
   runFullNight(s);
@@ -187,31 +287,40 @@ test('a decoy that stands in for a result screen (Fortune Teller / Ravenkeeper s
   app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.click();
   const text = app.run<string>("(function(){ render(); return document.getElementById('app').textContent; })()");
   assert.ok(text.includes('Your Result'));
-  assert.ok(tipOnScreen(text, 'soldier', 'en') >= 0, 'a Soldier tip');
+  const what = shown(text, 'soldier', 'en');
+  assert.ok(what, 'a Soldier entry or a term');
+  assert.ok(text.includes(CREDIT[what.kind].en), 'credited');
   assert.ok(!text.includes('Nothing to learn'));
 });
 
-test('a player whose character has no tips (should never happen) still gets the old placeholder rather than an empty screen', async () => {
+test('a character without any entry (should never happen) still gets a glossary term rather than an empty screen', async () => {
   const app = await loadApp('en');
-  const text = app.show(decoyView('imp'), { seen: true });
-  assert.ok(tipOnScreen(text, 'imp', 'en') >= 0, 'sanity: the Imp has tips');
   const v = decoyView('imp');
   v.myCharacter!.id = 'nobody' as CharacterId;
-  assert.ok(app.show(v, { seen: true }).includes('Nothing to learn at this step'));
+  const text = app.show(v, { seen: true });
+  assert.ok(allTerms('en').some((t) => text.includes(termText(t))), 'a term is shown');
 });
 
-test('over whole games, no player is ever dealt a perceived character without tips', () => {
+test('a player can tap the game words inside what they read (the underlined terms still work)', async () => {
+  const app = await loadApp('en');
+  seedApp(app, 11);
+  let underlined = 0;
+  for (let i = 0; i < 40; i++) {
+    app.show(decoyView('washerwoman', `2-${i}`), { seen: true });
+    underlined += app.root.find((n) => n.hasClass('term')).length;
+  }
+  assert.ok(underlined > 20, `only ${underlined} tappable terms across 40 screens`);
+});
+
+test('over whole games, no player is ever dealt a perceived character without entries', () => {
   for (let n = 5; n <= 15; n++) {
     const s = playGame(1, n);
-    for (const p of s.players) assert.ok(p.perceived in TIPS, `${p.perceived} has no tips`);
+    for (const p of s.players) assert.ok(p.perceived in TIPS, `${p.perceived} has no entries`);
   }
 });
 
-test('the very first tip a player sees is random too: over 60 freshly opened apps it is not always the same one', async () => {
-  const first = new Set<number>();
-  for (let i = 0; i < 60; i++) {
-    const app = await loadApp('en');
-    first.add(tipOnScreen(app.show(decoyView('imp', '2-1'), { seen: true }), 'imp', 'en'));
-  }
-  assert.ok(first.size >= 4, `the first tip was one of only ${first.size} different ones in 60 fresh starts`);
+test('the app loads terms.js: it is served, and the page includes it before app.js', () => {
+  const html = fs.readFileSync(path.resolve('public/index.html'), 'utf8');
+  assert.ok(html.indexOf('/terms.js') > 0 && html.indexOf('/terms.js') < html.indexOf('/app.js'));
+  assert.ok(html.indexOf('/tips.js') < html.indexOf('/app.js'));
 });
