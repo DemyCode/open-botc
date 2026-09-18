@@ -6,6 +6,7 @@ import { evaluateWin } from './win.js';
 import { abilityLostReason, abilityWorks, registersAs } from './registration.js';
 import { randomId } from './rng.js';
 import { dealCharacters } from './setup.js';
+import { CUSTOM_SCRIPT_ID, SCRIPTS, resolveScript } from './scripts.js';
 import type { GameState, Msg, Nomination, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
@@ -27,7 +28,7 @@ function findPlayer(state: GameState, id: string): PlayerState {
 
 export function createGame(code: string): GameState {
   return {
-    code, scriptId: 'tb', effects: [], hostId: '', phase: 'lobby', night: 0, day: 0, players: [],
+    code, scriptId: 'tb', scriptChars: SCRIPTS.tb.characters, effects: [], hostId: '', phase: 'lobby', night: 0, day: 0, players: [],
     secret: randomId() + randomId(), rngState: 0, bluffs: [],
     poisonedId: null, monkProtectedId: null, butlerMasterId: null,
     deathsTonight: [], nightSlotIndex: -1, pendingRealTurn: null,
@@ -139,10 +140,20 @@ export function findPlayerByToken(state: GameState, token: string): PlayerState 
   return state.players.find((p) => p.token === token);
 }
 
+/** The host chooses what the game is played with: an edition, or a custom list of characters. */
+export function setScript(state: GameState, scriptId: string, custom?: string[]): void {
+  if (state.phase !== 'lobby') throw new GameError('The script can only be chosen before the game starts');
+  const script = resolveScript(scriptId, custom);
+  state.scriptId = script.id;
+  state.scriptChars = script.characters.slice();
+}
+
+export { CUSTOM_SCRIPT_ID };
+
 export function startGame(state: GameState): void {
   if (state.phase !== 'lobby') throw new GameError('Game already started');
   if (!state.seatingConfirmed) throw new GameError('Seating is not fully confirmed yet');
-  const deal = dealCharacters(state.players.map((p) => p.id), state.secret);
+  const deal = dealCharacters(state.players.map((p) => p.id), state.secret, state.scriptChars);
   for (const p of state.players) {
     p.character = deal.characters[p.id];
     p.perceived = deal.perceived[p.id];

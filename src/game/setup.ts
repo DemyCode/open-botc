@@ -1,12 +1,9 @@
-import { ALL_CHARACTER_IDS, CHARACTERS, DISTRIBUTION } from './characters.js';
+import { CHARACTERS, DISTRIBUTION } from './characters.js';
+import { hooksOf } from './deaths.js';
+import { SCRIPTS } from './scripts.js';
 import { mulberry32, seedFromString } from './rng.js';
 import { GameError } from './types.js';
-import type { CharacterId } from './types.js';
-
-const TOWNSFOLK = ALL_CHARACTER_IDS.filter((id) => CHARACTERS[id].team === 'townsfolk');
-const OUTSIDERS = ALL_CHARACTER_IDS.filter((id) => CHARACTERS[id].team === 'outsider');
-const MINIONS = ALL_CHARACTER_IDS.filter((id) => CHARACTERS[id].team === 'minion');
-const DEMONS = ALL_CHARACTER_IDS.filter((id) => CHARACTERS[id].team === 'demon');
+import type { CharacterId, Team } from './types.js';
 
 export interface DealResult {
   characters: Record<string, CharacterId>;
@@ -25,34 +22,56 @@ function draw<T>(rand: () => number, pool: T[], count: number): T[] {
   return out;
 }
 
-export function dealCharacters(playerIds: string[], secret: string): DealResult {
+/** Deals a game from a script (default: Trouble Brewing) with the standard distribution, adjusted by the
+ * characters' own setup hooks (Baron +2 Outsiders...). */
+export function dealCharacters(playerIds: string[], secret: string, scriptChars: CharacterId[] = SCRIPTS.tb.characters): DealResult {
   const n = playerIds.length;
   const dist = DISTRIBUTION[n];
   if (!dist) throw new GameError(`Unsupported player count: ${n} (need 5-15)`);
+  const of = (team: Team) => scriptChars.filter((id) => CHARACTERS[id].team === team);
+  const TOWNSFOLK = of('townsfolk');
+  const OUTSIDERS = of('outsider');
   let [townsfolkCount, outsiderCount] = dist;
   const [, , minionCount, demonCount] = dist;
 
   const rand = mulberry32(seedFromString(secret + '|deal'));
 
-  const minions = draw(rand, MINIONS, minionCount);
-  if (minions.includes('baron')) {
-    outsiderCount += 2;
-    townsfolkCount -= 2;
-  }
-  const demon = draw(rand, DEMONS, demonCount);
+  const minions = draw(rand, of('minion'), minionCount);
+  const demon = draw(rand, of('demon'), demonCount);
+  // Characters that change how many Outsiders are in play (Baron +2, Fang Gu +1, Vigormortis -1...).
+  const shift = (id: CharacterId): number => {
+    const d = hooksOf(id).setup?.outsiderDelta;
+    return d === undefined ? 0 : typeof d === 'number' ? d : rand() < 0.5 ? -1 : 1;
+  };
+  let delta = 0;
+  for (const id of [...minions, ...demon]) delta += shift(id);
+  delta = Math.max(-outsiderCount, Math.min(delta, townsfolkCount - 1));
+  outsiderCount += delta;
+  townsfolkCount -= delta;
   const outsiders = draw(rand, OUTSIDERS, Math.max(0, outsiderCount));
   const townsfolk = draw(rand, TOWNSFOLK, Math.max(0, townsfolkCount));
-
-  const hasDrunk = outsiders.includes('drunk');
-  let drunkFakeChar: CharacterId | null = null;
-  if (hasDrunk) {
-    const remaining = TOWNSFOLK.filter((id) => !townsfolk.includes(id));
-    drunkFakeChar = remaining.length ? draw(rand, remaining, 1)[0] : (townsfolk[0] ?? null);
+  if (minions.length < minionCount || demon.length < demonCount || outsiders.length < outsiderCount || townsfolk.length < townsfolkCount) {
+    throw new GameError(`This script has too few characters for ${n} players`);
   }
 
   const allTokens: CharacterId[] = [...townsfolk, ...outsiders, ...minions, ...demon];
   if (allTokens.length !== n) {
     throw new GameError(`Character count mismatch: dealt ${allTokens.length}, need ${n}`);
+  }
+
+  // Characters who are told they are someone else (the Drunk: a Townsfolk; the Lunatic: a Demon).
+  const fakes: Record<string, CharacterId> = {};
+  const usedFakes = new Set<CharacterId>();
+  for (const id of allTokens) {
+    const team = hooksOf(id).setup?.thinksTheyAre;
+    if (!team) continue;
+    const pool = of(team).filter((c) => !allTokens.includes(c) && !usedFakes.has(c));
+    const anyPool = of(team).filter((c) => !usedFakes.has(c));
+    const fake = pool.length ? draw(rand, pool, 1)[0] : anyPool.length ? anyPool[0] : allTokens.find((c) => CHARACTERS[c].team === team);
+    if (fake) {
+      fakes[id] = fake;
+      usedFakes.add(fake);
+    }
   }
 
   const shuffledPlayers = draw(rand, playerIds, playerIds.length);
@@ -61,7 +80,7 @@ export function dealCharacters(playerIds: string[], secret: string): DealResult 
   shuffledPlayers.forEach((pid, i) => {
     const char = allTokens[i];
     characters[pid] = char;
-    perceived[pid] = char === 'drunk' && drunkFakeChar ? drunkFakeChar : char;
+    perceived[pid] = fakes[char] ?? char;
   });
 
   const goodPlayerIds = shuffledPlayers.filter((pid) => {
@@ -71,7 +90,7 @@ export function dealCharacters(playerIds: string[], secret: string): DealResult 
   const redHerringId = goodPlayerIds.length ? draw(rand, goodPlayerIds, 1)[0] : null;
 
   const inPlaySet = new Set(allTokens);
-  const notInPlayGood = [...TOWNSFOLK, ...OUTSIDERS].filter((id) => !inPlaySet.has(id) && id !== drunkFakeChar);
+  const notInPlayGood = [...TOWNSFOLK, ...OUTSIDERS].filter((id) => !inPlaySet.has(id) && !usedFakes.has(id));
   const bluffs = draw(rand, notInPlayGood, 3);
 
   return { characters, perceived, redHerringId, bluffs };

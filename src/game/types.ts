@@ -130,6 +130,8 @@ export interface Effect {
 export interface GameState {
   /** Which script (edition or custom mix) this game uses; see scripts.ts. */
   scriptId: string;
+  /** The characters the game is dealt from. */
+  scriptChars: string[];
   /** Drunk / poisoned effects beyond the Poisoner's own (see registration.ts). */
   effects: Effect[];
   code: string;

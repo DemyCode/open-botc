@@ -38,6 +38,8 @@ export interface NightSpec {
   recordsChoice?: boolean;
   /** The step gives a result right after answering (Fortune Teller, Ravenkeeper): decoys show one too. */
   result?: boolean;
+  /** The character is woken when they are dead (Ravenkeeper): they learn of their own death at once. */
+  wakesWhenDead?: boolean;
   /** A choose step's answer may not include the actor themself. */
   notSelf?: boolean;
 }
@@ -79,7 +81,7 @@ export interface Hooks {
   // ---- Setup
   setup?: {
     /** Extra Outsiders in play (Baron +2, Vigormortis -1...). */
-    outsiderDelta?: number;
+    outsiderDelta?: number | 'randomPlusMinusOne';
     /** The player is told they are this team's character but isn't (Drunk: townsfolk, Lunatic: demon). */
     thinksTheyAre?: Team;
   };

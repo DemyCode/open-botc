@@ -131,7 +131,7 @@ function buildNightTurn(state: GameState, viewerId: string): NightTurnView | nul
     body: decoy ? msg(t.decoys[viewerId]) : t.bodyByPlayer[viewerId] ?? msg('empty'),
     min: t.min, max: t.max, choices,
     decoy,
-    decoyResult: decoy && (t.charId === 'fortuneteller' || t.charId === 'ravenkeeper'),
+    decoyResult: decoy && !!t.result,
     stepKey: `${state.night}-${state.nightStepNumber ?? 0}`,
     waitMs: Math.max(0, t.openedAt + MIN_ANSWER_MS - Date.now()),
   };
@@ -185,7 +185,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
 
   // A death tonight stays hidden until dawn in EVERY place a phone can read it — not only in the
   // screens the app draws. The Ravenkeeper (or a Drunk who thinks so) sees their own death at once.
-  const revealsOwnDeath = self?.perceived === 'ravenkeeper';
+  const revealsOwnDeath = !!self && !!CHARACTERS[self.perceived]?.hooks?.night?.wakesWhenDead;
   const shownAlive = (p: PlayerState): boolean =>
     state.phase === 'night' && !(p.id === viewerId && revealsOwnDeath) ? publiclyAlive(p) : p.alive;
 

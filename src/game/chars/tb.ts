@@ -64,7 +64,7 @@ export const TB: CharacterDef[] = [
   { id: 'ravenkeeper', name: 'Ravenkeeper', team: 'townsfolk', shape: 'choose', edition: 'tb', firstNight: 0, otherNight: 120,
     ability: 'If you die at night, you are woken to choose a player: you learn their character.',
     hooks: { night: {
-      recordsChoice: true, result: true,
+      recordsChoice: true, result: true, wakesWhenDead: true,
       actors: (s) => s.players.filter((p) => !p.alive && s.deathsTonight.includes(p.id) && p.perceived === 'ravenkeeper'),
       prompt: () => ({ min: 1, max: 1, body: msg('ravenkeeperChoose') }),
       apply: (s, self, targets, slot) => giveResult(s, self, ravenkeeperInfo(s, self, targets[0], slot), 'ravenkeeper'),
