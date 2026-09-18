@@ -705,66 +705,54 @@ function showRolesModal() {
 
 // ---------------------------------------------------------------------------
 // Reading material: where a night screen has no real information for you (a decoy), it shows
-// something to read instead — a tip or a bluffing idea for YOUR character (tips.js: every bullet of
-// the wiki page), or, one time in three, the definition of a game term (glossary.js + terms.js:
-// the whole wiki Glossary). A new entry is drawn each time a new screen appears, is kept while that
-// screen refreshes, and is never the same one twice in a row. A Drunk reads the entries of the
-// character they believe they are — the same as their role banner.
+// something to read instead — a tip or a bluffing idea for ANY character (tips.js: every bullet of
+// the wiki pages) or the definition of a game term (glossary.js + terms.js: the whole wiki Glossary),
+// all mixed uniformly. A new entry is drawn each time a new screen appears, is kept while that
+// screen refreshes, and is never the same one twice in a row. Nothing here depends on your own
+// character, so what you read never hints at it.
 // ---------------------------------------------------------------------------
 
-let tipPick = { key: null, character: null, pick: null };
+let tipPick = { key: null, pick: null };
 
-/** How often a game-term definition is drawn instead of an entry about the player's character. */
-const TERM_SHARE = 1 / 3;
-
-/** Every game term with a definition, in the current language: the app's own, then the rest of the wiki's. */
-function allTerms() {
-  const own = typeof GLOSSARY !== 'undefined' ? GLOSSARY.map((g) => g[LANG] || g.en) : [];
-  const wiki = typeof WIKI_TERMS !== 'undefined' ? WIKI_TERMS.map((g) => g[LANG] || g.en) : [];
-  return own.concat(wiki);
+/** Everything readable, flattened: every tip and bluffing idea of EVERY character, then every game term. */
+function readingPool() {
+  const pool = [];
+  if (typeof TIPS !== 'undefined') for (const id of Object.keys(TIPS)) TIPS[id].forEach((e, i) => pool.push({ character: id, index: i }));
+  const own = typeof GLOSSARY !== 'undefined' ? GLOSSARY.length : 0;
+  const wiki = typeof WIKI_TERMS !== 'undefined' ? WIKI_TERMS.length : 0;
+  for (let i = 0; i < own + wiki; i++) pool.push({ term: i });
+  return pool;
 }
 
-/** The reading entries of a character: [{ kind: 'tip' | 'bluff', text }] in the current language. */
-function characterEntries(id) {
-  const list = id && typeof TIPS !== 'undefined' ? TIPS[id] : null;
-  return list ? list.map((e) => ({ kind: e.kind, text: e[LANG] || e.en })) : [];
+function termAt(i) {
+  const own = typeof GLOSSARY !== 'undefined' ? GLOSSARY : [];
+  const g = i < own.length ? own[i] : WIKI_TERMS[i - own.length];
+  return g ? g[LANG] || g.en : null;
 }
 
 function samePick(a, b) {
-  return !!a && !!b && a.kind === b.kind && a.index === b.index;
+  return !!a && !!b && a.character === b.character && a.index === b.index && a.term === b.term;
 }
 
-function drawPick(id, previous) {
-  const chars = characterEntries(id).length;
-  const terms = allTerms().length;
-  for (let tries = 0; tries < 20; tries++) {
-    const kind = chars && (!terms || Math.random() >= TERM_SHARE) ? 'character' : 'term';
-    const size = kind === 'character' ? chars : terms;
-    if (!size) return null;
-    const pick = { kind, index: Math.floor(Math.random() * size) };
-    if (!samePick(pick, previous) || chars + terms < 2) return pick;
-  }
-  return null;
-}
-
-/** What to read on the screen identified by `key`: { text, source } (already worded, with its icon), or null. */
+/** What to read on the screen identified by `key`: { text, source }, or null. Uniform over everything, never the same twice in a row. */
 function currentTip(v, key) {
-  const id = v.myCharacter && v.myCharacter.id;
-  if (tipPick.key !== key || tipPick.character !== id) {
-    const previous = tipPick.character === id ? tipPick.pick : null;
-    tipPick = { key, character: id, pick: drawPick(id, previous) };
+  if (tipPick.key !== key) {
+    const pool = readingPool();
+    let pick = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+    for (let tries = 0; pick && samePick(pick, tipPick.pick) && pool.length > 1 && tries < 20; tries++) pick = pool[Math.floor(Math.random() * pool.length)];
+    tipPick = { key, pick };
   }
   const pick = tipPick.pick;
   if (!pick) return null;
-  if (pick.kind === 'term') {
-    const term = allTerms()[pick.index];
+  if (pick.term !== undefined) {
+    const term = termAt(pick.term);
     return term ? { text: '📖 ' + term.title + ' — ' + term.def, source: t('termSource') } : null;
   }
-  const entry = characterEntries(id)[pick.index];
-  if (!entry) return null;
+  const entry = TIPS[pick.character][pick.index];
+  const who = ' · ' + roleNameFor(pick.character);
   return entry.kind === 'bluff'
-    ? { text: '🎭 ' + entry.text, source: t('bluffSource') }
-    : { text: '💡 ' + entry.text, source: t('tipSource') };
+    ? { text: '🎭 ' + (entry[LANG] || entry.en), source: t('bluffSource') + who }
+    : { text: '💡 ' + (entry[LANG] || entry.en), source: t('tipSource') + who };
 }
 
 function tipBlock(v, key, fallback) {

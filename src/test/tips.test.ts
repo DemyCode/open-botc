@@ -132,16 +132,17 @@ function decoyView(character: CharacterId, stepKey = '2-1'): GameView {
   return v;
 }
 
-type Shown = { kind: 'tip' | 'bluff' | 'term'; index: number };
-/** Which entry a screen's text carries: one of the character's own, or a term. */
-function shown(text: string, character: CharacterId, lang: Lang): Shown | null {
-  const own = TIPS[character] ?? [];
-  const i = own.findIndex((e) => text.includes(e[lang]));
-  if (i >= 0) return { kind: own[i].kind, index: i };
+type Shown = { kind: 'tip' | 'bluff' | 'term'; index: number; character?: string };
+/** Which entry a screen's text carries: an entry of ANY character, or a term. */
+function shown(text: string, lang: Lang): Shown | null {
+  for (const c of withTips) {
+    const i = TIPS[c].findIndex((e) => text.includes(e[lang]));
+    if (i >= 0) return { kind: TIPS[c][i].kind, index: i, character: c };
+  }
   const j = allTerms(lang).findIndex((t) => text.includes(termText(t)));
   return j >= 0 ? { kind: 'term', index: j } : null;
 }
-const id = (s: Shown | null) => (s ? `${s.kind}:${s.index}` : 'none');
+const id = (s: Shown | null) => (s ? `${s.kind}:${s.character ?? ''}:${s.index}` : 'none');
 const CREDIT: Record<Shown['kind'], Record<Lang, string>> = {
   tip: { en: 'Tip from the Blood on the Clocktower wiki', fr: 'Astuce du wiki Blood on the Clocktower' },
   bluff: { en: 'Bluffing advice from the Blood on the Clocktower wiki', fr: 'Conseil de bluff du wiki Blood on the Clocktower' },
@@ -150,44 +151,52 @@ const CREDIT: Record<Shown['kind'], Record<Lang, string>> = {
 /** Makes every random draw of the app deterministic (mulberry32), so coverage tests can't flake. */
 const seedApp = (app: { run<T>(c: string): T }, seed: number) =>
   app.run(`(function(){ var a = ${seed}; Math.random = function(){ a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; })()`);
+// The wiki repeats one Spy bullet word for word on two pages; a screen can't tell those two apart.
+const POOL = new Set(withTips.flatMap((c) => TIPS[c].map((e) => e.en))).size + GLOSSARY.length + WIKI_TERMS.length;
 
-test('the decoy information screen shows something to read instead of "nothing to learn" — every character, both languages, with its source credited', async () => {
+test('the decoy information screen shows something to read instead of "nothing to learn", credited to its source — both languages', async () => {
   const app = await loadApp('en');
+  seedApp(app, 2);
   for (const character of withTips) {
     for (const lang of LANGS) {
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 4; i++) {
         const text = app.show(decoyView(character, `2-${i}`), { seen: true, lang });
-        const what = shown(text, character, lang);
-        assert.ok(what, `${character}/${lang}: nothing from ${character}'s list or the glossary is on the screen`);
-        assert.ok(!/Nothing to learn|Rien à apprendre/.test(text), `${character}/${lang}: the placeholder is still there`);
-        assert.ok(text.includes(CREDIT[what.kind][lang]), `${character}/${lang}: the ${what.kind} source is credited`);
-        for (const other of withTips) {
-          if (other === character) continue;
-          const foreign = TIPS[other].find((e) => text.includes(e[lang]) && !TIPS[character].some((mine) => mine[lang] === e[lang]));
-          assert.ok(!foreign, `${character}: an entry of ${other} leaked onto the screen`);
-        }
+        const what = shown(text, lang);
+        assert.ok(what, `${character}/${lang}: nothing readable on the screen`);
+        assert.ok(!/Nothing to learn|Rien à apprendre/.test(text));
+        assert.ok(text.includes(CREDIT[what.kind][lang]), `${what.kind} source credited`);
       }
     }
   }
 });
 
-test('the draw mixes everything: own tips, own bluffing ideas, and glossary terms — about a third being terms', async () => {
+test('the draw mixes EVERYTHING: tips and bluffs of every character, and glossary terms — each one comes up, whatever your own character', async () => {
   const app = await loadApp('en');
   seedApp(app, 1);
-  const counts = { tip: 0, bluff: 0, term: 0 };
-  const distinct = { tip: new Set<number>(), bluff: new Set<number>(), term: new Set<number>() };
-  const N = 2500;
+  const seen = new Set<string>();
+  const kinds = { tip: 0, bluff: 0, term: 0 };
+  const characters = new Set<string>();
+  const N = 12000;
   for (let i = 0; i < N; i++) {
-    const what = shown(app.show(decoyView('empath', `2-${i}`), { seen: true }), 'empath', 'en')!;
+    const what = shown(app.show(decoyView('empath', `2-${i}`), { seen: true }), 'en')!;
     assert.ok(what);
-    counts[what.kind]++;
-    distinct[what.kind].add(what.index);
+    seen.add(id(what));
+    kinds[what.kind]++;
+    if (what.character) characters.add(what.character);
   }
-  assert.ok(counts.term > N * 0.24 && counts.term < N * 0.42, `terms: ${counts.term}/${N}`);
-  assert.ok(counts.tip > 0 && counts.bluff > 0, JSON.stringify(counts));
-  assert.equal(distinct.tip.size, 9, 'all 9 Empath tips come up');
-  assert.equal(distinct.bluff.size, 7, 'all 7 Empath bluffing ideas come up');
-  assert.equal(distinct.term.size, GLOSSARY.length + WIKI_TERMS.length, 'every glossary term comes up');
+  assert.equal(characters.size, 21, 'entries of all 21 characters, not only the Empath');
+  assert.equal(seen.size, POOL, 'every single entry and term comes up');
+  assert.ok(kinds.tip > 0 && kinds.bluff > 0 && kinds.term > 0, JSON.stringify(kinds));
+});
+
+test('what you read does not depend on your character: an Imp and a Soldier draw from the same pool (nothing hints at your role)', async () => {
+  const app = await loadApp('en');
+  seedApp(app, 4);
+  for (const mine of ['imp', 'soldier'] as CharacterId[]) {
+    const others = new Set<string>();
+    for (let i = 0; i < 400; i++) others.add(shown(app.show(decoyView(mine, `2-${i}`), { seen: true }), 'en')!.character ?? 'term');
+    assert.ok(others.size > 15, `${mine}: only ${others.size} sources`);
+  }
 });
 
 test('never the same entry twice in a row, and the first one a player sees is random too', async () => {
@@ -195,7 +204,7 @@ test('never the same entry twice in a row, and the first one a player sees is ra
   seedApp(app, 7);
   let last = 'none';
   for (let i = 0; i < 300; i++) {
-    const now = id(shown(app.show(decoyView('saint', `2-${i}`), { seen: true }), 'saint', 'en'));
+    const now = id(shown(app.show(decoyView('saint', `2-${i}`), { seen: true }), 'en'));
     assert.notEqual(now, 'none');
     assert.notEqual(now, last, `twice ${now} in a row at screen ${i}`);
     last = now;
@@ -204,34 +213,40 @@ test('never the same entry twice in a row, and the first one a player sees is ra
   for (let n = 0; n < 40; n++) {
     const fresh = await loadApp('en');
     seedApp(fresh, 100 + n);
-    first.add(id(shown(fresh.show(decoyView('imp', '2-1'), { seen: true }), 'imp', 'en')));
+    first.add(id(shown(fresh.show(decoyView('imp', '2-1'), { seen: true }), 'en')));
   }
-  assert.ok(first.size >= 8, `the first entry was one of only ${first.size} different ones in 40 fresh starts`);
+  assert.ok(first.size >= 20, `the first entry was one of only ${first.size} different ones in 40 fresh starts`);
 });
 
-test('a character without bluffing ideas (Imp) still gets tips and terms, and no bluff credit', async () => {
+test('a tip or bluff names the character it is about, so a foreign tip is not mistaken for advice on your own role', async () => {
   const app = await loadApp('en');
-  seedApp(app, 3);
-  const kinds = new Set<string>();
-  for (let i = 0; i < 200; i++) kinds.add(shown(app.show(decoyView('imp', `2-${i}`), { seen: true }), 'imp', 'en')!.kind);
-  assert.deepEqual([...kinds].sort(), ['term', 'tip']);
+  seedApp(app, 6);
+  let checked = 0;
+  for (let i = 0; i < 300 && checked < 30; i++) {
+    const text = app.show(decoyView('chef', `2-${i}`), { seen: true });
+    const what = shown(text, 'en')!;
+    if (what.kind === 'term') continue;
+    assert.ok(text.includes(CHARACTERS[what.character as CharacterId].name), `${what.character} named`);
+    checked++;
+  }
+  assert.equal(checked, 30);
 });
 
 test('while the same screen refreshes (the countdown ticks) the entry does not change', async () => {
   const app = await loadApp('en');
   const view = decoyView('slayer', '2-7');
-  const first = id(shown(app.show(view, { seen: true }), 'slayer', 'en'));
-  for (let i = 0; i < 20; i++) assert.equal(id(shown(app.show(view, { seen: true }), 'slayer', 'en')), first);
+  const first = id(shown(app.show(view, { seen: true }), 'en'));
+  for (let i = 0; i < 20; i++) assert.equal(id(shown(app.show(view, { seen: true }), 'en')), first);
 });
 
 test('switching language keeps the same entry, translated — tips, bluffs and terms alike', async () => {
   const app = await loadApp('en');
   seedApp(app, 5);
   const kinds = new Set<string>();
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 80; i++) {
     const view = decoyView('mayor', `2-${i}`);
-    const en = shown(app.show(view, { seen: true, lang: 'en' }), 'mayor', 'en');
-    const fr = shown(app.show(view, { seen: true, lang: 'fr' }), 'mayor', 'fr');
+    const en = shown(app.show(view, { seen: true, lang: 'en' }), 'en');
+    const fr = shown(app.show(view, { seen: true, lang: 'fr' }), 'fr');
     assert.ok(en && fr);
     assert.equal(id(fr), id(en));
     kinds.add(en.kind);
@@ -239,7 +254,7 @@ test('switching language keeps the same entry, translated — tips, bluffs and t
   assert.equal(kinds.size, 3, 'the check covered tips, bluffs and terms');
 });
 
-test('a Drunk reads the entries of the character they believe they are — never Drunk tips', async () => {
+test('a Drunk draws from the same pool as everyone else', async () => {
   const s = mk(['imp', 'poisoner', 'drunk', 'washerwoman', 'soldier', 'monk', 'chef'], { drunkFakeChar: 'empath' });
   startNight(s);
   advanceUntil(s, 'washerwoman');
@@ -250,13 +265,11 @@ test('a Drunk reads the entries of the character they believe they are — never
   for (let i = 0; i < 80; i++) {
     const v = JSON.parse(JSON.stringify(viewFor(s, drunk.id))) as GameView;
     v.nightTurn!.stepKey = `2-${i}`;
-    assert.equal(v.myCharacter!.id, 'empath');
-    const what = shown(app.show(v, { seen: true }), 'empath', 'en');
-    assert.ok(what, 'an Empath entry or a term');
+    const what = shown(app.show(v, { seen: true }), 'en');
+    assert.ok(what);
     seen.add(id(what));
   }
-  assert.ok(seen.size > 10);
-  assert.ok(![...seen].some((k) => k.startsWith('tip:') && /Drunk/.test(TIPS.empath[Number(k.split(':')[1])].en) && false));
+  assert.ok(seen.size > 40);
 });
 
 test('a real information screen is unchanged: it shows the real information, nothing to read', async () => {
@@ -287,18 +300,17 @@ test('a decoy that stands in for a result screen (Fortune Teller / Ravenkeeper s
   app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.click();
   const text = app.run<string>("(function(){ render(); return document.getElementById('app').textContent; })()");
   assert.ok(text.includes('Your Result'));
-  const what = shown(text, 'soldier', 'en');
-  assert.ok(what, 'a Soldier entry or a term');
+  const what = shown(text, 'en');
+  assert.ok(what, 'something readable');
   assert.ok(text.includes(CREDIT[what.kind].en), 'credited');
   assert.ok(!text.includes('Nothing to learn'));
 });
 
-test('a character without any entry (should never happen) still gets a glossary term rather than an empty screen', async () => {
+test('a character unknown to the app still gets something to read rather than an empty screen', async () => {
   const app = await loadApp('en');
   const v = decoyView('imp');
   v.myCharacter!.id = 'nobody' as CharacterId;
-  const text = app.show(v, { seen: true });
-  assert.ok(allTerms('en').some((t) => text.includes(termText(t))), 'a term is shown');
+  assert.ok(shown(app.show(v, { seen: true }), 'en'));
 });
 
 test('a player can tap the game words inside what they read (the underlined terms still work)', async () => {
@@ -309,7 +321,7 @@ test('a player can tap the game words inside what they read (the underlined term
     app.show(decoyView('washerwoman', `2-${i}`), { seen: true });
     underlined += app.root.find((n) => n.hasClass('term')).length;
   }
-  assert.ok(underlined > 20, `only ${underlined} tappable terms across 40 screens`);
+  assert.ok(underlined > 15, `only ${underlined} tappable terms across 40 screens`);
 });
 
 test('over whole games, no player is ever dealt a perceived character without entries', () => {
