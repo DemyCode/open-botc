@@ -10,7 +10,7 @@ const state = {
   dawnSeenForDay: null,
   duskSeenForNight: null,
   nightResultSeenForNight: null,
-  roleHidden: false,
+  roleHidden: true,
 };
 
 let pendingJoin = null;
@@ -886,8 +886,8 @@ function roleBanner(v) {
     aliveStatus(v),
     toggleBtn,
     icon,
-    el('div', { class: 'align' }, alignmentLabel(v.myCharacter.alignment)),
-    team ? el('div', { class: 'team' }, teamLabel(team)) : null,
+    el('div', { class: 'align' }, termLink(alignCls, alignmentLabel(v.myCharacter.alignment))),
+    team ? el('div', { class: 'team' }, termLink(team, teamLabel(team))) : null,
     el('div', { class: 'name' }, char.name),
     el('div', { class: 'ability' }, glossify(char.ability)),
   ]);

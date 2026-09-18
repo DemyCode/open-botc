@@ -894,3 +894,45 @@ test('every kind of event in real games is worded, in both languages, with no br
   assert.deepEqual(problems.slice(0, 3), []);
   for (const k of ['roles', 'info', 'choice', 'attack', 'death', 'dawn', 'nominate', 'vote', 'execution', 'dayEnd', 'win']) assert.ok(kinds.has(k), `no game produced a ${k} event`);
 });
+
+// ---------------------------------------------------------------- the role card: minimised by default, alignment and team tappable
+
+test('the role card starts minimised: a freshly opened app shows no character, no alignment, no colour — only alive status and a Show role button', async () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  for (const player of [s.players[0], s.players[2]]) {
+    const app = await loadApp('en');
+    assert.equal(app.run('state.roleHidden'), true, 'minimised by default');
+    const v = JSON.stringify(viewFor(s, player.id));
+    app.run(`state.code = 'ROOM'; state.token = 'tok'; state.playerId = ${JSON.stringify(player.id)}; state.view = ${v};
+      state.ws = { readyState: 1, send: () => {} }; state.dawnSeenForDay = 1; state.duskSeenForNight = 1; state.nightResultSeenForNight = 1; render();`);
+    const text = app.text();
+    assert.ok(!/Empath|Imp|Good|Evil|Townsfolk|Minion/.test(text), 'nothing about the role is on screen');
+    assert.equal(app.root.find((n) => n.hasClass('role-banner') && (n.hasClass('good') || n.hasClass('evil'))).length, 0);
+    assert.ok(text.includes('You are alive') && text.includes('Show role'));
+    app.root.buttons().find((b) => /Show role/.test(b.text()))!.click();
+    assert.ok(/Good|Evil/.test(app.text()), 'one tap on Show role reveals the card');
+  }
+});
+
+test('"Good"/"Evil" and the team on the role card are tappable and open their definition — both languages, every team', async () => {
+  const cases: [string, string, RegExp, RegExp][] = [
+    ['empath', 'en', /Good/, /Townsfolk/], ['saint', 'en', /Good/, /Outsider/], ['poisoner', 'en', /Evil/, /Minion/], ['imp', 'en', /Evil/, /Demon/],
+    ['empath', 'fr', /Bon/, /Villageois/], ['imp', 'fr', /Maléfique/, /Démon/],
+  ];
+  for (const [character, lang, align, team] of cases) {
+    const s = mkDay(['imp', 'poisoner', 'empath', 'saint', 'soldier']);
+    const app = await loadApp(lang as 'en' | 'fr');
+    const me = s.players.find((p) => p.character === character)!;
+    app.show(viewFor(s, me.id), { seen: true, lang: lang as 'en' | 'fr' });
+    for (const label of [align, team]) {
+      const link = app.root.find((n) => n.hasClass('term') && label.test(n.text()) && !!n.parent && (n.parent.hasClass('align') || n.parent.hasClass('team')))[0];
+      assert.ok(link, `${character}/${lang}: ${label} on the card is a tappable term`);
+      link.click();
+      const modal = app.body.find((n) => n.hasClass('term-overlay'))[0];
+      assert.ok(modal, `${character}/${lang}: a definition opens`);
+      assert.ok(/^(good|bien|evil|mal|townsfolk|villageois|outsider|marginal|minion|sbire|demon|démon)/i.test(modal.text()), `${character}/${lang}: it defines ${label}: ${modal.text().slice(0, 60)}`);
+      assert.ok(!brokenText(modal.text()));
+      app.body.find((n) => n.hasClass('term-overlay')).forEach((o) => o.parent?.children.splice(o.parent.children.indexOf(o), 1));
+    }
+  }
+});
