@@ -98,6 +98,12 @@ wss.on('connection', (ws: WebSocket) => {
           send({ t: 'error', message: 'Room not found' });
           return;
         }
+        // One connection is one player. Joining again would create a second player for the same
+        // phone (and let one client fill a whole room), so it must leave first.
+        if (msg.t === 'join' && conn.code && conn.playerId) {
+          send({ t: 'error', message: 'Already joined — leave the game first' });
+          return;
+        }
         const player =
           msg.t === 'join'
             ? engine.addPlayer(state, String(msg.name ?? ''))

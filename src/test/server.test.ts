@@ -598,6 +598,115 @@ test('after the game ends, every action is refused politely and the server stays
   cs.forEach((c) => c.close());
 });
 
+// ---------------------------------------------------------------- abuse and isolation
+
+test('one connection is one player: a second join on the same connection is refused', async () => {
+  const code = await createRoom(server.port);
+  const c = await join(server.port, code, 'Ana');
+  c.send({ t: 'join', code, name: 'Ana2' });
+  await c.waitForError('Already joined');
+  const other = await join(server.port, code, 'Bo');
+  await waitUntil(() => other.view!.players.length === 2, 'still just two players');
+  c.close(); other.close();
+});
+
+test('hostile room codes and names never crash anything', async () => {
+  const code = await createRoom(server.port);
+  for (const bad of ['__proto__', 'constructor', 'toString', '', 'x'.repeat(4000), 'a b c', '\u0000\u0001', '../../etc', '{"a":1}']) {
+    const c = await Client.open(server.port);
+    c.send({ t: 'join', code: bad, name: 'Ana' });
+    await c.waitForError('Room not found');
+    c.close();
+  }
+  for (const name of ['__proto__', 'constructor', '<script>x</script>', '😀', '  ', 'a'.repeat(5000)]) {
+    const c = await join(server.port, code, name).catch(() => null);
+    c?.close();
+  }
+  assert.equal((await request(server.port, 'GET', '/')).status, 200);
+});
+
+test('two games run at the same time without touching each other, and a token only works in its own room', async () => {
+  const codeA = await createRoom(server.port);
+  const codeB = await createRoom(server.port);
+  const a: Client[] = [];
+  const b: Client[] = [];
+  for (const n of ['A1', 'A2', 'A3', 'A4', 'A5']) a.push(await join(server.port, codeA, n));
+  for (const n of ['B1', 'B2', 'B3', 'B4', 'B5']) b.push(await join(server.port, codeB, n));
+  // A token from room A is worthless in room B.
+  const intruder = await Client.open(server.port);
+  intruder.send({ t: 'auth', code: codeB, token: a[0].token });
+  await intruder.waitForError('Invalid session');
+  intruder.close();
+  [...a, ...b].forEach((c) => attachBrain(c, () => a));
+  await seat(a);
+  await seat(b);
+  a[0].send({ t: 'start' });
+  b[0].send({ t: 'start' });
+  await waitUntil(() => [...a, ...b].every((c) => c.view?.phase === 'ended'), 'both games to end', 90_000);
+  for (const c of a) assert.ok(c.view!.players.every((p: Msg) => p.name.startsWith('A')), 'room A only ever sees its own players');
+  for (const c of b) assert.ok(c.view!.players.every((p: Msg) => p.name.startsWith('B')), 'room B only ever sees its own players');
+  [...a, ...b].forEach((c) => c.close());
+});
+
+test('a chaos client firing illegal moves, junk and unjoined actions all game long cannot disturb a game', async () => {
+  const code = await createRoom(server.port);
+  const cs: Client[] = [];
+  for (const n of ['A', 'B', 'C', 'D', 'E']) cs.push(await join(server.port, code, n));
+  cs.forEach((c) => attachBrain(c, () => cs));
+  // Someone connected but not in the game, throwing everything at the server.
+  const chaos = await Client.open(server.port, 'chaos');
+  const types = ['nominate', 'vote', 'nightReal', 'slayer', 'endDay', 'skipSpeech', 'readySpeech', 'declareNeighbor', 'start', 'leave', 'join', 'auth', 'x'];
+  let n = 0;
+  const timer = setInterval(() => {
+    if (chaos.closed) return;
+    const t = types[n++ % types.length];
+    chaos.send(n % 3 === 0 ? 'garbage' + n : { t, code, nomineeId: cs[0].id, targetId: cs[1].id, targetIds: [cs[2].id], yes: true, token: 'nope', name: 'x' });
+  }, 5);
+  try {
+    await seat(cs);
+    cs[0].send({ t: 'start' });
+    await waitUntil(() => cs.every((c) => c.view?.phase === 'ended'), 'the game to end', 90_000);
+  } finally {
+    clearInterval(timer);
+  }
+  assert.ok(chaos.errors().length > 20, 'the chaos client was refused over and over');
+  assert.ok(cs.every((c) => c.errors().every((e) => !/Internal error/.test(e))));
+  cs.forEach((c) => c.close());
+  chaos.close();
+});
+
+test('a storm of connections opening, spamming and dropping does not hurt the server', async () => {
+  const code = await createRoom(server.port);
+  const sockets = await Promise.all(Array.from({ length: 60 }, () => Client.open(server.port)));
+  sockets.forEach((c, i) => {
+    c.send({ t: 'join', code, name: `Storm${i}` });
+    c.send('junk');
+    c.send({ t: 'nominate' });
+    if (i % 2) c.ws.terminate();
+  });
+  await sleep(300);
+  sockets.forEach((c) => c.ws.terminate());
+  await sleep(100);
+  assert.equal((await request(server.port, 'GET', '/')).status, 200);
+  const fresh = await join(server.port, await createRoom(server.port), 'Fresh');
+  assert.ok(fresh.view);
+  fresh.close();
+});
+
+test('an idle room is not spammed: phones only get a new view when something actually changed for them', async () => {
+  const code = await createRoom(server.port);
+  const ana = await join(server.port, code, 'Ana');
+  const bo = await join(server.port, code, 'Bo');
+  await sleep(300);
+  const before = ana.msgs.filter((m) => m.t === 'view').length;
+  await sleep(2600); // several server ticks with nothing happening
+  const after = ana.msgs.filter((m) => m.t === 'view').length;
+  assert.equal(after, before, `Ana received ${after - before} identical views while idle`);
+  bo.send({ t: 'declareNeighbor', neighborId: ana.id });
+  await waitUntil(() => ana.msgs.filter((m) => m.t === 'view').length > after, 'a real change is still delivered');
+  ana.close(); bo.close();
+});
+
 test('the server never logged an unexpected error during all of the above', () => {
   const noisy = server.output().split('\n').filter((l) => /Error|TypeError|Unhandled|at .*\(/.test(l));
   assert.deepEqual(noisy, [], 'the server printed errors:\n' + noisy.join('\n'));

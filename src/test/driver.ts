@@ -186,7 +186,7 @@ export function describe(s: GameState): string {
   return `alive: ${alive.join(', ')}; poisoned: ${s.players.find((p) => p.id === s.poisonedId)?.character ?? 'nobody'}; phase ${s.phase}; last log: ${s.publicLog.slice(-4).map((m) => m.key).join(', ')}`;
 }
 
-export function playGame(seed: number, playerCount: number, onCheck?: (s: GameState, where: string) => void): GameState {
+export function playGame(seed: number, playerCount: number, onCheck?: (s: GameState, where: string) => void, names?: string[]): GameState {
   extraCheck = onCheck ?? null;
   const rand = mulberry32(seedFromString(`sim-${seed}-${playerCount}`));
   const realRandom = Math.random;
@@ -194,7 +194,7 @@ export function playGame(seed: number, playerCount: number, onCheck?: (s: GameSt
   try {
     const s = createGame('SIM');
     s.secret = `sim-secret-${seed}-${playerCount}`;
-    const players = Array.from({ length: playerCount }, (_, i) => addPlayer(s, `P${i}`));
+    const players = Array.from({ length: playerCount }, (_, i) => addPlayer(s, names?.[i] ?? `P${i}`));
     players.forEach((p, i) => declareNeighbor(s, p.id, players[(i + 1) % playerCount].id));
     startGame(s);
     const where = () => `seed ${seed}, ${playerCount}p, night ${s.night}, day ${s.day}`;
