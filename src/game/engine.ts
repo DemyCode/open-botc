@@ -184,7 +184,10 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
     const ctx = { asker: nominatorId, slot: `virgin-d${state.day}` };
     if (abilityWorks(state, nominee) && registersAs(state, nominator, 'townsfolk', ctx)) {
       state.publicLog.push(msg('virginExecutesNominator', { name: nominator.name }));
+      // That's today's one execution: the day ends right here, so nobody on the block is also
+      // executed, and nothing (Mayor, Undertaker) can mistake it for a day without an execution.
       executePlayer(state, nominatorId);
+      if (!state.winner) beginNight(state);
       return;
     }
   }

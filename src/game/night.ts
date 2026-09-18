@@ -59,9 +59,11 @@ export function evaluateWin(state: GameState): void {
  */
 export function promoteScarletWomanIfEligible(state: GameState, deadPlayer: PlayerState | null): boolean {
   if (!deadPlayer || CHARACTERS[deadPlayer.character].team !== 'demon') return false;
-  const aliveCount = state.players.filter((p) => p.alive).length;
+  // "5 or more players alive" is counted at the moment the Demon dies — the Demon is one of them,
+  // and they've already been marked dead by the time we get here.
+  const aliveWhenDemonDied = state.players.filter((p) => p.alive).length + 1;
   const sw = state.players.find((p) => p.alive && p.character === 'scarletwoman');
-  if (sw && aliveCount >= 5 && abilityWorks(state, sw)) {
+  if (sw && aliveWhenDemonDied >= 5 && abilityWorks(state, sw)) {
     sw.character = 'imp';
     sw.perceived = 'imp';
     appendLog(state, sw.id, msg('scarletWomanPromoted'));
@@ -233,6 +235,7 @@ function killPlayer(state: GameState, target: PlayerState): void {
 function applyImpKill(state: GameState, imp: PlayerState, targetId: string): void {
   const target = state.players.find((p) => p.id === targetId);
   if (!target || !target.alive) return;
+  if (!abilityWorks(state, imp)) return; // a poisoned Imp's kill (or star-pass) simply doesn't happen
 
   if (targetId === imp.id) {
     if (isProtected(state, target)) return;
@@ -324,6 +327,7 @@ export function submitRealResponse(state: GameState, playerId: string, targetIds
   if (playerId in t.responses) throw new GameError('Already responded');
   if (t.shape === 'choose') {
     if (targetIds.length < t.min || targetIds.length > t.max) throw new GameError('Invalid selection count');
+    if (new Set(targetIds).size !== targetIds.length) throw new GameError('Cannot choose the same player twice');
     const allowDead = DEAD_TARGETS_ALLOWED[t.charId as CharacterId];
     const eligible = new Set(state.players.filter((p) => allowDead || p.alive).map((p) => p.id));
     for (const id of targetIds) if (!eligible.has(id)) throw new GameError('Invalid target');

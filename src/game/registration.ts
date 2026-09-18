@@ -5,8 +5,13 @@ import type { CharacterId, GameState, PlayerState } from './types.js';
 /** True if this player's own ability actually functions right now (false for the Drunk, or a poisoned player). */
 export function abilityWorks(state: GameState, p: PlayerState): boolean {
   if (p.character === 'drunk') return false;
-  if (state.poisonedId === p.id) return false;
+  if (state.poisonedId === p.id && poisonerAlive(state)) return false;
   return true;
+}
+
+/** Poison lasts only while the Poisoner lives — it ends the moment they die (or stop being the Poisoner). */
+function poisonerAlive(state: GameState): boolean {
+  return state.players.some((q) => q.alive && q.character === 'poisoner');
 }
 
 export type RegisterKind = 'demon' | 'minion' | 'outsider' | 'townsfolk' | 'evil' | 'good';

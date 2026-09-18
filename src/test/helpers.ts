@@ -53,10 +53,14 @@ export function skipRound(state: GameState): void {
   if (!t) return;
   for (const id of t.playerIds.slice()) {
     if (id in t.responses) continue;
+    // A skipped Poisoner poisons themselves (legal, and harmless): poisoning anyone else would
+    // quietly switch off whichever ability the test is actually about.
     const targets =
-      t.shape === 'choose'
-        ? state.players.filter((p) => p.alive && p.id !== id).slice(0, t.min).map((p) => p.id)
-        : [];
+      t.charId === 'poisoner'
+        ? [id]
+        : t.shape === 'choose'
+          ? state.players.filter((p) => p.alive && p.id !== id).slice(0, t.min).map((p) => p.id)
+          : [];
     submitRealResponse(state, id, targets);
   }
 }
