@@ -181,13 +181,19 @@ export function viewFor(state: GameState, viewerId: string): GameView {
   const revealAll = state.phase === 'ended';
   const self = state.players.find((p) => p.id === viewerId);
 
+  // A death tonight stays hidden until dawn in EVERY place a phone can read it — not only in the
+  // screens the app draws. The Ravenkeeper (or a Drunk who thinks so) sees their own death at once.
+  const revealsOwnDeath = self?.perceived === 'ravenkeeper';
+  const shownAlive = (p: PlayerState): boolean =>
+    state.phase === 'night' && !(p.id === viewerId && revealsOwnDeath) ? publiclyAlive(p) : p.alive;
+
   const players: PublicPlayerView[] = state.players.map((p) => {
     const isSelf = p.id === viewerId;
     // During the game, a player only ever sees their own *believed* character (perceived) —
     // the Drunk must never learn the truth about themselves before the reveal at game end.
     const charId = revealAll ? p.character : isSelf ? p.perceived : undefined;
     return {
-      id: p.id, name: p.name, seat: p.seat, alive: p.alive, connected: p.connected, isSelf,
+      id: p.id, name: p.name, seat: p.seat, alive: shownAlive(p), connected: p.connected, isSelf,
       // Only "who's on your right" is ever actively asked — the left side is derived via
       // reciprocal auto-fill in declareNeighbor, so it's not part of what counts as "done".
       hasDeclaredSeating: !!p.seatRightId,
@@ -216,12 +222,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
   // has already revealed. The Ravenkeeper is the deliberate exception: being woken at all only
   // happens *because* they just died, so for them (or a Drunk perceiving Ravenkeeper) the death
   // is the whole point of the turn they're currently being given, not something to hide.
-  const revealsOwnDeathImmediately = self?.perceived === 'ravenkeeper';
-  const amIAlive = self
-    ? state.phase === 'night' && !revealsOwnDeathImmediately
-      ? publiclyAlive(self)
-      : self.alive
-    : false;
+  const amIAlive = self ? shownAlive(self) : false;
 
   return {
     code: state.code, phase: state.phase, night: state.night, day: state.day,
