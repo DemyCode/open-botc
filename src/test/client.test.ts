@@ -256,7 +256,6 @@ test('a nomination in each stage shows the right thing and the right buttons', a
   assert.ok(!app.root.buttons().some((b) => /move to defense/i.test(b.text())), 'others cannot');
   // voting: only the current voter has Yes/No
   skipSpeech(s, empath.id);
-  markAllReady(s);
   skipSpeech(s, imp.id);
   const voterId = s.currentNomination!.currentVoterId!;
   const voterIdx = s.players.findIndex((p) => p.id === voterId);
@@ -544,3 +543,18 @@ test('every underlined term in every real screen opens a definition that exists'
 });
 
 void MIN_ANSWER_MS;
+
+test('during the defense nobody is asked "ready"; only the accused has a button, to start the vote', async () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  const [imp, , empath] = s.players;
+  nominate(s, empath.id, imp.id);
+  markAllReady(s);
+  skipSpeech(s, empath.id); // the accusation is over: straight into the defense
+  for (let i = 0; i < 5; i++) {
+    const app = await dayApp(s, i);
+    assert.ok(!app.root.buttons().some((b) => /ready to hear|prêt à écouter/i.test(b.text())), `player ${i} is not asked to get ready`);
+    assert.ok(/responding|répond/i.test(app.text()), `player ${i} sees the accused answering`);
+    const done = app.root.buttons().filter((b) => /start the vote|lancer le vote/i.test(b.text()));
+    assert.equal(done.length, i === 0 ? 1 : 0, 'only the accused (the Imp) can end the defense');
+  }
+});

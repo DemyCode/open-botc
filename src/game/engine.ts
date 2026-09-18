@@ -241,8 +241,7 @@ export function skipSpeech(state: GameState, playerId: string): void {
   if (!nom) throw new GameError('No nomination in progress');
   if (nom.state === 'accusing') {
     if (playerId !== nom.nominatorId) throw new GameError('Only the accuser can end their own speech early');
-    nom.state = 'readyForDefense';
-    nom.readyBy = [];
+    startDefense(nom);
   } else if (nom.state === 'defending') {
     if (playerId !== nom.nomineeId) throw new GameError('Only the accused can end their own defense early');
     startVoting(state, nom);
@@ -261,7 +260,7 @@ export function skipSpeech(state: GameState, playerId: string): void {
 export function markReadyForSpeech(state: GameState, playerId: string): void {
   const nom = state.currentNomination;
   if (!nom) throw new GameError('No nomination in progress');
-  if (nom.state !== 'readyForAccusation' && nom.state !== 'readyForDefense') {
+  if (nom.state !== 'readyForAccusation') {
     throw new GameError('Not waiting for readiness right now');
   }
   findPlayer(state, playerId); // validates it exists
@@ -272,20 +271,22 @@ export function markReadyForSpeech(state: GameState, playerId: string): void {
 }
 
 function maybeAdvanceSpeechReady(state: GameState, nom: Nomination): void {
-  if (nom.state !== 'readyForAccusation' && nom.state !== 'readyForDefense') return;
+  if (nom.state !== 'readyForAccusation') return;
   // Only phones that are actually connected can be waited for: a player whose phone dropped
   // (screen lock, tunnel, wifi) must never freeze the game. Nobody connected → nothing advances.
   const listeners = state.players.filter((p) => p.connected).map((p) => p.id);
   if (listeners.length === 0 || !listeners.every((id) => nom.readyBy.includes(id))) return;
-  if (nom.state === 'readyForAccusation') {
-    nom.state = 'accusing';
-    nom.phaseEndsAt = Date.now() + ACCUSE_MS;
-    nom.readyBy = [];
-  } else if (nom.state === 'readyForDefense') {
-    nom.state = 'defending';
-    nom.phaseEndsAt = Date.now() + DEFEND_MS;
-    nom.readyBy = [];
-  }
+  nom.state = 'accusing';
+  nom.phaseEndsAt = Date.now() + ACCUSE_MS;
+  nom.readyBy = [];
+}
+
+/** The accusation is over: the accused answers at once (everyone has just been listening, so
+ * there is no second "are you ready" — the 45 seconds start now). */
+function startDefense(nom: Nomination): void {
+  nom.state = 'defending';
+  nom.phaseEndsAt = Date.now() + DEFEND_MS;
+  nom.readyBy = [];
 }
 
 /** Seat order the vote goes around in: everyone once, starting just after the nominee, ending on the nominee. */
@@ -389,11 +390,10 @@ export function tick(state: GameState, now: number): void {
     maybeEndDayByConsensus(state); // someone may have dropped after everyone else agreed
     return;
   }
-  if (nom.state === 'readyForAccusation' || nom.state === 'readyForDefense') {
+  if (nom.state === 'readyForAccusation') {
     maybeAdvanceSpeechReady(state, nom); // same: a drop after everyone else was ready
   } else if (nom.state === 'accusing' && now >= nom.phaseEndsAt) {
-    nom.state = 'readyForDefense';
-    nom.readyBy = [];
+    startDefense(nom);
   } else if (nom.state === 'defending' && now >= nom.phaseEndsAt) {
     startVoting(state, nom);
   } else if (nom.state === 'voting' && nom.voterDeadline !== null && now >= nom.voterDeadline) {

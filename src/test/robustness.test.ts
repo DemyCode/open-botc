@@ -54,7 +54,6 @@ function replay(restoreEveryStep: boolean): string[] {
           for (const p of s.players) if (!s.currentNomination.readyBy.includes(p.id)) markReadyForSpeech(s, p.id);
           restore();
           skipSpeech(s, s.currentNomination.nominatorId);
-          for (const p of s.players) if (s.currentNomination && !s.currentNomination.readyBy.includes(p.id)) markReadyForSpeech(s, p.id);
           restore();
           skipSpeech(s, s.currentNomination!.nomineeId);
           let g = 0;

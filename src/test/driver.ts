@@ -129,7 +129,7 @@ function runNomination(s: GameState, rand: Rand, where: string): void {
   let guard = 0;
   while (s.currentNomination && guard++ < 200) {
     const nom = s.currentNomination;
-    if (nom.state === 'readyForAccusation' || nom.state === 'readyForDefense') {
+    if (nom.state === 'readyForAccusation') {
       for (const p of s.players) if (!nom.readyBy.includes(p.id)) markReadyForSpeech(s, p.id);
     } else if (nom.state === 'accusing' || nom.state === 'defending') {
       // Half the time the speaker ends early, half the time the timer runs out.

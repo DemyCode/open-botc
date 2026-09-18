@@ -239,10 +239,8 @@ const STRINGS = {
     evilWins: 'Evil Wins!',
     langLabel: 'FR',
     readyForAccusation: 'Get ready to hear the accusation.',
-    readyForDefense: 'Get ready to hear the defense.',
     readyCount: (ready, total) => `${ready}/${total} players ready`,
     imReadyAccusation: (accuser, accused) => `I'm ready to hear ${accuser}'s accusation against ${accused}`,
-    imReadyDefense: (accused, accuser) => `I'm ready to hear ${accused}'s defense against ${accuser}`,
     cancelReady: 'Actually, not ready yet',
     hideRole: 'Hide role',
     showRole: 'Show role',
@@ -342,10 +340,8 @@ const STRINGS = {
     evilWins: 'Le Mal gagne !',
     langLabel: 'EN',
     readyForAccusation: "Préparez-vous à entendre l'accusation.",
-    readyForDefense: 'Préparez-vous à entendre la défense.',
     readyCount: (ready, total) => `${ready}/${total} joueurs prêts`,
     imReadyAccusation: (accuser, accused) => `Je suis prêt à écouter l'accusation de ${accuser} envers ${accused}`,
-    imReadyDefense: (accused, accuser) => `Je suis prêt à écouter la défense de ${accused} contre ${accuser}`,
     cancelReady: 'Finalement, pas encore prêt',
     hideRole: 'Masquer le rôle',
     showRole: 'Afficher le rôle',
@@ -1229,23 +1225,19 @@ function renderNomination(v) {
   const n = v.nomination;
   const card = [el('h2', {}, glossify(t('accuses', n.nominatorName, n.nomineeName)))];
 
-  if (n.state === 'readyForAccusation' || n.state === 'readyForDefense') {
+  if (n.state === 'readyForAccusation') {
     // Everyone — including the dead, who are still watching — has to signal ready before the
-    // speech's timer starts, so nobody's speech begins while someone's still catching up.
+    // accusation's timer starts. The defense needs no such step: it follows straight on.
     const total = v.players.length;
     const readyCount = n.readyBy.length;
     const amReady = n.readyBy.includes(v.selfId);
-    card.push(el('p', { class: 'muted center' }, glossify(n.state === 'readyForAccusation' ? t('readyForAccusation') : t('readyForDefense'))));
+    card.push(el('p', { class: 'muted center' }, glossify(t('readyForAccusation'))));
     card.push(el('p', { class: 'muted center' }, t('readyCount', readyCount, total)));
     card.push(
       el(
         'button',
         { class: 'block' + (amReady ? ' secondary' : ''), onclick: () => send({ t: 'readySpeech' }) },
-        amReady
-          ? t('cancelReady')
-          : n.state === 'readyForAccusation'
-            ? t('imReadyAccusation', n.nominatorName, n.nomineeName)
-            : t('imReadyDefense', n.nomineeName, n.nominatorName)
+        amReady ? t('cancelReady') : t('imReadyAccusation', n.nominatorName, n.nomineeName)
       )
     );
   } else if (n.state === 'accusing') {

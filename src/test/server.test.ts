@@ -546,8 +546,8 @@ function attachBrain(c: Client, all: () => Client[]): void {
         } else if (me.alive && (me.hasNominatedToday || alive[0]?.id !== c.id) && (v.players.some((p: Msg) => p.hasNominatedToday) || v.onBlockId !== null)) {
           if (!v.myEndDayReady) once(`endday-${v.day}`, { t: 'endDay' });
         }
-      } else if (n.state === 'readyForAccusation' || n.state === 'readyForDefense') {
-        if (!n.readyBy.includes(c.id)) once(`ready-${v.day}-${n.state}`, { t: 'readySpeech' });
+      } else if (n.state === 'readyForAccusation') {
+        if (!n.readyBy.includes(c.id)) once(`ready-${v.day}`, { t: 'readySpeech' });
       } else if (n.state === 'accusing' && n.nominatorId === c.id) once(`skip-a-${v.day}`, { t: 'skipSpeech' });
       else if (n.state === 'defending' && n.nomineeId === c.id) once(`skip-d-${v.day}`, { t: 'skipSpeech' });
       else if (n.state === 'voting' && n.currentVoterId === c.id) once(`vote-${v.day}-${n.nomineeId}`, { t: 'vote', yes: true });

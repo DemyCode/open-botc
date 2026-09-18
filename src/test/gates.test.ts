@@ -50,16 +50,39 @@ test('if nobody is connected, nothing advances by itself', () => {
   assert.equal(s.currentNomination!.state, 'readyForAccusation');
 });
 
-test('the defense ready gate works the same way', () => {
+test('there is NO ready step before the defense: it starts the moment the accusation ends, with a full 45 seconds', () => {
   const s = five();
-  const [imp, poisoner, empath] = s.players;
+  const [imp, , empath] = s.players;
+  nominate(s, empath.id, imp.id);
+  markAllReady(s);
+  const before = Date.now();
+  skipSpeech(s, empath.id);
+  const nom = s.currentNomination!;
+  assert.equal(nom.state, 'defending');
+  assert.deepEqual(nom.readyBy, []);
+  assert.ok(nom.phaseEndsAt >= before + 44_900 && nom.phaseEndsAt <= Date.now() + 45_100, 'the 45 seconds start now');
+});
+
+test('a "ready" tap while someone is speaking is refused — the ready step exists only before the accusation', () => {
+  const s = five();
+  const [imp, , empath, washerwoman] = s.players;
+  nominate(s, empath.id, imp.id);
+  markAllReady(s);
+  assert.throws(() => markReadyForSpeech(s, washerwoman.id), /Not waiting/);
+  skipSpeech(s, empath.id);
+  assert.throws(() => markReadyForSpeech(s, washerwoman.id), /Not waiting/);
+});
+
+test('the defense can still be ended early by the accused, and only by them', () => {
+  const s = five();
+  const [imp, , empath, washerwoman] = s.players;
   nominate(s, empath.id, imp.id);
   markAllReady(s);
   skipSpeech(s, empath.id);
-  assert.equal(s.currentNomination!.state, 'readyForDefense');
-  poisoner.connected = false;
-  for (const p of s.players.filter((q) => q !== poisoner)) markReadyForSpeech(s, p.id);
-  assert.equal(s.currentNomination!.state, 'defending');
+  assert.throws(() => skipSpeech(s, washerwoman.id), /Only the accused/);
+  assert.throws(() => skipSpeech(s, empath.id), /Only the accused/);
+  skipSpeech(s, imp.id);
+  assert.equal(s.currentNomination!.state, 'voting');
 });
 
 // ---- the timers ----
@@ -73,8 +96,8 @@ test('the accusation ends by itself after 45 seconds — not a moment before', (
   tick(s, end - 1);
   assert.equal(s.currentNomination!.state, 'accusing');
   tick(s, end);
-  assert.equal(s.currentNomination!.state, 'readyForDefense');
-  assert.deepEqual(s.currentNomination!.readyBy, [], 'a fresh ready gate for the defense');
+  assert.equal(s.currentNomination!.state, 'defending', 'the defense follows at once');
+  assert.ok(s.currentNomination!.phaseEndsAt > end - 1, 'with its own fresh 45 seconds');
 });
 
 test('the defense ends by itself after 45 seconds and the vote begins', () => {
@@ -83,7 +106,6 @@ test('the defense ends by itself after 45 seconds and the vote begins', () => {
   nominate(s, empath.id, imp.id);
   markAllReady(s);
   skipSpeech(s, empath.id);
-  markAllReady(s);
   const end = s.currentNomination!.phaseEndsAt;
   tick(s, end - 1);
   assert.equal(s.currentNomination!.state, 'defending');

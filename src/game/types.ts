@@ -88,7 +88,7 @@ export interface PendingRealTurn {
   openedAt: number;
 }
 
-export type NominationState = 'readyForAccusation' | 'accusing' | 'readyForDefense' | 'defending' | 'voting' | 'closed';
+export type NominationState = 'readyForAccusation' | 'accusing' | 'defending' | 'voting' | 'closed';
 
 export interface Nomination {
   id: string;
@@ -99,7 +99,7 @@ export interface Nomination {
   phaseEndsAt: number;
   /**
    * Living players who have signaled they're ready to hear the upcoming speech, while state is
-   * 'readyForAccusation' or 'readyForDefense'. The speech's timer only starts once every living
+   * 'readyForAccusation'. The accusation's timer only starts once every living
    * player has signaled ready; reset to [] each time a new ready-gate begins.
    */
   readyBy: string[];

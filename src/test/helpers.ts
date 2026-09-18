@@ -122,7 +122,6 @@ export function fastForwardToVote(state: GameState): void {
   if (!nom) throw new Error('No nomination in progress');
   markAllReady(state);
   skipSpeech(state, nom.nominatorId);
-  markAllReady(state);
   skipSpeech(state, nom.nomineeId);
 }
 

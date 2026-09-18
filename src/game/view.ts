@@ -59,7 +59,7 @@ export interface NominationView {
   nomineeName: string;
   state: NominationState;
   phaseEndsAt: number;
-  /** Ids of everyone (living or dead) who has signaled they're ready for the upcoming speech. Only meaningful while state is readyForAccusation/readyForDefense. */
+  /** Ids of everyone (living or dead) who has signaled they're ready for the upcoming speech. Only meaningful while state is readyForAccusation. */
   readyBy: string[];
   currentVoterId: string | null;
   currentVoterName: string | null;

@@ -69,7 +69,7 @@ test('a Virgin nominated by an evil player does not proc', () => {
   assert.equal(s.currentNomination?.state, 'accusing');
 });
 
-test('the nomination goes through ready -> accusing -> ready -> defending -> voting, and only the current speaker can skip', () => {
+test('the nomination goes through ready -> accusing -> defending -> voting, and only the current speaker can skip', () => {
   const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
   const [, poisoner, empath] = s.players;
   nominate(s, poisoner.id, empath.id);
@@ -79,9 +79,7 @@ test('the nomination goes through ready -> accusing -> ready -> defending -> vot
 
   assert.throws(() => skipSpeech(s, empath.id), 'the accused should not be able to skip the accusation');
   skipSpeech(s, poisoner.id); // the accuser ends their own speech early
-  assert.equal(s.currentNomination?.state, 'readyForDefense');
-  markAllReady(s);
-  assert.equal(s.currentNomination?.state, 'defending');
+  assert.equal(s.currentNomination?.state, 'defending', 'the defense follows at once — no second "ready" step');
 
   assert.throws(() => skipSpeech(s, poisoner.id), 'the accuser should not be able to skip the defense');
   skipSpeech(s, empath.id); // the accused ends their own defense early
@@ -100,8 +98,7 @@ test('the host has no authority to skip someone else\'s speech — only the spea
 
   assert.throws(() => skipSpeech(s, host.id), "the host should not be able to skip the accuser's speech");
   skipSpeech(s, poisoner.id);
-  assert.equal(s.currentNomination?.state, 'readyForDefense');
-  markAllReady(s);
+  assert.equal(s.currentNomination?.state, 'defending');
 
   assert.throws(() => skipSpeech(s, host.id), "the host should not be able to skip the accused's defense");
   skipSpeech(s, empath.id);
