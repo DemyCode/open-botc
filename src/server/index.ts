@@ -91,7 +91,7 @@ wss.on('connection', (ws: WebSocket) => {
         }
         const player =
           msg.t === 'join'
-            ? engine.addPlayer(state, String(msg.name || 'Player'))
+            ? engine.addPlayer(state, String(msg.name ?? ''))
             : engine.findPlayerByToken(state, String(msg.token || ''));
         if (!player) {
           send({ t: 'error', message: 'Invalid session' });

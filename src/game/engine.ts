@@ -34,8 +34,29 @@ export function createGame(code: string): GameState {
   };
 }
 
-export function addPlayer(state: GameState, name: string): PlayerState {
+export const MAX_PLAYERS = 15;
+export const MAX_NAME_LENGTH = 24;
+
+/** Names appear in every message, so they must be short, printable and unique in the room. */
+function cleanName(state: GameState, raw: string): string {
+  const cleaned = String(raw ?? '')
+    .replace(/\p{Cf}/gu, '') // invisible / bidi-formatting characters vanish
+    .replace(/\p{Cc}/gu, ' ') // control characters (newline, tab...) become a space
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_NAME_LENGTH)
+    .trim();
+  if (cleaned) return cleaned;
+  let n = state.players.length + 1;
+  while (state.players.some((p) => p.name === `Player ${n}`)) n++;
+  return `Player ${n}`;
+}
+
+export function addPlayer(state: GameState, rawName: string): PlayerState {
   if (state.phase !== 'lobby') throw new GameError('Game already started');
+  if (state.players.length >= MAX_PLAYERS) throw new GameError(`The room is full (${MAX_PLAYERS} players)`);
+  const name = cleanName(state, rawName);
+  if (state.players.some((p) => p.name.toLowerCase() === name.toLowerCase())) throw new GameError('That name is already taken');
   const player: PlayerState = {
     id: randomId(), token: randomId() + randomId(), name, seat: state.players.length,
     seatRightId: null, connected: true,
@@ -251,8 +272,11 @@ export function markReadyForSpeech(state: GameState, playerId: string): void {
 }
 
 function maybeAdvanceSpeechReady(state: GameState, nom: Nomination): void {
-  const everyone = state.players.map((p) => p.id);
-  if (!everyone.every((id) => nom.readyBy.includes(id))) return;
+  if (nom.state !== 'readyForAccusation' && nom.state !== 'readyForDefense') return;
+  // Only phones that are actually connected can be waited for: a player whose phone dropped
+  // (screen lock, tunnel, wifi) must never freeze the game. Nobody connected → nothing advances.
+  const listeners = state.players.filter((p) => p.connected).map((p) => p.id);
+  if (listeners.length === 0 || !listeners.every((id) => nom.readyBy.includes(id))) return;
   if (nom.state === 'readyForAccusation') {
     nom.state = 'accusing';
     nom.phaseEndsAt = Date.now() + ACCUSE_MS;
@@ -361,8 +385,13 @@ export function tick(state: GameState, now: number): void {
   }
   if (state.phase !== 'day') return;
   const nom = state.currentNomination;
-  if (!nom) return;
-  if (nom.state === 'accusing' && now >= nom.phaseEndsAt) {
+  if (!nom) {
+    maybeEndDayByConsensus(state); // someone may have dropped after everyone else agreed
+    return;
+  }
+  if (nom.state === 'readyForAccusation' || nom.state === 'readyForDefense') {
+    maybeAdvanceSpeechReady(state, nom); // same: a drop after everyone else was ready
+  } else if (nom.state === 'accusing' && now >= nom.phaseEndsAt) {
     nom.state = 'readyForDefense';
     nom.readyBy = [];
   } else if (nom.state === 'defending' && now >= nom.phaseEndsAt) {
@@ -392,8 +421,11 @@ export function toggleEndDayRequest(state: GameState, playerId: string): void {
 }
 
 function maybeEndDayByConsensus(state: GameState): void {
-  const alive = state.players.filter((p) => p.alive).map((p) => p.id);
-  if (alive.length > 0 && alive.every((id) => state.endDayRequestedBy.includes(id))) {
+  // Every living player who is still connected must agree — and at least one must have. Someone
+  // whose phone dropped cannot hold the whole table hostage (their agreement, if given, still counts).
+  if (state.phase !== 'day' || state.currentNomination) return;
+  const present = state.players.filter((p) => p.alive && p.connected).map((p) => p.id);
+  if (present.length > 0 && state.endDayRequestedBy.length > 0 && present.every((id) => state.endDayRequestedBy.includes(id))) {
     endDay(state);
   }
 }
