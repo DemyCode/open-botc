@@ -71,7 +71,9 @@ function handleMessage(msg) {
     sessionStorage.setItem('botc.token', msg.token);
     sessionStorage.setItem('botc.playerId', msg.playerId);
   } else if (msg.t === 'view') {
+    const previous = state.view;
     state.view = msg.view;
+    handleAnnouncements(previous, msg.view);
     handleTurnChange(msg.view);
     handleVoteBuzz(msg.view);
   } else if (msg.t === 'error') {
@@ -119,6 +121,86 @@ function handleVoteBuzz(view) {
   if (key === lastVoteBuzzKey) return;
   if (key && navigator.vibrate) navigator.vibrate([180, 80, 180]);
   lastVoteBuzzKey = key;
+}
+
+// ---------------------------------------------------------------------------
+// Sounds and buzzes for the two moments EVERYONE is told at once: someone is accused, and the
+// night begins. Both are public, simultaneous events, so they give nothing away — unlike a buzz
+// for a night turn, which would (that one stays off). The tones are synthesized, so there are
+// no audio files to load. Browsers only let a page make sound after a tap, so the first tap
+// anywhere wakes the audio up.
+// ---------------------------------------------------------------------------
+
+let audioCtx = null;
+let announcedNomination = null;
+
+function getAudio() {
+  if (audioCtx) return audioCtx;
+  const AC = typeof AudioContext !== 'undefined' ? AudioContext : typeof webkitAudioContext !== 'undefined' ? webkitAudioContext : null;
+  if (!AC) return null;
+  try {
+    audioCtx = new AC();
+  } catch {
+    return null;
+  }
+  return audioCtx;
+}
+
+function unlockAudio() {
+  const c = getAudio();
+  if (c && c.state === 'suspended' && c.resume) c.resume();
+}
+for (const type of ['pointerdown', 'touchstart', 'keydown']) window.addEventListener(type, unlockAudio, { passive: true });
+
+// [frequency Hz, start s, length s]
+const SOUNDS = {
+  accuse: { wave: 'triangle', notes: [[660, 0, 0.13], [880, 0.15, 0.22]] }, // two quick rising notes
+  night: { wave: 'sine', notes: [[392, 0, 0.3], [294, 0.3, 0.3], [220, 0.6, 0.6]] }, // a slow falling lullaby
+};
+const BUZZES = { accuse: [120, 60, 120], night: [250] };
+
+function playSound(kind) {
+  const c = getAudio();
+  if (!c) return;
+  try {
+    if (c.state === 'suspended' && c.resume) c.resume();
+    const { wave, notes } = SOUNDS[kind];
+    for (const [freq, at, len] of notes) {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = wave;
+      osc.frequency.value = freq;
+      const t0 = c.currentTime + at;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.linearRampToValueAtTime(0.18, t0 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(t0);
+      osc.stop(t0 + len + 0.05);
+    }
+  } catch {
+    // no sound is better than a broken screen
+  }
+}
+
+function announce(kind) {
+  playSound(kind);
+  if (navigator.vibrate) navigator.vibrate(BUZZES[kind]);
+}
+
+/**
+ * Called for every new view, with the one before it. Only real CHANGES announce anything: the
+ * first view after opening the page (or reconnecting into the same situation) stays silent.
+ */
+function handleAnnouncements(previous, view) {
+  const n = view.phase === 'day' ? view.nomination : null;
+  const nominationKey = n ? `${view.day}-${n.nominatorId}-${n.nomineeId}` : null;
+  if (previous) {
+    if (nominationKey && nominationKey !== announcedNomination) announce('accuse');
+    if (view.phase === 'night' && previous.phase !== 'night') announce('night');
+  }
+  announcedNomination = nominationKey;
 }
 
 function showError(message) {
@@ -226,6 +308,7 @@ const STRINGS = {
     readyToMoveOn: (ready, alive, names) => `${ready}/${alive} players ready to move on${names}`,
     changedMind: 'Changed my mind — keep talking',
     readyToEnd: "I'm ready to end the day",
+    mustBeSeated: '(you must be seated at your place)',
     onBlock: (name) => `${name} currently has the most votes and will be executed tonight, unless someone else gets more votes first.`,
     tapToNominate: 'Tap a player to nominate them for execution.',
     deadNoVoteLeft: "You're dead and already used your final vote — you can only watch from here.",
@@ -327,6 +410,7 @@ const STRINGS = {
     readyToMoveOn: (ready, alive, names) => `${ready}/${alive} joueurs prêts à passer à la suite${names}`,
     changedMind: "J'ai changé d'avis — continuons de discuter",
     readyToEnd: 'Je suis prêt à terminer la journée',
+    mustBeSeated: '(vous devez être assis à votre place)',
     onBlock: (name) => `${name} a actuellement le plus de votes et sera exécuté ce soir, sauf si quelqu'un d'autre obtient plus de votes.`,
     tapToNominate: 'Touchez un joueur pour le nominer à l\'exécution.',
     deadNoVoteLeft: "Vous êtes mort et avez déjà utilisé votre dernier vote — vous ne pouvez qu'observer.",
@@ -1279,6 +1363,7 @@ function renderEndDayConsensus(v) {
       { class: 'block' + (v.myEndDayReady ? ' secondary' : ''), onclick: () => send({ t: 'endDay' }) },
       v.myEndDayReady ? t('changedMind') : t('readyToEnd')
     ),
+    el('p', { class: 'muted center seated-note' }, t('mustBeSeated')),
   ]);
 }
 

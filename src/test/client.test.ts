@@ -3,14 +3,14 @@
 // wrong message.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addPlayer, createGame, declareNeighbor, nominate, skipSpeech, useSlayer } from '../game/engine.js';
+import { addPlayer, castVote, createGame, declareNeighbor, nominate, skipSpeech, startGame, useSlayer } from '../game/engine.js';
 import { MIN_ANSWER_MS } from '../game/night.js';
-import type { GameState } from '../game/types.js';
+import type { CharacterId, GameState } from '../game/types.js';
 import { viewFor, type GameView } from '../game/view.js';
 import { playGame } from './driver.js';
 import { brokenText, loadApp, type FakeClient, type FakeNode } from './fakedom.js';
 import {
-  advanceUntil, answerRealTurn, byChar, fastForwardToVote, markAllReady, mk, mkDay, runFullNight, skipRound, startNight,
+  advanceUntil, answerRealTurn, breakDawn, byChar, endDayByConsensus, fastForwardToVote, markAllReady, mk, mkDay, runFullNight, skipRound, startNight,
 } from './helpers.js';
 
 const KNOWN_MESSAGES = new Set(['join', 'auth', 'leave', 'start', 'declareNeighbor', 'nightReal', 'nominate', 'skipSpeech', 'readySpeech', 'vote', 'endDay', 'slayer']);
@@ -557,4 +557,196 @@ test('during the defense nobody is asked "ready"; only the accused has a button,
     const done = app.root.buttons().filter((b) => /start the vote|lancer le vote/i.test(b.text()));
     assert.equal(done.length, i === 0 ? 1 : 0, 'only the accused (the Imp) can end the defense');
   }
+});
+
+// ---------------------------------------------------------------- sounds and buzzes for accusations and nightfall
+
+/** Sends a view the way the network does (so the app can compare it with the one before). */
+function receive(app: FakeClient, view: GameView): void {
+  app.run(`state.code = 'ROOM'; state.token = 't'; state.playerId = ${JSON.stringify(view.selfId)}; handleMessage({ t: 'view', view: ${JSON.stringify(view)} });`);
+}
+const ACCUSE_BUZZ = [120, 60, 120];
+const NIGHT_BUZZ = [250];
+
+test('the end-of-day card says you must be seated at your place, in English and in French, for living players only', async () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  const en = await dayApp(s, 2, 'en');
+  assert.ok(en.text().includes('(you must be seated at your place)'));
+  const card = en.root.find((n) => n.hasClass('card') && n.text().includes("I'm ready to end the day"))[0];
+  assert.ok(card.text().includes('seated at your place'), 'the note is inside the same card as the button');
+  const fr = await dayApp(s, 2, 'fr');
+  assert.ok(fr.text().includes('(vous devez être assis à votre place)'));
+  s.players[2].alive = false;
+  assert.ok(!(await dayApp(s, 2, 'en')).text().includes('seated at your place'), 'the dead have no such button, so no note');
+});
+
+test('being accused plays a sound and buzzes once, for everyone — accuser, accused and onlookers alike', async () => {
+  for (const viewer of [0, 2, 3]) {
+    const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+    const app = await loadApp('en');
+    receive(app, viewFor(s, s.players[viewer].id));
+    assert.deepEqual(app.vibrations, [], 'nothing yet');
+    nominate(s, s.players[2].id, s.players[0].id);
+    receive(app, viewFor(s, s.players[viewer].id));
+    assert.deepEqual(app.vibrations, [ACCUSE_BUZZ], `player ${viewer} buzzes once`);
+    assert.equal(app.tones.length, 2, 'two notes');
+    assert.deepEqual(app.tones.map((t) => t.freq), [660, 880], 'the rising "accusation" sound');
+  }
+});
+
+test('the accusation sounds once per accusation — not for every later stage of the same one, but again for the next one', async () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  const app = await loadApp('en');
+  const me = s.players[3].id;
+  receive(app, viewFor(s, me));
+  nominate(s, s.players[2].id, s.players[0].id);
+  receive(app, viewFor(s, me));
+  markAllReady(s);
+  receive(app, viewFor(s, me)); // accusing
+  skipSpeech(s, s.players[2].id);
+  receive(app, viewFor(s, me)); // defending
+  receive(app, viewFor(s, me)); // a repeated update
+  skipSpeech(s, s.players[0].id);
+  receive(app, viewFor(s, me)); // voting
+  assert.equal(app.vibrations.length, 1, 'still just the one buzz');
+  voteAll(s);
+  receive(app, viewFor(s, me)); // the nomination is over
+  nominate(s, s.players[1].id, s.players[4].id);
+  receive(app, viewFor(s, me));
+  assert.deepEqual(app.vibrations, [ACCUSE_BUZZ, ACCUSE_BUZZ], 'a second accusation buzzes again');
+});
+
+function voteAll(s: GameState): void {
+  let guard = 0;
+  while (s.currentNomination?.state === 'voting' && guard++ < 30) castVote(s, s.currentNomination.currentVoterId!, false);
+}
+
+test('opening the app in the middle of an accusation is silent (it is not news)', async () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  nominate(s, s.players[2].id, s.players[0].id);
+  const app = await loadApp('en');
+  receive(app, viewFor(s, s.players[3].id));
+  receive(app, viewFor(s, s.players[3].id));
+  assert.deepEqual(app.vibrations, []);
+  assert.deepEqual(app.tones, []);
+});
+
+test('reconnecting into the same accusation does not repeat the sound', async () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  const app = await loadApp('en');
+  receive(app, viewFor(s, s.players[3].id));
+  nominate(s, s.players[2].id, s.players[0].id);
+  receive(app, viewFor(s, s.players[3].id));
+  receive(app, viewFor(s, s.players[3].id)); // the same view again after a reconnect
+  assert.equal(app.vibrations.length, 1);
+});
+
+test('nightfall plays its own sound and buzzes once, for everyone — and the game start counts as nightfall too', async () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  const app = await loadApp('en');
+  receive(app, viewFor(s, s.players[2].id));
+  endDayByConsensus(s);
+  assert.equal(s.phase, 'night');
+  receive(app, viewFor(s, s.players[2].id));
+  assert.deepEqual(app.vibrations, [NIGHT_BUZZ]);
+  assert.deepEqual(app.tones.map((t) => t.freq), [392, 294, 220], 'a slow falling sound, different from the accusation');
+  receive(app, viewFor(s, s.players[2].id)); // a repeated night view
+  assert.equal(app.vibrations.length, 1);
+
+  const lobby = createGame('L');
+  const ps = Array.from({ length: 5 }, (_, i) => addPlayer(lobby, `Q${i}`));
+  ps.forEach((p, i) => declareNeighbor(lobby, p.id, ps[(i + 1) % 5].id));
+  const app2 = await loadApp('en');
+  receive(app2, viewFor(lobby, ps[0].id));
+  startGame(lobby);
+  receive(app2, viewFor(lobby, ps[0].id));
+  assert.deepEqual(app2.vibrations, [NIGHT_BUZZ], 'starting the game is going into the first night');
+});
+
+test('opening the app in the middle of the night is silent', async () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  startNight(s);
+  const app = await loadApp('en');
+  receive(app, viewFor(s, s.players[2].id));
+  assert.deepEqual(app.vibrations, []);
+  assert.deepEqual(app.tones, []);
+});
+
+test('nothing buzzes or sounds during the night itself: not for a turn, a result, a step, a decoy, or dawn', async () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier', 'fortuneteller', 'chef']);
+  startNight(s);
+  runFullNight(s);
+  startNight(s);
+  const app = await loadApp('en');
+  const me = byChar(s, 'soldier').id; // a decoy player
+  receive(app, viewFor(s, me)); // the app has been open since before this night began? no: opens now
+  app.vibrations.length = 0;
+  app.tones.length = 0;
+  let steps = 0;
+  while (s.pendingRealTurn && steps++ < 30) {
+    receive(app, viewFor(s, me));
+    receive(app, viewFor(s, byChar(s, s.pendingRealTurn.charId === 'minion-info' ? 'poisoner' : (s.pendingRealTurn.charId as CharacterId)).id));
+    skipRound(s);
+  }
+  receive(app, viewFor(s, me));
+  assert.deepEqual(app.vibrations, [], 'no buzz at any night step');
+  assert.deepEqual(app.tones, [], 'no sound at any night step');
+  breakDawn(s);
+  receive(app, viewFor(s, me)); // dawn: night -> day
+  assert.deepEqual(app.vibrations, [], 'dawn is silent too');
+});
+
+test('a whole game seen by one phone: exactly one night sound per night and one accusation sound per accusation', async () => {
+  let accusations = 0;
+  let nights = 0;
+  const app = await loadApp('en');
+  let previousPhase = '';
+  let previousNom = '';
+  const seenAccusations = new Set<string>();
+  playGame(3, 7, (s) => {
+    const v = viewFor(s, s.players[0].id);
+    receive(app, v);
+    if (v.phase === 'night' && previousPhase !== 'night' && previousPhase !== '') nights++;
+    previousPhase = v.phase;
+    const key = v.phase === 'day' && v.nomination ? `${v.day}-${v.nomination.nominatorId}-${v.nomination.nomineeId}` : '';
+    if (key && key !== previousNom && !seenAccusations.has(key)) { accusations++; seenAccusations.add(key); }
+    previousNom = key;
+  });
+  const night = app.vibrations.filter((b) => b.length === 1).length;
+  const accuse = app.vibrations.filter((b) => b.length === 3 && b[0] === 120).length;
+  assert.equal(night, nights, 'one nightfall buzz per night entered');
+  assert.equal(accuse, accusations, 'one accusation buzz per accusation');
+  assert.ok(nights >= 1 && accusations >= 1);
+});
+
+test('the first tap anywhere wakes the audio up (browsers block sound until then), and sound still works afterwards', async () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  const app = await loadApp('en');
+  receive(app, viewFor(s, s.players[3].id));
+  assert.equal(app.audioResumed(), 0);
+  app.fireWindow('pointerdown');
+  assert.equal(app.audioResumed(), 1);
+  nominate(s, s.players[2].id, s.players[0].id);
+  receive(app, viewFor(s, s.players[3].id));
+  assert.equal(app.tones.length, 2);
+});
+
+test('without audio support the buzz still happens and nothing breaks', async () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  const app = await loadApp('en', {}, { audio: false });
+  receive(app, viewFor(s, s.players[3].id));
+  nominate(s, s.players[2].id, s.players[0].id);
+  assert.doesNotThrow(() => receive(app, viewFor(s, s.players[3].id)));
+  assert.deepEqual(app.vibrations, [ACCUSE_BUZZ]);
+  assert.deepEqual(app.tones, []);
+});
+
+test('a phone with no vibration support still plays the sound', async () => {
+  const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  const app = await loadApp('en');
+  app.run('navigator.vibrate = undefined');
+  receive(app, viewFor(s, s.players[3].id));
+  nominate(s, s.players[2].id, s.players[0].id);
+  assert.doesNotThrow(() => receive(app, viewFor(s, s.players[3].id)));
+  assert.equal(app.tones.length, 2);
 });

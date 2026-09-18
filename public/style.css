@@ -492,3 +492,5 @@ button.block { width: 100%; }
 .term:hover, .term:focus-visible { text-decoration-color: currentColor; outline: none; background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .term-modal { max-height: 60vh; }
 .term-def { line-height: 1.55; font-size: 1rem; }
+
+.seated-note { font-size: 0.8rem; margin-top: 8px; }

@@ -109,6 +109,12 @@ export interface FakeClient {
   vibrations: number[][];
   confirms: string[];
   errors: string[];
+  /** Every note the app started: its frequency and wave. */
+  tones: { freq: number; wave: string }[];
+  /** How many times the (fake) audio context was woken up. */
+  audioResumed: () => number;
+  /** Fires a window-level event (like the first tap that unlocks audio). */
+  fireWindow(type: string): void;
   run<T = unknown>(code: string): T;
   /** Shows a view as if the server had just sent it (and this player were signed in). */
   show(view: unknown, opts?: { seen?: boolean; lang?: 'en' | 'fr' }): string;
@@ -116,7 +122,7 @@ export interface FakeClient {
 }
 
 /** Loads the real app.js into a fresh fake browser. */
-export async function loadApp(lang: 'en' | 'fr' = 'en', preset: Record<string, string> = {}): Promise<FakeClient> {
+export async function loadApp(lang: 'en' | 'fr' = 'en', preset: Record<string, string> = {}, opts: { audio?: boolean } = {}): Promise<FakeClient> {
   const root = new FakeNode('div');
   const body = new FakeNode('body');
   const sent: Record<string, unknown>[] = [];
@@ -131,6 +137,28 @@ export async function loadApp(lang: 'en' | 'fr' = 'en', preset: Record<string, s
       removeItem: (k: string) => void m.delete(k),
     };
   };
+  const tones: { freq: number; wave: string }[] = [];
+  let resumed = 0;
+  const windowListeners: Record<string, (() => void)[]> = {};
+  class FakeAudioContext {
+    state = 'suspended';
+    currentTime = 0;
+    destination = {};
+    resume(): Promise<void> { this.state = 'running'; resumed++; return Promise.resolve(); }
+    createOscillator() {
+      const o = {
+        type: 'sine',
+        frequency: { value: 0 },
+        connect() {},
+        start() { tones.push({ freq: o.frequency.value, wave: o.type }); },
+        stop() {},
+      };
+      return o;
+    }
+    createGain() {
+      return { gain: { value: 1, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} };
+    }
+  }
   class FakeWebSocket {
     static OPEN = 1;
     readyState = 1;
@@ -151,8 +179,9 @@ export async function loadApp(lang: 'en' | 'fr' = 'en', preset: Record<string, s
     },
   };
   const sandbox = {
-    document, window: { addEventListener() {} }, sessionStorage: store({ 'botc.lang': lang, ...preset }), localStorage: store({}),
-    navigator: { language: lang, vibrate: (p: number[]) => { vibrations.push(p); return true; } },
+    document, window: { addEventListener: (type: string, fn: () => void) => { (windowListeners[type] ??= []).push(fn); } },
+    ...(opts.audio === false ? {} : { AudioContext: FakeAudioContext }), sessionStorage: store({ 'botc.lang': lang, ...preset }), localStorage: store({}),
+    navigator: { language: lang, vibrate: (p: number[]) => { vibrations.push(Array.from(p)); return true; } },
     location: { protocol: 'http:', host: 'test' },
     WebSocket: FakeWebSocket,
     fetch: async () => ({ ok: true, json: async () => allCharactersSummary() }),
@@ -165,7 +194,9 @@ export async function loadApp(lang: 'en' | 'fr' = 'en', preset: Record<string, s
   vm.runInContext(fs.readFileSync(path.resolve('public/app.js'), 'utf8'), ctx, { filename: 'app.js' });
   await new Promise((r) => setImmediate(r)); // let loadCharacters() finish
   const client: FakeClient = {
-    ctx, root, body, sent, vibrations, confirms, errors,
+    ctx, root, body, sent, vibrations, confirms, errors, tones,
+    audioResumed: () => resumed,
+    fireWindow: (type: string) => (windowListeners[type] ?? []).forEach((fn) => fn()),
     run: <T>(code: string) => vm.runInContext(code, ctx) as T,
     text: () => root.text(),
     show(view, opts = {}) {
