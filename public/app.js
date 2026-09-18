@@ -15,6 +15,7 @@ const state = {
 
 let pendingJoin = null;
 let lastTurnKey = null;
+let lastVoteBuzzKey = null;
 
 const app = document.getElementById('app');
 
@@ -72,6 +73,7 @@ function handleMessage(msg) {
   } else if (msg.t === 'view') {
     state.view = msg.view;
     handleTurnChange(msg.view);
+    handleVoteBuzz(msg.view);
   } else if (msg.t === 'error') {
     showError(msg.message);
   }
@@ -81,7 +83,7 @@ function handleMessage(msg) {
 function turnKey(view) {
   if (view.nightTurn) return `turn-${view.phase}-${view.night}-${JSON.stringify(view.nightTurn.body)}`;
   // Deliberately not keyed on phase — a fast night can flip to 'day' while she still hasn't
-  // acknowledged the same, unchanged result, and that isn't a new turn worth buzzing for again.
+  // acknowledged the same, unchanged result, and that isn't a new turn worth resetting for again.
   if (view.nightResult) return `result-${view.night}-${JSON.stringify(view.nightResult)}`;
   return null;
 }
@@ -93,13 +95,23 @@ function turnKey(view) {
 function handleTurnChange(view) {
   const key = turnKey(view);
   if (key === lastTurnKey) return;
-  // No buzz for a turn that's queued behind a decoy question: it would tell the player (and anyone
-  // near enough to hear it) that a real turn is waiting, which is exactly what decoys hide. A
-  // player answering decoys is already looking at their phone anyway.
-  const queuedBehindDecoy = view.phase === 'night' && view.nightTurn && view.amIAlive && decoysEnabled();
-  if (key && !queuedBehindDecoy && navigator.vibrate) navigator.vibrate([180, 80, 180]);
+  // Never buzz for anything at night: a buzz is audible across a silent table and would give away
+  // who just got a real turn or result — the very thing decoy questions exist to hide.
   state.selected = [];
   lastTurnKey = key;
+}
+
+// Buzzes are for the day only: the one moment the day needs your phone is your turn to vote.
+function voteBuzzKey(view) {
+  const n = view.phase === 'day' ? view.nomination : null;
+  return n && n.currentVoterId === view.selfId ? `vote-${view.day}-${n.nomineeId}` : null;
+}
+
+function handleVoteBuzz(view) {
+  const key = voteBuzzKey(view);
+  if (key === lastVoteBuzzKey) return;
+  if (key && navigator.vibrate) navigator.vibrate([180, 80, 180]);
+  lastVoteBuzzKey = key;
 }
 
 function showError(message) {
