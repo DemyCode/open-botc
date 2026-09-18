@@ -46,7 +46,7 @@ test('ending the day executes whoever is on the block and starts the next night'
   endDayByConsensus(s);
   assert.equal(b.alive, false);
   assert.equal(s.phase, 'night');
-  assert.equal(s.night, 1);
+  assert.equal(s.night, 2);
 });
 
 test('nominating a working Virgin with a Townsfolk nominator executes the nominator instantly', () => {

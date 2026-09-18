@@ -1,5 +1,5 @@
 import { alignmentOfCharacter } from './characters.js';
-import { beginNight, evaluateWin, promoteScarletWomanIfEligible, setWinner } from './night.js';
+import { beginNight, evaluateWin, promoteScarletWomanIfEligible, setWinner, tick as nightTick } from './night.js';
 import { abilityWorks, registersAs } from './registration.js';
 import { randomId } from './rng.js';
 import { dealCharacters } from './setup.js';
@@ -131,9 +131,12 @@ export function startGame(state: GameState): void {
 
 function executePlayer(state: GameState, targetId: string): void {
   const p = findPlayer(state, targetId);
-  p.alive = false;
   state.lastExecutedId = targetId;
   state.publicLog.push(msg('wasExecuted', { name: p.name }));
+  // Executing a dead player still counts as today's one execution, but "a dead player cannot
+  // die again": nothing that triggers on a death (Saint, Scarlet Woman) happens a second time.
+  if (!p.alive) return;
+  p.alive = false;
   if (p.character === 'saint' && abilityWorks(state, p)) {
     setWinner(state, 'evil', msg('saintWins', { name: p.name }));
     return;
@@ -142,19 +145,24 @@ function executePlayer(state: GameState, targetId: string): void {
   evaluateWin(state);
 }
 
+/**
+ * Any living player may publicly claim the Slayer's shot, once per game — bluffing it is part of
+ * the game ("If the Imp is claiming to be the Slayer and wants to use their ability, make sure it
+ * looks like their ability just didn't work"). Only a real, working Slayer can ever hit; everyone
+ * else gets the exact same public "nothing happens" as a Slayer who missed, so a shot proves
+ * nothing about who fired it.
+ */
 export function useSlayer(state: GameState, slayerId: string, targetId: string): void {
   if (state.phase !== 'day') throw new GameError('Slayer can only be used during the day');
   const self = findPlayer(state, slayerId);
   if (!self.alive) throw new GameError('Dead players cannot use the Slayer shot');
-  // Checks what the player *believes* they are, not their true character — a Drunk who thinks
-  // they're the Slayer must be able to go through the motions too; abilityWorks() below is what
-  // actually makes their attempt silently fail, same as every other Drunk-perceived ability.
-  if (self.perceived !== 'slayer') throw new GameError('You are not the Slayer');
   if (self.slayerUsed) throw new GameError('Slayer shot already used');
-  self.slayerUsed = true;
   const target = findPlayer(state, targetId);
+  self.slayerUsed = true;
+  // The true character decides it (a Drunk who thinks they're the Slayer never hits either).
+  const isRealSlayer = self.character === 'slayer';
   const ctx = { asker: slayerId, slot: `slayer-d${state.day}` };
-  const hit = target.alive && abilityWorks(state, self) && registersAs(state, target, 'demon', ctx);
+  const hit = isRealSlayer && target.alive && abilityWorks(state, self) && registersAs(state, target, 'demon', ctx);
   if (hit) {
     target.alive = false;
     state.publicLog.push(msg('slayerHit', { slayer: self.name, target: target.name }));
@@ -171,7 +179,7 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
   const nominator = findPlayer(state, nominatorId);
   const nominee = findPlayer(state, nomineeId);
   if (!nominator.alive) throw new GameError('Dead players cannot nominate');
-  if (!nominee.alive) throw new GameError('Cannot nominate a dead player');
+  // Dead players can be nominated (rarely wise, but legal) — only the living may nominate.
   if (state.usedNominatorIds.includes(nominatorId)) throw new GameError('Already nominated today');
   if (state.usedNomineeIds.includes(nomineeId)) throw new GameError('Already nominated today');
 
@@ -179,7 +187,7 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
   state.usedNomineeIds.push(nomineeId);
   state.endDayRequestedBy = []; // a fresh nomination is new information — prior agreement to end the day is stale
 
-  if (nominee.character === 'virgin' && !nominee.virginUsed) {
+  if (nominee.character === 'virgin' && nominee.alive && !nominee.virginUsed) {
     nominee.virginUsed = true;
     const ctx = { asker: nominatorId, slot: `virgin-d${state.day}` };
     if (abilityWorks(state, nominee) && registersAs(state, nominator, 'townsfolk', ctx)) {
@@ -320,15 +328,17 @@ function computeYesCount(state: GameState, nom: Nomination): number {
 
 function finishVoting(state: GameState, nom: Nomination): void {
   const nominee = findPlayer(state, nom.nomineeId);
+  // The vote succeeds with votes equal to at least HALF the living players (dead players' votes
+  // count too) — e.g. 3 of 6 is enough — and more votes than anyone else nominated today.
   const aliveCount = state.players.filter((p) => p.alive).length;
-  const majority = Math.floor(aliveCount / 2) + 1;
+  const needed = Math.ceil(aliveCount / 2);
   const yesCount = computeYesCount(state, nom);
   nom.yesCount = yesCount;
   nom.state = 'closed';
   nom.currentVoterId = null;
   nom.voterDeadline = null;
 
-  if (yesCount >= majority && yesCount > state.highestYesToday) {
+  if (yesCount >= needed && yesCount > state.highestYesToday) {
     state.onBlockId = nominee.id;
     state.highestYesToday = yesCount;
     state.publicLog.push(msg('onBlock', { name: nominee.name, count: yesCount }));
@@ -343,7 +353,11 @@ function finishVoting(state: GameState, nom: Nomination): void {
 }
 
 export function tick(state: GameState, now: number): void {
-  // Nothing at night is timed: the night waits for every real answer, however long it takes.
+  // At night only dawn is timed — the night waits for every real answer, however long it takes.
+  if (state.phase === 'night') {
+    nightTick(state, now);
+    return;
+  }
   if (state.phase !== 'day') return;
   const nom = state.currentNomination;
   if (!nom) return;

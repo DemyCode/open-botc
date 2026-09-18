@@ -11,18 +11,19 @@ function msg(key: string, vars?: Record<string, string | number | string[]>): Ms
   return vars ? { key, vars } : { key };
 }
 
+/** The first night's Minion info and Demon info (who's evil, plus the Demon's 3 bluffs) only
+ * happen with 7 or more players — in smaller games the evil team doesn't learn each other. */
+export const EVIL_INTRO_MIN_PLAYERS = 7;
+
 /**
- * Characters whose choose-shape ability may legally target a dead player: the Fortune Teller can
- * check a corpse, the Ravenkeeper (who is themselves dead when they act) can learn a dead
- * player's character, and the Butler may pick a dead master. Poisoner/Monk/Imp are kept
- * alive-only — targeting a corpse would be a legal no-op in the physical game, but offering it
- * as a choice here would only ever confuse a player since it can never do anything.
+ * "When you reach dawn, simply wait five to ten seconds… The small wait at dawn prevents players
+ * from knowing for sure whether they were the last to act at night." On top of that, a night
+ * never ends sooner than MIN_NIGHT_MS after it began — otherwise a night where nobody (or only
+ * one quick player) acts would end so fast that everyone could tell.
  */
-export const DEAD_TARGETS_ALLOWED: Partial<Record<CharacterId, true>> = {
-  fortuneteller: true,
-  ravenkeeper: true,
-  butler: true,
-};
+export const DAWN_WAIT_MIN_MS = 5_000;
+export const DAWN_WAIT_MAX_MS = 10_000;
+export const MIN_NIGHT_MS = 30_000;
 
 /** Sets the game's winner exactly once — later calls (e.g. a second condition firing the same
  * tick) are no-ops so the first true result always stands. */
@@ -99,8 +100,11 @@ function sequenceFor(state: GameState): (CharacterId | 'minion-info')[] {
 
 function actorsFor(state: GameState, charId: CharacterId | 'minion-info'): PlayerState[] {
   if (charId === 'minion-info') {
+    if (state.players.length < EVIL_INTRO_MIN_PLAYERS) return [];
     return state.players.filter((p) => p.alive && CHARACTERS[p.character].team === 'minion');
   }
+  // The Imp only "acts" on the first night to receive the Demon info — nothing to do without it.
+  if (charId === 'imp' && state.night === 1 && state.players.length < EVIL_INTRO_MIN_PLAYERS) return [];
   if (charId === 'ravenkeeper') {
     return state.players.filter((p) => !p.alive && state.deathsTonight.includes(p.id) && p.perceived === 'ravenkeeper');
   }
@@ -176,6 +180,8 @@ export function beginNight(state: GameState): void {
   state.monkProtectedId = null;
   state.nightSlotIndex = -1;
   state.pendingRealTurn = null;
+  state.nightStartedAt = Date.now();
+  state.dawnAt = null;
   for (const p of state.players) {
     p.nightResult = null;
     // Reset here (not just on death) so it accurately reflects *this* night by dawn — otherwise
@@ -198,11 +204,16 @@ export function advanceNightSlot(state: GameState): void {
     startRound(state, charId, actors);
     return;
   }
-  finishNight(state);
+  // Everyone has acted — but dawn waits (see DAWN_WAIT_*); tick() breaks it when it's time.
+  state.pendingRealTurn = null;
+  const now = Date.now();
+  const wait = DAWN_WAIT_MIN_MS + Math.random() * (DAWN_WAIT_MAX_MS - DAWN_WAIT_MIN_MS);
+  state.dawnAt = Math.max(now + wait, (state.nightStartedAt ?? now) + MIN_NIGHT_MS);
 }
 
 function finishNight(state: GameState): void {
   state.pendingRealTurn = null;
+  state.dawnAt = null;
   state.phase = 'day';
   state.day += 1;
   state.onBlockId = null;
@@ -328,8 +339,8 @@ export function submitRealResponse(state: GameState, playerId: string, targetIds
   if (t.shape === 'choose') {
     if (targetIds.length < t.min || targetIds.length > t.max) throw new GameError('Invalid selection count');
     if (new Set(targetIds).size !== targetIds.length) throw new GameError('Cannot choose the same player twice');
-    const allowDead = DEAD_TARGETS_ALLOWED[t.charId as CharacterId];
-    const eligible = new Set(state.players.filter((p) => allowDead || p.alive).map((p) => p.id));
+    // "If you get to choose 'any player' at night, you can choose yourself or a dead player."
+    const eligible = new Set(state.players.map((p) => p.id));
     for (const id of targetIds) if (!eligible.has(id)) throw new GameError('Invalid target');
     if ((t.charId === 'monk' || t.charId === 'butler') && targetIds.includes(playerId)) {
       throw new GameError('Cannot choose yourself');
@@ -338,4 +349,10 @@ export function submitRealResponse(state: GameState, playerId: string, targetIds
   t.responses[playerId] = targetIds;
   applyRealChoice(state, t.charId, playerId, targetIds);
   maybeAdvance(state);
+}
+
+/** Breaks dawn once its time has come — the only timed thing at night; no one's turn ever times out. */
+export function tick(state: GameState, now: number): void {
+  if (state.phase !== 'night' || state.winner || state.dawnAt == null) return;
+  if (now >= state.dawnAt) finishNight(state);
 }

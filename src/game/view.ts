@@ -1,5 +1,4 @@
 import { CHARACTERS } from './characters.js';
-import { DEAD_TARGETS_ALLOWED } from './night.js';
 import type { GameState, Msg, Nomination, NominationState, Phase, PlayerState } from './types.js';
 
 function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
@@ -110,8 +109,7 @@ function buildNightTurn(state: GameState, viewerId: string): NightTurnView | nul
   if (!t || !t.playerIds.includes(viewerId) || viewerId in t.responses) return null;
   const choices: NightTurnChoice[] =
     t.shape === 'choose'
-      ? state.players
-          .filter((p) => DEAD_TARGETS_ALLOWED[t.charId as keyof typeof DEAD_TARGETS_ALLOWED] || publiclyAlive(p))
+      ? state.players // any player, dead or alive, yourself included — the rules allow it
           .map((p) => ({ id: p.id, name: p.name, seat: p.seat, alive: publiclyAlive(p) }))
       : [];
   return { shape: t.shape, title: 'Your turn', body: t.bodyByPlayer[viewerId] ?? msg('empty'), min: t.min, max: t.max, choices };

@@ -10,19 +10,32 @@ import {
 // Pretending to be someone you're not
 // ---------------------------------------------------------------------------------------------
 
-test('a player who is not the Slayer cannot fire a real Slayer shot, even at the actual Demon', () => {
+test('anyone may bluff a Slayer shot, but only the real Slayer can kill — even aimed at the actual Demon', () => {
   const s = mkDay(['imp', 'soldier', 'empath', 'investigator', 'washerwoman']);
   const [imp, soldier] = s.players;
-  assert.throws(() => useSlayer(s, soldier.id, imp.id), /not the Slayer/);
+  useSlayer(s, soldier.id, imp.id);
   assert.equal(imp.alive, true, 'claiming to be the Slayer out loud must never kill anyone');
   assert.equal(s.winner, null);
+  assert.equal(s.publicLog.at(-1)!.key, 'slayerMiss', 'a bluff looks exactly like a real Slayer missing');
 });
 
-test('an evil player bluffing as the Slayer cannot fire a shot either', () => {
+test('a bluffed Slayer shot is indistinguishable from a real Slayer missing', () => {
+  const real = mkDay(['imp', 'slayer', 'empath', 'investigator', 'washerwoman']);
+  useSlayer(real, real.players[1].id, real.players[2].id);
+  const bluff = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
+  useSlayer(bluff, bluff.players[1].id, bluff.players[2].id);
+  assert.deepEqual(real.publicLog.at(-1)!.key, bluff.publicLog.at(-1)!.key);
+  assert.equal(real.players[2].alive, true);
+  assert.equal(bluff.players[2].alive, true);
+});
+
+test('a bluffed Slayer shot is once per game too, and the dead cannot claim one', () => {
   const s = mkDay(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman']);
-  const [, poisoner, empath] = s.players;
-  assert.throws(() => useSlayer(s, poisoner.id, empath.id), /not the Slayer/);
-  assert.equal(empath.alive, true);
+  const [imp, poisoner, empath, investigator] = s.players;
+  useSlayer(s, poisoner.id, empath.id);
+  assert.throws(() => useSlayer(s, poisoner.id, empath.id), /already used/);
+  investigator.alive = false;
+  assert.throws(() => useSlayer(s, investigator.id, imp.id), /Dead players/);
 });
 
 test('a Drunk who thinks they are the Soldier still dies to the Demon', () => {
@@ -331,7 +344,7 @@ test('Monk cannot protect themselves', () => {
   assert.throws(() => submitRealResponse(s, monk.id, [monk.id]), /yourself/);
 });
 
-test('the Imp cannot target a player who is already dead', () => {
+test('the Imp may attack a dead player — nothing happens, and nobody is reported dead', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier', 'investigator']);
   const imp = byChar(s, 'imp');
   const empath = byChar(s, 'empath');
@@ -340,7 +353,11 @@ test('the Imp cannot target a player who is already dead', () => {
   empath.alive = false;
   startNight(s);
   advanceUntil(s, 'imp');
-  assert.throws(() => submitRealResponse(s, imp.id, [empath.id]));
+  submitRealResponse(s, imp.id, [empath.id]);
+  runFullNight(s);
+  assert.equal(s.phase, 'day');
+  assert.deepEqual(s.deathsTonight, []);
+  assert.equal(s.publicLog.at(-1)!.key, 'nobodyDiedLastNight');
 });
 
 test('a player cannot answer a night turn that is not theirs', () => {
@@ -353,7 +370,7 @@ test('a player cannot answer a night turn that is not theirs', () => {
 });
 
 test('a player cannot answer the same night turn twice', () => {
-  const s = mk(['imp', 'poisoner', 'scarletwoman', 'empath', 'washerwoman', 'soldier']);
+  const s = mk(['imp', 'poisoner', 'scarletwoman', 'empath', 'washerwoman', 'soldier', 'monk']); // 7+: Minion info happens
   startNight(s);
   advanceUntil(s, 'minion-info');
   const [first] = s.pendingRealTurn!.playerIds;
@@ -401,12 +418,13 @@ test('nobody can nominate at night', () => {
   assert.throws(() => nominate(s, empath.id, imp.id), /Not day/);
 });
 
-test('a dead player cannot nominate, and a dead player cannot be nominated', () => {
+test('a dead player cannot nominate, but a dead player can be nominated', () => {
   const s = mkDay(['imp', 'empath', 'investigator', 'washerwoman', 'soldier']);
   const [imp, empath, investigator] = s.players;
   empath.alive = false;
   assert.throws(() => nominate(s, empath.id, imp.id), /Dead players cannot nominate/);
-  assert.throws(() => nominate(s, investigator.id, empath.id), /dead player/);
+  nominate(s, investigator.id, empath.id);
+  assert.equal(s.currentNomination?.nomineeId, empath.id);
 });
 
 test('each player nominates at most once a day and is nominated at most once a day — both reset the next day', () => {
@@ -507,12 +525,21 @@ test('a tie with the current leader clears the block, and a later equal count ca
   assert.ok(s.players.every((p) => p.alive), 'a tied day ends with no execution');
 });
 
-test('exactly half the living players voting yes is not a majority', () => {
-  const s = mkDay(['imp', 'empath', 'investigator', 'washerwoman', 'soldier', 'mayor']); // 6 alive → need 4
+test('exactly half the living players voting yes is enough (3 of 6)', () => {
+  const s = mkDay(['imp', 'empath', 'investigator', 'washerwoman', 'soldier', 'mayor']); // 6 alive → need 3
   const [imp, empath, investigator, washerwoman] = s.players;
   nominate(s, empath.id, imp.id);
   fastForwardToVote(s);
   voteInOrder(s, [empath.id, investigator.id, washerwoman.id]);
+  assert.equal(s.onBlockId, imp.id);
+});
+
+test('one vote short of half the living players is not enough (2 of 6)', () => {
+  const s = mkDay(['imp', 'empath', 'investigator', 'washerwoman', 'soldier', 'mayor']);
+  const [imp, empath, investigator] = s.players;
+  nominate(s, empath.id, imp.id);
+  fastForwardToVote(s);
+  voteInOrder(s, [empath.id, investigator.id]);
   assert.equal(s.onBlockId, null);
 });
 

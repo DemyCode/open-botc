@@ -4,7 +4,7 @@ import { CHARACTERS } from '../game/characters.js';
 import { submitRealResponse } from '../game/night.js';
 import { tick } from '../game/engine.js';
 import { viewFor } from '../game/view.js';
-import { advanceUntil, answerRealTurn, byChar, byPerceived, mk, runFullNight, skipRound, startNight } from './helpers.js';
+import { advanceUntil, answerRealTurn, breakDawn, byChar, byPerceived, mk, runFullNight, skipRound, startNight } from './helpers.js';
 
 test('a night round only ever involves the actual actor(s) for that character', () => {
   const state = mk([
@@ -201,8 +201,10 @@ test('a night result is still delivered even when answering was the very last ac
   answerRealTurn(s, []); // info-shape round, just needs acknowledging
   advanceUntil(s, 'fortuneteller');
   submitRealResponse(s, ft.id, [imp.id, empath.id]); // the last actor of the whole night
+  assert.equal(s.pendingRealTurn, null, 'nobody else has anything left to do');
+  breakDawn(s);
 
-  assert.equal(s.phase, 'day', 'the night must have ended immediately — nobody else had anything left to do');
+  assert.equal(s.phase, 'day');
   const view = viewFor(s, ft.id);
   assert.equal(view.phase, 'day');
   assert.ok(view.nightResult, 'the Fortune Teller must still receive her result even though the phase already moved to day');
@@ -246,14 +248,15 @@ test('a player who died on an earlier night correctly still shows as dead in a l
   assert.equal(empathChoice.alive, false, 'a death from an earlier night is already public knowledge');
 });
 
-test('Poisoner and Monk still cannot target a dead player — targeting a corpse would always be a no-op', () => {
+test('the Poisoner may target a dead player — "any player" at night includes the dead (it just does nothing)', () => {
   const state = mk(['imp', 'poisoner', 'monk', 'empath', 'soldier', 'washerwoman']);
   const empath = byChar(state, 'empath');
   empath.alive = false;
   startNight(state);
   const poisoner = byChar(state, 'poisoner');
   advanceUntil(state, 'poisoner');
-  assert.throws(() => submitRealResponse(state, poisoner.id, [empath.id]));
+  submitRealResponse(state, poisoner.id, [empath.id]);
+  assert.equal(state.poisonedId, empath.id);
 });
 
 test('a night turn never times out — the night waits for a real answer however long it takes', () => {
@@ -266,4 +269,28 @@ test('a night turn never times out — the night waits for a real answer however
   assert.equal(state.phase, 'night');
   assert.equal(state.pendingRealTurn, t, 'the same turn must still be waiting');
   assert.deepEqual(t.responses, {}, 'nobody may be answered for automatically');
+});
+
+test('dawn waits 5-10 seconds after the last action — and a night lasts at least 30 seconds', () => {
+  // "The small wait at dawn prevents players from knowing for sure whether they were the last to act."
+  const s = mk(['imp', 'soldier', 'mayor', 'virgin', 'saint']); // 5 players, nobody acts on night 1
+  const before = Date.now();
+  startNight(s);
+  assert.equal(s.pendingRealTurn, null);
+  assert.equal(s.phase, 'night', 'even a night where nobody acts does not end instantly');
+  assert.ok(s.dawnAt! >= before + 30_000, 'a night lasts at least 30 seconds');
+  tick(s, s.dawnAt! - 1);
+  assert.equal(s.phase, 'night', 'not a moment early');
+  tick(s, s.dawnAt!);
+  assert.equal(s.phase, 'day');
+});
+
+test('dawn after a long night: 5 to 10 seconds after the last answer', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+  startNight(s);
+  s.nightStartedAt = Date.now() - 10 * 60_000; // the night has already lasted 10 minutes
+  const before = Date.now();
+  while (s.pendingRealTurn) skipRound(s);
+  assert.equal(s.phase, 'night');
+  assert.ok(s.dawnAt! >= before + 5_000 && s.dawnAt! <= Date.now() + 10_000, 'dawn is 5-10s after the last answer');
 });

@@ -116,6 +116,10 @@ export interface GameState {
   deathsTonight: string[];
   nightSlotIndex: number;
   pendingRealTurn: PendingRealTurn | null;
+  /** When the current night began (ms), for the minimum night length. */
+  nightStartedAt?: number;
+  /** Set once everyone has acted: dawn breaks at this time (ms), not the instant the last answer lands. */
+  dawnAt?: number | null;
   publicLog: Msg[];
   currentNomination: Nomination | null;
   onBlockId: string | null;

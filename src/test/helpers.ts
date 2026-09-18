@@ -1,6 +1,6 @@
 import { alignmentOfCharacter } from '../game/characters.js';
 import { addPlayer, castVote, createGame, markReadyForSpeech, skipSpeech, toggleEndDayRequest } from '../game/engine.js';
-import { beginNight, submitRealResponse } from '../game/night.js';
+import { beginNight, submitRealResponse, tick as nightTick } from '../game/night.js';
 import type { CharacterId, GameState } from '../game/types.js';
 
 export function mk(charIds: CharacterId[], opts: { drunkFakeChar?: CharacterId } = {}): GameState {
@@ -19,6 +19,7 @@ export function mkDay(charIds: CharacterId[]): GameState {
   const state = mk(charIds);
   state.phase = 'day';
   state.day = 1;
+  state.night = 1; // day 1 follows night 1, so the next night is an "other night"
   return state;
 }
 
@@ -47,10 +48,19 @@ export function answerRealTurn(state: GameState, targetIds: string[] = []): void
   }
 }
 
-/** Resolves the current round with arbitrary-but-valid answers, for rounds the test doesn't care about. */
+/** Skips the wait between the last night action and dawn (see DAWN_WAIT_* in night.ts). */
+export function breakDawn(state: GameState): void {
+  if (state.phase === 'night' && state.dawnAt != null) nightTick(state, state.dawnAt);
+}
+
+/** Resolves the current round with arbitrary-but-valid answers, for rounds the test doesn't care
+ * about — or, once everyone has acted, lets dawn break. */
 export function skipRound(state: GameState): void {
   const t = state.pendingRealTurn;
-  if (!t) return;
+  if (!t) {
+    breakDawn(state);
+    return;
+  }
   for (const id of t.playerIds.slice()) {
     if (id in t.responses) continue;
     // A skipped Poisoner poisons themselves (legal, and harmless): poisoning anyone else would
