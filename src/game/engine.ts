@@ -1,6 +1,6 @@
 import { alignmentOfCharacter } from './characters.js';
 import { record } from './history.js';
-import { beginNight, evaluateWin, promoteScarletWomanIfEligible, recordDeath, setWinner, tick as nightTick } from './night.js';
+import { EVIL_INTRO_MIN_PLAYERS, beginNight, evaluateWin, promoteScarletWomanIfEligible, recordDeath, setWinner, tick as nightTick } from './night.js';
 import { abilityLostReason, abilityWorks, registersAs } from './registration.js';
 import { randomId } from './rng.js';
 import { dealCharacters } from './setup.js';
@@ -151,7 +151,8 @@ export function startGame(state: GameState): void {
   record(state, 'roles', {
     players: state.players.map((p) => ({ id: p.id, character: p.character, perceived: p.perceived })),
     redHerring: deal.redHerringId,
-    bluffs: deal.bluffs,
+    // Only the Demon's own night-1 info shows them — and that only happens with 7+ players.
+    bluffs: state.players.length >= EVIL_INTRO_MIN_PLAYERS ? deal.bluffs : [],
   });
   beginNight(state);
 }

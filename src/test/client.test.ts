@@ -936,3 +936,43 @@ test('"Good"/"Evil" and the team on the role card are tappable and open their de
     }
   }
 });
+
+// ---------------------------------------------------------------- the Demon's bluffs only appear in games where the Demon is told them
+
+function seatAndStart(s: GameState, n: number): void {
+  const ps = Array.from({ length: n }, (_, i) => addPlayer(s, `P${i}`));
+  ps.forEach((p, i) => declareNeighbor(s, p.id, ps[(i + 1) % n].id));
+  startGame(s);
+}
+
+/** A really started game of `n` players, ended straight away so the replay is visible. */
+function startedAndEnded(n: number): GameState {
+  const s = createGame('BLUF');
+  seatAndStart(s, n);
+  s.phase = 'ended';
+  s.winner = 'good';
+  return s;
+}
+
+test('replay log: no "Demon\'s bluffs" line in games of 5 or 6 players (the Demon is never told them); shown from 7', async () => {
+  for (const lang of ['en', 'fr'] as const) {
+    for (let n = 5; n <= 10; n++) {
+      const s = startedAndEnded(n);
+      const app = await loadApp(lang);
+      app.show(viewFor(s, s.players[0].id), { seen: true, lang });
+      const text = replayLinesOf(app).join('\n');
+      const has = /bluffs du Démon|Demon's bluffs/.test(text);
+      assert.equal(has, n >= 7, `${lang}, ${n} players: bluffs line ${has ? 'shown' : 'absent'}`);
+      assert.ok(!brokenText(text));
+    }
+  }
+});
+
+test('at 5-6 players the Demon and Minions are not told about each other (official rule) and the first night has no Demon-info step', () => {
+  for (const n of [5, 6]) {
+    const s = createGame('NOINFO');
+    seatAndStart(s, n);
+    assert.ok(!s.history.some((e) => e.type === 'info' && /minionInfo|demonInfo/.test(JSON.stringify(e.vars))), `${n} players: no evil intro`);
+    assert.deepEqual((s.history.find((e) => e.type === 'roles')!.vars as { bluffs: string[] }).bluffs, []);
+  }
+});

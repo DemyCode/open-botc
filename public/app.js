@@ -1540,7 +1540,7 @@ const REPLAY = {
       'Roles dealt:',
       ...e.players.map((p) => c.P(p.id) + (p.perceived !== p.character ? ' — believes they are the ' + c.R(p.perceived) : '')),
       e.redHerring ? "The Fortune Teller's red herring (reads as the Demon): " + c.P(e.redHerring) : null,
-      "The Demon's bluffs (good characters not in play): " + e.bluffs.map((b) => c.R(b)).join(', '),
+      e.bluffs && e.bluffs.length ? "The Demon's bluffs (good characters not in play): " + e.bluffs.map((b) => c.R(b)).join(', ') : null,
     ],
     info: (e, c) =>
       c.P(e.actor) + ' learns, as the ' + c.R(e.character) + ': ' + c.M(e.msg) + (e.lost ? ' — ⚠ unreliable, they were ' + c.lost(e.lost) : ''),
@@ -1618,7 +1618,7 @@ const REPLAY = {
       'Rôles distribués :',
       ...e.players.map((p) => c.P(p.id) + (p.perceived !== p.character ? ' — croit être ' + c.R(p.perceived) : '')),
       e.redHerring ? 'Le faux positif de la Voyante (apparaît comme le Démon) : ' + c.P(e.redHerring) : null,
-      'Les bluffs du Démon (personnages bons absents de la partie) : ' + e.bluffs.map((b) => c.R(b)).join(', '),
+      e.bluffs && e.bluffs.length ? 'Les bluffs du Démon (personnages bons absents de la partie) : ' + e.bluffs.map((b) => c.R(b)).join(', ') : null,
     ],
     info: (e, c) =>
       c.P(e.actor) + ' apprend, en tant que ' + c.R(e.character) + ' : ' + c.M(e.msg) + (e.lost ? ' — ⚠ peu fiable, il/elle était ' + c.lost(e.lost) : ''),
