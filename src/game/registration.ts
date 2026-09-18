@@ -50,6 +50,11 @@ export function registersAs(
   if (target.character === 'spy' && trueEvil && (kind === 'good' || kind === 'townsfolk' || kind === 'outsider')) {
     return roll();
   }
+  // "You might register as good": asked the other way round ("is this player EVIL?" — the Chef's
+  // and the Empath's question), the Spy sometimes answers no (wiki: Spy ex. 2).
+  if (target.character === 'spy' && trueEvil && kind === 'evil') {
+    return !roll();
+  }
   return trueKind;
 }
 

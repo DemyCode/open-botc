@@ -183,7 +183,7 @@ test('the message keys seen in real games cover every kind of message the game h
   const gather = collect(seen);
   for (let n = 5; n <= 15; n++) for (let seed = 0; seed < 30; seed++) playGame(seed, n, (s) => gather(s));
   const kinds = new Set([...seen.values()].map((m) => m.key));
-  for (const must of ['investigativeInfo', 'chefInfo', 'empathInfo', 'fortuneTellerYes', 'fortuneTellerNo', 'undertakerInfo', 'undertakerNone',
+  for (const must of ['investigativeInfo', 'chefInfo', 'empathInfo', 'fortuneTellerYes', 'fortuneTellerNo', 'undertakerInfo',
     'ravenkeeperInfo', 'minionInfoGroup', 'demonInfo', 'spyGrimoire', 'foundDead', 'wasExecuted', 'onBlock', 'diedTonight', 'survivedNight',
     'executedOther', 'noExecutionSleep', 'poisonerChoose', 'monkChoose', 'impChoose', 'butlerChoose', 'fortuneTellerChoose']) {
     assert.ok(kinds.has(must), `no game ever showed a "${must}" message`);

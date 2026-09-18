@@ -294,7 +294,7 @@ test('the Ravenkeeper picking themselves learns their own character', () => {
 
 // ---------------------------------------------------------------- Undertaker
 
-test('Undertaker: learns each day\'s executed character the next night, and "nobody" after a quiet day', () => {
+test('Undertaker: learns each day\'s executed character the next night, and is not woken at all after a quiet day', () => {
   const s = atNight2(['imp', 'undertaker', 'poisoner', 'soldier', 'washerwoman', 'empath', 'chef']);
   const under = byChar(s, 'undertaker');
   const chef = byChar(s, 'chef');
@@ -305,17 +305,28 @@ test('Undertaker: learns each day\'s executed character the next night, and "nob
   endDayByConsensus(s);
   playNightFromHere(s, { imp: ['soldier'] });
   assert.equal(under.log.at(-1)!.msg.vars!.role, 'chef', 'the executed Chef');
-  endDayByConsensus(s); // a quiet day
-  playNightFromHere(s, { imp: ['soldier'] });
-  assert.equal(under.log.at(-1)!.msg.key, 'undertakerNone');
+  const logged = under.log.length;
+  endDayByConsensus(s); // a quiet day: nobody executed
+  const steps: string[] = [];
+  while (s.pendingRealTurn) {
+    steps.push(s.pendingRealTurn.charId);
+    const p = s.pendingRealTurn.charId === 'imp' ? [byChar(s, 'soldier').id] : undefined;
+    if (p) answerRealTurn(s, p); else skipRound(s);
+  }
+  assert.ok(!steps.includes('undertaker'), 'the Undertaker\'s step does not happen');
+  assert.equal(under.log.length, logged, 'and they learn nothing');
 });
 
-test('Undertaker: is not told about a NIGHT death, only an execution', () => {
+test('Undertaker: is not told about a NIGHT death, only an execution (no execution: no step)', () => {
   const s = atNight2(['imp', 'undertaker', 'poisoner', 'soldier', 'washerwoman', 'empath', 'chef']);
   playNight(s, { imp: ['washerwoman'] });
   endDayByConsensus(s);
-  playNightFromHere(s, { imp: ['soldier'] });
-  assert.equal(byChar(s, 'undertaker').log.at(-1)!.msg.key, 'undertakerNone');
+  const steps: string[] = [];
+  while (s.pendingRealTurn) {
+    steps.push(s.pendingRealTurn.charId);
+    if (s.pendingRealTurn.charId === 'imp') answerRealTurn(s, [byChar(s, 'soldier').id]); else skipRound(s);
+  }
+  assert.ok(!steps.includes('undertaker'));
 });
 
 // ---------------------------------------------------------------- Butler

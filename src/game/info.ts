@@ -23,7 +23,10 @@ export function investigativeInfo(state: GameState, self: PlayerState, team: Exc
   const pool = others(state, self);
   const ctx = { asker: self.id, slot };
   if (abilityWorks(state, self)) {
-    const candidates = pool.filter((p) => CHARACTERS[p.character].team === team);
+    // Who can be "the" Townsfolk/Outsider/Minion is decided by how each player REGISTERS, not just
+    // by what they are: a Spy may register as a Townsfolk or Outsider, and a Recluse as a Minion
+    // (wiki: Washerwoman ex. 3, Investigator ex. 3, Spy ex. 1, Recluse ex. 3).
+    const candidates = pool.filter((p) => registersAs(state, p, team, ctx));
     if (!candidates.length) {
       const [a, b] = pickPair(state, pool, slot, self.id, 'none');
       return msg('noTeamInPlay', { a: a.name, b: b.name, team });
@@ -43,11 +46,13 @@ export function investigativeInfo(state: GameState, self: PlayerState, team: Exc
 
 export function chefInfo(state: GameState, self: PlayerState, slot: string): Msg {
   const seated = state.players.slice().sort((a, b) => a.seat - b.seat);
-  const ctx = { asker: self.id, slot };
   let count = 0;
   for (let i = 0; i < seated.length; i++) {
     const p1 = seated[i];
     const p2 = seated[(i + 1) % seated.length];
+    // Each pair is its own question: a Recluse between the Imp and the Poisoner may register as
+    // evil next to the Imp but as good next to the Poisoner (wiki: Chef ex. 4).
+    const ctx = { asker: self.id, slot: `${slot}-pair${i}` };
     if (registersAs(state, p1, 'evil', ctx) && registersAs(state, p2, 'evil', ctx)) count++;
   }
   if (!abilityWorks(state, self)) {
@@ -98,8 +103,9 @@ function apparentToObserver(state: GameState, target: PlayerState, ctx: { asker:
   return target.character;
 }
 
+/** Only ever asked on a night after an execution: with none, the Undertaker is not woken at all. */
 export function undertakerInfo(state: GameState, self: PlayerState, executed: PlayerState | null, slot: string): Msg {
-  if (!executed) return msg('undertakerNone');
+  if (!executed) return msg('empty');
   const ctx = { asker: self.id, slot };
   const shown = abilityWorks(state, self)
     ? apparentToObserver(state, executed, ctx)

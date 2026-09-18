@@ -8,6 +8,7 @@ import { addPlayer, createGame } from '../game/engine.js';
 import {
   chefInfo, demonInfo, empathInfo, fortuneTellerInfo, investigativeInfo, livingNeighbors, minionInfo, ravenkeeperInfo, spyInfo, undertakerInfo,
 } from '../game/info.js';
+import { registersAs } from '../game/registration.js';
 import { mulberry32, seedFromString } from '../game/rng.js';
 import { dealCharacters } from '../game/setup.js';
 import type { CharacterId, GameState, Msg, PlayerState } from '../game/types.js';
@@ -66,7 +67,9 @@ for (const [char, team] of investigators) {
       const self = givePlayer(s, 0, char);
       const msg = investigativeInfo(s, self, team, 'slot');
       const others = s.players.filter((p) => p.alive && p.id !== self.id);
-      const candidates = others.filter((p) => CHARACTERS[p.character].team === team);
+      // Who counts as the Townsfolk/Outsider/Minion depends on how each player REGISTERS
+      // (a Spy may register as a Townsfolk/Outsider, a Recluse as a Minion).
+      const candidates = others.filter((p) => registersAs(s, p, team, { asker: self.id, slot: 'slot' }));
       if (msg.key === 'noTeamInPlay') {
         assert.equal(candidates.length, 0, 'said "none in play" while one is');
         return;
@@ -77,7 +80,8 @@ for (const [char, team] of investigators) {
       const named = [a, b].map((name) => s.players.find((p) => p.name === name)!);
       assert.ok(named.every((p) => p && p.alive && p.id !== self.id), 'both alive, neither is the asker');
       assert.equal(CHARACTERS[role].team, team, `the character shown is a ${team}`);
-      assert.ok(named.some((p) => p.character === role), `one of ${a}/${b} really is the ${role}`);
+      const disguised = (p: PlayerState) => (p.character === 'spy' && team !== 'minion') || (p.character === 'recluse' && team === 'minion');
+      assert.ok(named.some((p) => p.character === role || (disguised(p) && registersAs(s, p, team, { asker: self.id, slot: 'slot' }))), `one of ${a}/${b} really is (or registers as) the ${role}`);
       checked++;
     });
     assert.ok(checked > 200, `only ${checked} deals had something to show`);
@@ -128,7 +132,8 @@ for (const [char, team] of investigators) {
 test('Librarian: with no Outsider in play she is told so, naming two players who are not Outsiders', () => {
   let saw = 0;
   each((s) => {
-    for (const p of s.players) if (CHARACTERS[p.character].team === 'outsider') givePlayer(s, s.players.indexOf(p), 'soldier');
+    // no Outsiders — and no Spy, who might register as one
+    for (const p of s.players) if (CHARACTERS[p.character].team === 'outsider' || p.character === 'spy') givePlayer(s, s.players.indexOf(p), 'soldier');
     const self = givePlayer(s, 0, 'librarian');
     const m = investigativeInfo(s, self, 'outsider', 'slot');
     assert.equal(m.key, 'noTeamInPlay');
@@ -363,10 +368,9 @@ test('Fortune Teller: choosing the same two players on a different night can giv
 
 // ---------------------------------------------------------------- Undertaker / Ravenkeeper
 
-test('Undertaker: told the executed player\'s true character (Spy and Recluse may show as something else), or nobody', () => {
+test('Undertaker: told the executed player\'s true character (Spy and Recluse may show as something else)', () => {
   each((s) => {
     const under = givePlayer(s, 0, 'undertaker');
-    assert.equal(undertakerInfo(s, under, null, 'slot').key, 'undertakerNone');
     for (const target of s.players.slice(1)) {
       const m = undertakerInfo(s, under, target, 'slot');
       assert.equal(m.key, 'undertakerInfo');

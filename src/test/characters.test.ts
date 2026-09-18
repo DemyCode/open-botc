@@ -87,12 +87,11 @@ test('Fortune Teller: detects the real Demon, and the red herring always reads a
   assert.equal(fortuneTellerInfo(s, ft, [empath.id, soldier.id], 'ft-3').key, 'fortuneTellerYes');
 });
 
-test('Undertaker: learns the true character of whoever was executed, or that nobody was', () => {
+test('Undertaker: learns the true character of whoever was executed', () => {
   const s = mk(['imp', 'undertaker', 'chef', 'soldier', 'washerwoman']);
   const undertaker = byChar(s, 'undertaker');
   const chef = byChar(s, 'chef');
   assert.deepEqual(undertakerInfo(s, undertaker, chef, 'ut-slot'), { key: 'undertakerInfo', vars: { name: chef.name, role: 'chef' } });
-  assert.deepEqual(undertakerInfo(s, undertaker, null, 'ut-slot-2'), { key: 'undertakerNone' });
 });
 
 test('Ravenkeeper: learns the true character of whoever they choose', () => {

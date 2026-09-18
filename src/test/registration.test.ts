@@ -56,3 +56,20 @@ test('abilityWorks is false for the Drunk and for a poisoned player, true otherw
   state.poisonedId = empath.id;
   assert.equal(abilityWorks(state, empath), false);
 });
+
+test('the Spy sometimes registers as GOOD when asked "is this player evil?" (the Chef\'s and the Empath\'s question)', () => {
+  // Regression: the Spy could only register as good for good/Townsfolk/Outsider questions; asked the
+  // Chef's or Empath's "evil?" question a Spy always answered yes. Wiki, Spy ex. 2.
+  const state = mk(['imp', 'spy', 'empath', 'investigator', 'washerwoman', 'soldier']);
+  const spy = state.players.find((p) => p.character === 'spy')!;
+  const answers = new Set<boolean>();
+  for (let i = 0; i < 60; i++) answers.add(registersAs(state, spy, 'evil', { asker: `asker-${i}`, slot: 'test' }));
+  assert.deepEqual([...answers].sort(), [false, true]);
+});
+
+test('the Imp and the Poisoner always register as evil, whoever asks', () => {
+  const state = mk(['imp', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']);
+  for (const p of state.players.slice(0, 2)) {
+    for (let i = 0; i < 40; i++) assert.equal(registersAs(state, p, 'evil', { asker: `a${i}`, slot: 's' }), true);
+  }
+});

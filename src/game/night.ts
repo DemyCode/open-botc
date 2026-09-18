@@ -124,6 +124,8 @@ function actorsFor(state: GameState, charId: CharacterId | 'minion-info'): Playe
   }
   // The Imp only "acts" on the first night to receive the Demon info — nothing to do without it.
   if (charId === 'imp' && state.night === 1 && state.players.length < EVIL_INTRO_MIN_PLAYERS) return [];
+  // "Each night except the first, if any player died by execution today, wake the Undertaker."
+  if (charId === 'undertaker' && !state.lastExecutedId) return [];
   if (charId === 'ravenkeeper') {
     return state.players.filter((p) => !p.alive && state.deathsTonight.includes(p.id) && p.perceived === 'ravenkeeper');
   }
