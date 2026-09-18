@@ -130,7 +130,7 @@ function buildNightTurn(state: GameState, viewerId: string): NightTurnView | nul
     min: t.min, max: t.max, choices,
     decoy,
     decoyResult: decoy && (t.charId === 'fortuneteller' || t.charId === 'ravenkeeper'),
-    stepKey: `${state.night}-${state.nightSlotIndex}`,
+    stepKey: `${state.night}-${state.nightStepNumber ?? 0}`,
     waitMs: Math.max(0, t.openedAt + MIN_ANSWER_MS - Date.now()),
   };
 }

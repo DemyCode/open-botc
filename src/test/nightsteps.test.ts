@@ -33,23 +33,42 @@ for (const chars of [
       const screens = screensTonight(s);
       const sequences = s.players.filter((p) => p.alive).map((p) => JSON.stringify(screens[p.id]));
       assert.equal(new Set(sequences).size, 1, `night ${night}: someone's screens differed from the others'`);
-      const expected = night === 1 ? FIRST_NIGHT_SEQUENCE.length : OTHER_NIGHT_SEQUENCE.length;
-      assert.equal(screens[s.players[0].id].length, expected, `night ${night}: one screen per step of the night order`);
+      assert.ok(screens[s.players[0].id].length > 0, `night ${night}: at least one step`);
       runFullNight(s);
     }
   });
 }
 
-test('every step of the night order runs every night, even for characters not in play', () => {
-  const s = mk(['imp', 'soldier', 'mayor', 'virgin', 'saint']); // nobody here acts on the first night
+test('like the Storyteller, only steps whose character is in play happen — in the official order', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier', 'monk', 'chef']);
   startNight(s);
   const steps: string[] = [];
   while (s.pendingRealTurn) {
+    assert.ok(s.pendingRealTurn.playerIds.length > 0, 'every step that runs has a real actor');
     steps.push(s.pendingRealTurn.charId);
-    assert.deepEqual(s.pendingRealTurn.playerIds, [], 'nobody really acts');
     skipRound(s);
   }
-  assert.deepEqual(steps, FIRST_NIGHT_SEQUENCE);
+  const expected = FIRST_NIGHT_SEQUENCE.filter((c) => ['minion-info', 'imp', 'poisoner', 'washerwoman', 'chef', 'empath'].includes(c));
+  assert.deepEqual(steps, expected);
+  assert.ok(!steps.includes('monk') && !steps.includes('librarian'), "no first-night step for the Monk, and none for the Librarian who isn't in play");
+});
+
+test('a night where nobody has anything to do has no steps at all, and still lasts at least 30 seconds', () => {
+  const s = mk(['imp', 'soldier', 'mayor', 'virgin', 'saint']);
+  startNight(s);
+  assert.equal(s.pendingRealTurn, null);
+  assert.equal(s.phase, 'night');
+});
+
+test("the screens' identity never reveals which character's step it is — it only counts steps", () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier', 'monk', 'chef']);
+  startNight(s);
+  const keys: string[] = [];
+  while (s.pendingRealTurn) {
+    keys.push(viewFor(s, byChar(s, 'soldier').id).nightTurn!.stepKey);
+    skipRound(s);
+  }
+  assert.deepEqual(keys, keys.map((_, i) => `1-${i + 1}`));
 });
 
 test('a decoy screen looks like the real one: same shape, same choices, and never names the step', () => {

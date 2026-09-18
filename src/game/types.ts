@@ -67,12 +67,12 @@ export type NightTurnShape = 'info' | 'choose';
 /**
  * One step of the night order (Poisoner, Monk, Imp, ...). Every living player is "woken" at every
  * step: the real actors (`playerIds`) get their real screen, everyone else gets a decoy question
- * of the same shape — so nobody can tell who really acted. Every step of the night order runs
- * every night, even for characters not in play, so counting screens reveals nothing either.
+ * of the same shape — so nobody can tell who really acted. As for the Storyteller, a step only
+ * happens when its character is in play (and, for the Ravenkeeper, was killed tonight).
  */
 export interface PendingRealTurn {
   charId: CharacterId | 'minion-info';
-  /** The real actors this step (may be empty — then everyone gets a decoy). */
+  /** The real actors this step. */
   playerIds: string[];
   /** Everyone woken this step: the real actors plus every other publicly-alive player. */
   participantIds: string[];
@@ -131,6 +131,8 @@ export interface GameState {
   pendingRealTurn: PendingRealTurn | null;
   /** When the current night began (ms), for the minimum night length. */
   nightStartedAt?: number;
+  /** How many steps have run so far tonight (the screens' identity — never the character's slot). */
+  nightStepNumber?: number;
   /** Each player's most recent "pick a player" decoy question, so the next one is always different. */
   lastDecoyKeys?: Record<string, string>;
   /** Set once everyone has acted: dawn breaks at this time (ms), not the instant the last answer lands. */

@@ -212,6 +212,7 @@ export function beginNight(state: GameState): void {
   state.nightSlotIndex = -1;
   state.pendingRealTurn = null;
   state.nightStartedAt = Date.now();
+  state.nightStepNumber = 0;
   state.dawnAt = null;
   for (const p of state.players) {
     p.nightResult = null;
@@ -230,9 +231,11 @@ export function advanceNightSlot(state: GameState): void {
     const charId = seq[state.nightSlotIndex];
     if (charId === 'poisoner') state.poisonedId = null;
     if (charId === 'butler') state.butlerMasterId = null;
-    // Every step runs, even with no real actor (then everyone gets a decoy): skipping it would let
-    // anyone count tonight's screens and work out which characters aren't in play.
-    startRound(state, charId, actorsFor(state, charId));
+    // Like the Storyteller, only wake a step whose character is really in play tonight.
+    const actors = actorsFor(state, charId);
+    if (actors.length === 0) continue;
+    state.nightStepNumber = (state.nightStepNumber ?? 0) + 1;
+    startRound(state, charId, actors);
     return;
   }
   // Everyone has acted — but dawn waits (see DAWN_WAIT_*); tick() breaks it when it's time.

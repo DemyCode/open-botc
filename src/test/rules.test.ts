@@ -27,9 +27,8 @@ for (const n of [5, 6]) {
       if (s.pendingRealTurn) realActors[s.pendingRealTurn.charId] = s.pendingRealTurn.playerIds;
       skipRound(s);
     }
-    // The steps still happen (everyone gets a decoy), but nobody really acts in them.
-    assert.deepEqual(realActors['minion-info'], [], 'no Minion info');
-    assert.deepEqual(realActors['imp'], [], 'the Imp has nothing to do on the first night');
+    assert.equal(realActors['minion-info'], undefined, 'no Minion info step');
+    assert.equal(realActors['imp'], undefined, 'the Imp has nothing to do on the first night');
     assert.ok(!imp.log.some((e) => e.msg.key === 'demonInfo'));
     assert.ok(!poisoner.log.some((e) => e.msg.key.startsWith('minionInfo')));
   });

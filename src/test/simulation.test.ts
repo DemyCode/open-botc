@@ -102,8 +102,11 @@ function playNight(s: GameState, rand: Rand, where: string): void {
     }
     if (t.shape === 'choose') {
       const isReal = t.playerIds.includes(actorId);
+      // Real players mostly aim at the living (the dead are legal targets, but pointless).
+      const livingOnly = rand() < 0.85;
       const pool = s.players
         .filter((p) => !(isReal && (t.charId === 'monk' || t.charId === 'butler') && p.id === actorId))
+        .filter((p) => !livingOnly || p.alive || p.diedTonight || s.players.filter((q) => q.alive).length < t.max)
         .map((p) => p.id);
       const targets: string[] = [];
       while (targets.length < t.min) {
@@ -143,9 +146,13 @@ function playDay(s: GameState, rand: Rand, where: string): void {
   while (s.phase === 'day' && guard++ < 60) {
     const alive = s.players.filter((p) => p.alive);
     const r = rand();
-    if (r < 0.08) {
+    if (r < 0.15) {
       // Anyone may claim a Slayer shot — a real one, a bluff, from the dead, or twice.
-      attempt(() => useSlayer(s, pick(rand, s.players).id, pick(rand, s.players).id));
+      const shooter = pick(rand, s.players);
+      // A real Slayer sometimes guesses right (aims at the actual Demon), or a hit would be a fluke.
+      const demon = s.players.find((p) => p.alive && isDemon(p));
+      const target = shooter.character === 'slayer' && demon && rand() < 0.5 ? demon : pick(rand, s.players);
+      attempt(() => useSlayer(s, shooter.id, target.id));
     } else if (r < 0.6) {
       // Any nomination at all, legal or not (dead nominators, repeats, dead or self nominees).
       if (attempt(() => nominate(s, pick(rand, s.players).id, pick(rand, s.players).id)) && s.currentNomination) {
@@ -170,6 +177,12 @@ function playDay(s: GameState, rand: Rand, where: string): void {
   assert.notEqual(s.phase, 'day', `${where}: the day finished`);
 }
 
+/** A one-line summary of a stuck game, for failure messages. */
+function describe(s: GameState): string {
+  const alive = s.players.filter((p) => p.alive).map((p) => `${p.character}${p.perceived !== p.character ? `(thinks ${p.perceived})` : ''}`);
+  return `alive: ${alive.join(', ')}; poisoned: ${s.players.find((p) => p.id === s.poisonedId)?.character ?? 'nobody'}; phase ${s.phase}; last log: ${s.publicLog.slice(-4).map((m) => m.key).join(', ')}`;
+}
+
 function playGame(seed: number, playerCount: number): GameState {
   const rand = mulberry32(seedFromString(`sim-${seed}-${playerCount}`));
   const realRandom = Math.random;
@@ -187,7 +200,7 @@ function playGame(seed: number, playerCount: number): GameState {
       if (s.phase === 'night') playNight(s, rand, where());
       else if (s.phase === 'day') playDay(s, rand, where());
     }
-    assert.equal(s.phase, 'ended', `${where()}: the game reached an end`);
+    assert.equal(s.phase, 'ended', `${where()}: the game reached an end — ${describe(s)}`);
     checkInvariants(s, where());
     return s;
   } finally {
@@ -207,7 +220,7 @@ const MUST_SEE_PRIVATE = ['scarletWomanPromoted', 'becameImp', 'demonInfo', 'for
 test('hundreds of random full games, 5 to 15 players, all end cleanly with every rule invariant holding', () => {
   const seen = new Set<string>();
   for (let playerCount = 5; playerCount <= 15; playerCount++) {
-    for (let seed = 0; seed < 60; seed++) {
+    for (let seed = Number(process.env.SIM_FROM || 0); seed < Number(process.env.SIM_SEEDS || 60); seed++) {
       const s = playGame(seed, playerCount);
       for (const m of s.publicLog) seen.add(m.key);
       for (const p of s.players) for (const e of p.log) seen.add(e.msg.key);
