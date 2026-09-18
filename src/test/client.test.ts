@@ -750,3 +750,147 @@ test('a phone with no vibration support still plays the sound', async () => {
   assert.doesNotThrow(() => receive(app, viewFor(s, s.players[3].id)));
   assert.equal(app.tones.length, 2);
 });
+
+// ---------------------------------------------------------------- the replay on the end screen
+
+/** The scripted 7-player game (see history.test.ts), finished: an execution of the Imp on day 2. */
+function scriptedEndedGame(): GameState {
+  const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier', 'monk', 'chef']);
+  const [imp, , empath, washerwoman, soldier, monk, chef] = s.players;
+  startNight(s);
+  advanceUntil(s, 'poisoner');
+  answerRealTurn(s, [monk.id]);
+  runFullNight(s);
+  endDayByConsensus(s);
+  advanceUntil(s, 'poisoner');
+  answerRealTurn(s, [monk.id]);
+  advanceUntil(s, 'monk');
+  answerRealTurn(s, [washerwoman.id]);
+  advanceUntil(s, 'imp');
+  answerRealTurn(s, [washerwoman.id]);
+  runFullNight(s);
+  nominate(s, empath.id, imp.id);
+  fastForwardToVote(s);
+  let g = 0;
+  while (s.currentNomination?.state === 'voting' && g++ < 20) {
+    const v = s.currentNomination.currentVoterId!;
+    castVote(s, v, [empath.id, soldier.id, chef.id].includes(v));
+  }
+  endDayByConsensus(s);
+  return s;
+}
+const replayLinesOf = (app: FakeClient) => app.root.find((n) => n.hasClass('replay-line')).map((n) => n.text());
+
+test('the end screen tells the whole story in order: setup, each night and day, and the ending', async () => {
+  const s = scriptedEndedGame();
+  assert.equal(s.phase, 'ended');
+  const app = await loadApp('en');
+  app.show(viewFor(s, s.players[3].id), { seen: true });
+  assert.ok(app.text().includes('What really happened'));
+  const headings = app.root.find((n) => n.tag === 'h3').map((n) => n.text());
+  // (This game was built without startGame, so there is no "roles dealt" section — real games have one, below.)
+  assert.deepEqual(headings, ['Night 1', 'Day 1', 'Night 2', 'Day 2']);
+  const lines = replayLinesOf(app);
+  const at = (needle: string) => lines.findIndex((l) => l.includes(needle));
+  for (const needle of [
+    'P1 (Poisoner) poisons P5 (Monk)',
+    'P1 (Poisoner) poisons P5 (Monk)',
+    'P5 (Monk) protects P3 (Washerwoman) — ⚠ no effect, they were poisoned',
+    'P0 (Imp) (the Demon) attacks P3 (Washerwoman)',
+    'P3 (Washerwoman) dies — killed by the Demon',
+    'Dawn breaks. Found dead: P3 (Washerwoman)',
+    'P2 (Empath) nominates P0 (Imp)',
+    'Vote on P0 (Imp): 3 yes (3 needed, 6 alive) — now on the block',
+    'P0 (Imp) is executed',
+    'P0 (Imp) dies — executed',
+    'Good wins: The Demon is dead — good wins!',
+  ]) assert.ok(at(needle) >= 0, `the replay says: ${needle}`);
+  // Order of the story.
+  assert.ok(at('P1 (Poisoner) poisons P5 (Monk)') < at('attacks P3') && at('attacks P3') < at('dies — killed by the Demon'));
+  assert.ok(at('Dawn breaks. Found dead') < at('nominates') && at('nominates') < at('Vote on') && at('Vote on') < at('P0 (Imp) is executed') && at('P0 (Imp) is executed') < at('Good wins'));
+  assert.equal(lines.filter((l) => l.includes('Good wins')).length, 1);
+  assert.ok(!lines.some((l) => /undefined|\[object|NaN/.test(l)));
+});
+
+test('the story is told in French too', async () => {
+  const s = scriptedEndedGame();
+  const app = await loadApp('fr');
+  app.show(viewFor(s, s.players[3].id), { seen: true });
+  assert.ok(app.text().includes('Ce qui s’est vraiment passé'));
+  assert.deepEqual(app.root.find((n) => n.tag === 'h3').map((n) => n.text()), ['Nuit 1', 'Jour 1', 'Nuit 2', 'Jour 2']);
+  const lines = replayLinesOf(app);
+  for (const needle of ['(Empoisonneur) empoisonne', '(Diablotin) (le Démon) attaque', 'meurt — tué(e) par le Démon', 'nomine', 'Vote sur', 'sur le billot', 'est exécuté(e)', 'Le Bien gagne']) {
+    assert.ok(lines.some((l) => l.includes(needle)), `French replay has: ${needle}`);
+  }
+  assert.ok(!lines.some((l) => /Poisoner|Imp\b|nominates|executed|Dawn/.test(l)), 'no English left in the French replay');
+});
+
+test('players are named with their real character, coloured by team: evil in red, good in green', async () => {
+  const s = scriptedEndedGame();
+  const app = await loadApp('en');
+  app.show(viewFor(s, s.players[3].id), { seen: true });
+  const names = app.root.find((n) => n.hasClass('rname'));
+  assert.ok(names.length > 20);
+  const imp = names.find((n) => n.text() === 'P0 (Imp)')!;
+  const empath = names.find((n) => n.text() === 'P2 (Empath)')!;
+  assert.ok(imp.hasClass('evil') && !imp.hasClass('good'));
+  assert.ok(empath.hasClass('good') && !empath.hasClass('evil'));
+});
+
+test('a Drunk is shown as the Drunk, with the character they believed they were', async () => {
+  const s = mk(['imp', 'poisoner', 'drunk', 'washerwoman', 'soldier', 'monk', 'chef'], { drunkFakeChar: 'empath' });
+  startNight(s);
+  s.history.unshift({ seq: 0, phase: 'setup', night: 0, day: 0, type: 'roles', vars: {
+    players: s.players.map((p) => ({ id: p.id, character: p.character, perceived: p.perceived })), redHerring: null, bluffs: ['virgin', 'mayor', 'saint'] } });
+  runFullNight(s);
+  s.phase = 'ended';
+  s.winner = 'evil';
+  const app = await loadApp('en');
+  app.show(viewFor(s, s.players[0].id), { seen: true });
+  const text = replayLinesOf(app).join('\n');
+  assert.ok(text.includes('P2 (Drunk) — believes they are the Empath'));
+  assert.ok(/P2 \(Drunk\) learns, as the Empath: .* — ⚠ unreliable, they were drunk/.test(text));
+});
+
+test('the replay only exists on the end screen: never while the game is running', async () => {
+  const s = scriptedEndedGame();
+  const app = await loadApp('en');
+  for (const phase of ['day', 'night'] as const) {
+    const running = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
+    running.phase = phase;
+    app.show(viewFor(running, running.players[2].id), { seen: true });
+    assert.ok(!app.text().includes('What really happened'), `not during the ${phase}`);
+    assert.equal(app.root.find((n) => n.hasClass('replay')).length, 0);
+  }
+  app.show(viewFor(s, s.players[2].id), { seen: true });
+  assert.equal(app.root.find((n) => n.hasClass('replay')).length, 1);
+});
+
+test('the replay is the same for every player, and appears for the dead too', async () => {
+  const s = scriptedEndedGame();
+  const app = await loadApp('en');
+  const texts = s.players.map((p) => { app.show(viewFor(s, p.id), { seen: true }); return replayLinesOf(app).join('\n'); });
+  assert.ok(texts.every((t) => t === texts[0]) && texts[0].length > 500);
+});
+
+test('every kind of event in real games is worded, in both languages, with no broken text (130 games)', async () => {
+  const app = await loadApp('en');
+  const kinds = new Set<string>();
+  const problems: string[] = [];
+  for (let n = 5; n <= 15; n++) {
+    for (let seed = 0; seed < 12; seed++) {
+      const s = playGame(seed, n);
+      for (const lang of ['en', 'fr'] as const) {
+        app.show(viewFor(s, s.players[0].id), { seen: true, lang });
+        const lines = replayLinesOf(app);
+        assert.equal(app.root.find((n) => n.tag === 'h3')[0].text(), lang === 'en' ? 'Setup' : 'Mise en place', 'a real game starts with its setup');
+        const bad = lines.find((l) => /undefined|\[object|NaN|null|\$\{/.test(l));
+        if (bad) problems.push(`${lang} seed ${seed} ${n}p: ${bad}`);
+        assert.ok(lines.length >= s.history.filter((e) => e.type !== 'nightStart').length, 'every event has at least one line');
+      }
+      s.history.forEach((e) => kinds.add(e.type));
+    }
+  }
+  assert.deepEqual(problems.slice(0, 3), []);
+  for (const k of ['roles', 'info', 'choice', 'attack', 'death', 'dawn', 'nominate', 'vote', 'execution', 'dayEnd', 'win']) assert.ok(kinds.has(k), `no game produced a ${k} event`);
+});

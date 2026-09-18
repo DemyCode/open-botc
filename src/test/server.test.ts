@@ -574,6 +574,16 @@ test('a complete game between 7 bots over real WebSockets ends with a winner and
     assert.ok(c.view!.players.every((p: Msg) => p.character), 'all characters revealed at the end');
   }
   assert.ok(cs[0].view!.publicLog.length > 3, 'the village log recorded the game');
+  // The replay: never sent while the game ran, complete once it ended, and the same for everybody.
+  for (const c of cs) {
+    for (const m of c.msgs.filter((x) => x.t === 'view')) {
+      if (m.view.phase !== 'ended') assert.equal(m.view.replay, null, `${c.name} was sent the replay before the end`);
+    }
+    assert.ok(Array.isArray(c.view!.replay) && c.view!.replay.length > 10, 'the replay arrives with the end');
+    assert.equal(c.view!.replay[0].type, 'roles');
+    assert.equal(c.view!.replay.at(-1).type, 'win');
+    assert.deepEqual(c.view!.replay, cs[0].view!.replay);
+  }
   assert.ok(cs.every((c) => c.errors().every((e) => !/Internal error/.test(e))), 'no internal error at any point');
   cs.forEach((c) => c.close());
 });

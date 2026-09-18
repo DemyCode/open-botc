@@ -3,7 +3,8 @@ import {
   chefInfo, demonInfo, empathInfo, fortuneTellerInfo, investigativeInfo,
   minionInfo, ravenkeeperInfo, spyInfo, undertakerInfo,
 } from './info.js';
-import { abilityWorks } from './registration.js';
+import { record } from './history.js';
+import { abilityLostReason, abilityWorks } from './registration.js';
 import type { CharacterId, GameState, Msg, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
@@ -45,6 +46,7 @@ export const DECOY_INFO = 'decoyInfo';
  * tick) are no-ops so the first true result always stands. */
 export function setWinner(state: GameState, alignment: 'good' | 'evil', message: Msg): void {
   if (state.winner) return;
+  record(state, 'win', { winner: alignment, message });
   state.winner = alignment;
   state.phase = 'ended';
   state.publicLog.push(message);
@@ -83,6 +85,7 @@ export function promoteScarletWomanIfEligible(state: GameState, deadPlayer: Play
   if (sw && aliveWhenDemonDied >= 5 && abilityWorks(state, sw)) {
     sw.character = 'imp';
     sw.perceived = 'imp';
+    record(state, 'promotion', { player: sw.id, reason: 'scarletWoman' });
     appendLog(state, sw.id, msg('scarletWomanPromoted'));
     appendLog(state, sw.id, demonInfo(state, sw));
     return true;
@@ -181,6 +184,7 @@ function startRound(state: GameState, charId: CharacterId | 'minion-info', actor
       const text = computeInfoText(state, p, charId, slot);
       appendLog(state, p.id, text);
       bodyByPlayer[p.id] = text;
+      record(state, 'info', { actor: p.id, character: p.perceived, step: charId, msg: text, lost: abilityLostReason(state, p) });
     }
   } else {
     const cfg = choosePromptFor(charId);
@@ -212,6 +216,7 @@ function startRound(state: GameState, charId: CharacterId | 'minion-info', actor
 export function beginNight(state: GameState): void {
   state.phase = 'night';
   state.night += 1;
+  record(state, 'nightStart');
   state.deathsTonight = [];
   state.monkProtectedId = null;
   state.nightSlotIndex = -1;
@@ -261,6 +266,7 @@ function finishNight(state: GameState): void {
   state.usedNomineeIds = [];
   state.currentNomination = null;
   state.endDayRequestedBy = [];
+  record(state, 'dawn', { deaths: [...state.deathsTonight] });
   for (const id of state.deathsTonight) {
     const p = state.players.find((pl) => pl.id === id);
     if (p) state.publicLog.push(msg('foundDead', { name: p.name }));
@@ -276,20 +282,39 @@ function isProtected(state: GameState, target: PlayerState): boolean {
   return false;
 }
 
-function killPlayer(state: GameState, target: PlayerState): void {
+/** Records a death (and, if it was the Poisoner, the end of their poison) in the replay. */
+export function recordDeath(state: GameState, p: PlayerState, cause: 'demon' | 'execution' | 'virgin' | 'slayer' | 'mayorBounce' | 'starPass'): void {
+  record(state, 'death', { player: p.id, cause });
+  if (p.character === 'poisoner' && state.poisonedId) record(state, 'poisonEnded', { poisoner: p.id, target: state.poisonedId });
+}
+
+function killPlayer(state: GameState, target: PlayerState, cause: 'demon' | 'mayorBounce' | 'starPass' = 'demon'): void {
   target.alive = false;
   target.diedTonight = true;
   state.deathsTonight.push(target.id);
+  recordDeath(state, target, cause);
 }
 
 function applyImpKill(state: GameState, imp: PlayerState, targetId: string): void {
   const target = state.players.find((p) => p.id === targetId);
-  if (!target || !target.alive) return;
-  if (!abilityWorks(state, imp)) return; // a poisoned Imp's kill (or star-pass) simply doesn't happen
+  if (!target) return;
+  if (!target.alive) {
+    record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'alreadyDead' });
+    return;
+  }
+  if (!abilityWorks(state, imp)) {
+    // a poisoned Imp's kill (or star-pass) simply doesn't happen
+    record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'ineffective', lost: abilityLostReason(state, imp) });
+    return;
+  }
 
   if (targetId === imp.id) {
-    if (isProtected(state, target)) return;
-    killPlayer(state, target);
+    if (isProtected(state, target)) {
+      record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'blocked', by: blockedBy(state, target) });
+      return;
+    }
+    record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'starPass' });
+    killPlayer(state, target, 'starPass');
     // The Scarlet Woman's passive promotion takes priority over the star-pass — they don't both
     // fire. Only when she isn't in play, isn't eligible, or her ability doesn't work does the
     // star-pass fall back to promoting a random other Minion so the game still has a Demon.
@@ -299,6 +324,7 @@ function applyImpKill(state: GameState, imp: PlayerState, targetId: string): voi
         const promoted = otherMinions[Math.floor(Math.random() * otherMinions.length)];
         promoted.character = 'imp';
         promoted.perceived = 'imp';
+        record(state, 'promotion', { player: promoted.id, reason: 'starPass' });
         appendLog(state, promoted.id, msg('becameImp'));
         appendLog(state, promoted.id, demonInfo(state, promoted));
       }
@@ -309,19 +335,31 @@ function applyImpKill(state: GameState, imp: PlayerState, targetId: string): voi
     return;
   }
 
-  if (isProtected(state, target)) return;
+  if (isProtected(state, target)) {
+    record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'blocked', by: blockedBy(state, target) });
+    return;
+  }
 
   if (target.character === 'mayor' && abilityWorks(state, target)) {
     const alternatives = state.players.filter((p) => p.alive && p.id !== target.id && p.id !== imp.id && !isProtected(state, p));
     const alt = alternatives.length ? alternatives[Math.floor(Math.random() * alternatives.length)] : null;
-    killPlayer(state, alt ?? target);
+    record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'mayorBounce', victim: (alt ?? target).id });
+    killPlayer(state, alt ?? target, alt ? 'mayorBounce' : 'demon');
     evaluateWin(state);
     return;
   }
 
+  record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'killed' });
   killPlayer(state, target);
   evaluateWin(state);
 }
+
+/** What stopped the Demon: the Soldier's own safety, or the Monk's protection. */
+function blockedBy(state: GameState, target: PlayerState): 'soldier' | 'monk' {
+  return target.character === 'soldier' && abilityWorks(state, target) ? 'soldier' : 'monk';
+}
+
+const CHOICE_ABILITIES: CharacterId[] = ['poisoner', 'monk', 'butler', 'fortuneteller', 'ravenkeeper'];
 
 /** Applies a choose-shape ability's effect and, for abilities that produce information from the
  * choice (Fortune Teller, Ravenkeeper), records the result so it can be shown to the player
@@ -329,6 +367,10 @@ function applyImpKill(state: GameState, imp: PlayerState, targetId: string): voi
 function applyRealChoice(state: GameState, charId: CharacterId | 'minion-info', playerId: string, targets: string[]): void {
   const self = findPlayer(state, playerId);
   const slot = `${charId}-n${state.night}`;
+  const lost = abilityLostReason(state, self);
+  // A choice is only a "choice" when the player really picked someone (an info step's "Got it"
+  // is not one). The Imp's pick is told as the attack itself, with its outcome.
+  if (CHOICE_ABILITIES.includes(charId as CharacterId)) record(state, 'choice', { actor: playerId, character: self.perceived, ability: charId, targets, lost });
   switch (charId) {
     case 'poisoner':
       if (abilityWorks(state, self)) state.poisonedId = targets[0] ?? null;
@@ -343,12 +385,14 @@ function applyRealChoice(state: GameState, charId: CharacterId | 'minion-info', 
       const text = fortuneTellerInfo(state, self, targets, slot);
       appendLog(state, playerId, text);
       self.nightResult = text;
+      record(state, 'info', { actor: playerId, character: self.perceived, step: charId, msg: text, lost });
       break;
     }
     case 'ravenkeeper': {
       const text = ravenkeeperInfo(state, self, targets[0], slot);
       appendLog(state, playerId, text);
       self.nightResult = text;
+      record(state, 'info', { actor: playerId, character: self.perceived, step: charId, msg: text, lost });
       break;
     }
     case 'imp':

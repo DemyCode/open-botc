@@ -149,6 +149,18 @@ export interface GameState {
   seatingConfirmed: boolean;
   /** Living players who have agreed to end the day early; the day ends once this covers everyone alive. */
   endDayRequestedBy: string[];
+  /** Everything that happened, in order — the end-of-game replay. Secret until the game ends. */
+  history: HistoryEvent[];
+}
+
+/** One line of the replay. Players and characters are ids; the app words it in either language. */
+export interface HistoryEvent {
+  seq: number;
+  phase: 'setup' | 'night' | 'day';
+  night: number;
+  day: number;
+  type: string;
+  vars: Record<string, unknown>;
 }
 
 export class GameError extends Error {}

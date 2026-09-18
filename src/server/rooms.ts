@@ -17,7 +17,7 @@ const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
  * (or worse, a crash later mid-game when some code path first touches the missing field), we
  * just discard everything from a mismatched version and start fresh.
  */
-const SCHEMA_VERSION = 2; // 2: night steps wake everyone (PendingRealTurn gained participantIds/decoys/openedAt)
+const SCHEMA_VERSION = 3; // 3: GameState gained `history` (the replay); 2: night steps wake everyone
 
 interface PersistedFile {
   version: number;

@@ -1,6 +1,7 @@
 import { alignmentOfCharacter } from './characters.js';
-import { beginNight, evaluateWin, promoteScarletWomanIfEligible, setWinner, tick as nightTick } from './night.js';
-import { abilityWorks, registersAs } from './registration.js';
+import { record } from './history.js';
+import { beginNight, evaluateWin, promoteScarletWomanIfEligible, recordDeath, setWinner, tick as nightTick } from './night.js';
+import { abilityLostReason, abilityWorks, registersAs } from './registration.js';
 import { randomId } from './rng.js';
 import { dealCharacters } from './setup.js';
 import type { GameState, Msg, Nomination, PlayerState } from './types.js';
@@ -30,7 +31,7 @@ export function createGame(code: string): GameState {
     deathsTonight: [], nightSlotIndex: -1, pendingRealTurn: null,
     publicLog: [], currentNomination: null, onBlockId: null, highestYesToday: 0,
     usedNominatorIds: [], usedNomineeIds: [], winner: null,
-    lastExecutedId: null, seatingConfirmed: false, endDayRequestedBy: [],
+    lastExecutedId: null, seatingConfirmed: false, endDayRequestedBy: [], history: [],
   };
 }
 
@@ -147,17 +148,24 @@ export function startGame(state: GameState): void {
     p.isRedHerring = deal.redHerringId === p.id;
   }
   state.bluffs = deal.bluffs;
+  record(state, 'roles', {
+    players: state.players.map((p) => ({ id: p.id, character: p.character, perceived: p.perceived })),
+    redHerring: deal.redHerringId,
+    bluffs: deal.bluffs,
+  });
   beginNight(state);
 }
 
-function executePlayer(state: GameState, targetId: string): void {
+function executePlayer(state: GameState, targetId: string, cause: 'execution' | 'virgin' = 'execution'): void {
   const p = findPlayer(state, targetId);
   state.lastExecutedId = targetId;
   state.publicLog.push(msg('wasExecuted', { name: p.name }));
+  record(state, 'execution', { player: p.id, wasDead: !p.alive, cause });
   // Executing a dead player still counts as today's one execution, but "a dead player cannot
   // die again": nothing that triggers on a death (Saint, Scarlet Woman) happens a second time.
   if (!p.alive) return;
   p.alive = false;
+  recordDeath(state, p, cause);
   if (p.character === 'saint' && abilityWorks(state, p)) {
     setWinner(state, 'evil', msg('saintWins', { name: p.name }));
     return;
@@ -184,8 +192,13 @@ export function useSlayer(state: GameState, slayerId: string, targetId: string):
   const isRealSlayer = self.character === 'slayer';
   const ctx = { asker: slayerId, slot: `slayer-d${state.day}` };
   const hit = isRealSlayer && target.alive && abilityWorks(state, self) && registersAs(state, target, 'demon', ctx);
+  record(state, 'slayer', {
+    shooter: self.id, target: target.id, real: isRealSlayer, hit, targetDead: !target.alive,
+    lost: isRealSlayer ? abilityLostReason(state, self) : null,
+  });
   if (hit) {
     target.alive = false;
+    recordDeath(state, target, 'slayer');
     state.publicLog.push(msg('slayerHit', { slayer: self.name, target: target.name }));
     promoteScarletWomanIfEligible(state, target);
     evaluateWin(state);
@@ -207,15 +220,19 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
   state.usedNominatorIds.push(nominatorId);
   state.usedNomineeIds.push(nomineeId);
   state.endDayRequestedBy = []; // a fresh nomination is new information — prior agreement to end the day is stale
+  record(state, 'nominate', { nominator: nominatorId, nominee: nomineeId });
 
   if (nominee.character === 'virgin' && nominee.alive && !nominee.virginUsed) {
     nominee.virginUsed = true;
     const ctx = { asker: nominatorId, slot: `virgin-d${state.day}` };
-    if (abilityWorks(state, nominee) && registersAs(state, nominator, 'townsfolk', ctx)) {
+    const lost = abilityLostReason(state, nominee);
+    const townsfolk = lost === null && registersAs(state, nominator, 'townsfolk', ctx);
+    record(state, 'virgin', { virgin: nomineeId, nominator: nominatorId, executed: townsfolk, reason: townsfolk ? null : (lost ?? 'notTownsfolk') });
+    if (townsfolk) {
       state.publicLog.push(msg('virginExecutesNominator', { name: nominator.name }));
       // That's today's one execution: the day ends right here, so nobody on the block is also
       // executed, and nothing (Mayor, Undertaker) can mistake it for a day without an execution.
-      executePlayer(state, nominatorId);
+      executePlayer(state, nominatorId, 'virgin');
       if (!state.winner) beginNight(state);
       return;
     }
@@ -338,14 +355,17 @@ export function castVote(state: GameState, voterId: string, yes: boolean): void 
   advanceVoter(state, nom);
 }
 
-function computeYesCount(state: GameState, nom: Nomination): number {
+function computeYesCount(state: GameState, nom: Nomination, dropped: string[] = []): number {
   let count = 0;
   for (const p of state.players) {
     let vote = nom.votes[p.id] ?? false;
     // A dead Butler has no ability, so their ghost vote is unrestricted (unlike a living one).
     if (vote && p.alive && p.character === 'butler' && abilityWorks(state, p)) {
       const masterVote = state.butlerMasterId ? (nom.votes[state.butlerMasterId] ?? false) : false;
-      if (!masterVote) vote = false;
+      if (!masterVote) {
+        vote = false;
+        dropped.push(p.id);
+      }
     }
     if (vote) count++;
   }
@@ -358,11 +378,21 @@ function finishVoting(state: GameState, nom: Nomination): void {
   // count too) — e.g. 3 of 6 is enough — and more votes than anyone else nominated today.
   const aliveCount = state.players.filter((p) => p.alive).length;
   const needed = Math.ceil(aliveCount / 2);
-  const yesCount = computeYesCount(state, nom);
+  const dropped: string[] = [];
+  const yesCount = computeYesCount(state, nom, dropped);
   nom.yesCount = yesCount;
   nom.state = 'closed';
   nom.currentVoterId = null;
   nom.voterDeadline = null;
+  const outcome = yesCount >= needed && yesCount > state.highestYesToday ? 'block'
+    : yesCount > 0 && yesCount === state.highestYesToday ? 'tie' : 'short';
+  record(state, 'vote', {
+    nominee: nominee.id,
+    nominator: nom.nominatorId,
+    // Everyone who was asked, in the order they voted.
+    votes: nom.voteOrder.filter((id) => id in nom.votes).map((id) => ({ id, yes: nom.votes[id] === true })),
+    dropped, yes: yesCount, needed, alive: aliveCount, outcome,
+  });
 
   if (yesCount >= needed && yesCount > state.highestYesToday) {
     state.onBlockId = nominee.id;
@@ -438,6 +468,7 @@ function endDay(state: GameState): void {
   } else {
     state.lastExecutedId = null;
     state.publicLog.push(msg('noExecutionToday'));
+    record(state, 'dayEnd', { executed: null });
   }
   if (state.winner) return;
 

@@ -14,6 +14,13 @@ function poisonerAlive(state: GameState): boolean {
   return state.players.some((q) => q.alive && q.character === 'poisoner');
 }
 
+/** Why a player's ability is not working right now, if it isn't (used to explain false information in the replay). */
+export function abilityLostReason(state: GameState, p: PlayerState): 'drunk' | 'poisoned' | null {
+  if (p.character === 'drunk') return 'drunk';
+  if (state.poisonedId === p.id && poisonerAlive(state)) return 'poisoned';
+  return null;
+}
+
 export type RegisterKind = 'demon' | 'minion' | 'outsider' | 'townsfolk' | 'evil' | 'good';
 
 /**

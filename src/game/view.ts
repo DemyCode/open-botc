@@ -1,6 +1,6 @@
 import { CHARACTERS } from './characters.js';
 import { MIN_ANSWER_MS } from './night.js';
-import type { GameState, Msg, Nomination, NominationState, Phase, PlayerState } from './types.js';
+import type { GameState, HistoryEvent, Msg, Nomination, NominationState, Phase, PlayerState } from './types.js';
 
 function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
   return vars ? { key, vars } : { key };
@@ -103,6 +103,8 @@ export interface GameView {
   nomination: NominationView | null;
   onBlockId: string | null;
   winner: string | null;
+  /** Everything that happened, in order — only once the game is over (it holds the secrets). */
+  replay: HistoryEvent[] | null;
 }
 
 /**
@@ -248,5 +250,6 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     nomination,
     onBlockId: state.onBlockId,
     winner: state.winner,
+    replay: state.phase === 'ended' ? state.history : null,
   };
 }

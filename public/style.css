@@ -494,3 +494,16 @@ button.block { width: 100%; }
 .term-def { line-height: 1.55; font-size: 1rem; }
 
 .seated-note { font-size: 0.8rem; margin-top: 8px; }
+
+/* The end-of-game replay. */
+.replay h3 { margin: 18px 0 6px; font-size: 1rem; }
+.replay-group.night h3 { color: #9db4ff; }
+.replay-group.day h3 { color: #ffd479; }
+.replay-line { display: flex; gap: 8px; padding: 5px 0; line-height: 1.4; font-size: 0.92rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.replay-line.sub { padding-left: 28px; font-size: 0.85rem; opacity: 0.85; border-bottom: none; }
+.replay-icon { width: 20px; flex: none; text-align: center; }
+.replay-line.death .replay-text { color: #ff8a8a; }
+.replay-line.win .replay-text { font-weight: 700; }
+.rname { font-weight: 600; }
+.rname.good { color: #7ee2a8; }
+.rname.evil { color: #ff8a8a; }

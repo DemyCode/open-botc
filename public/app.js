@@ -319,6 +319,11 @@ const STRINGS = {
     nominateSelfConfirm: 'Nominate yourself for execution?',
     nominateDeadConfirm: (name) => `${name} is already dead. Nominate them anyway? (It still uses up your nomination for today.)`,
     goodWins: 'Good Wins!',
+    replayTitle: 'What really happened',
+    replayIntro: 'Everything that happened this game, in order — including what was secret.',
+    replaySetup: 'Setup',
+    replayNightN: (n) => `Night ${n}`,
+    replayDayN: (n) => `Day ${n}`,
     evilWins: 'Evil Wins!',
     langLabel: 'FR',
     readyForAccusation: 'Get ready to hear the accusation.',
@@ -421,6 +426,11 @@ const STRINGS = {
     nominateSelfConfirm: 'Vous nominer vous-même pour être exécuté ?',
     nominateDeadConfirm: (name) => `${name} est déjà mort(e). Le nominer quand même ? (Cela utilise votre nomination du jour.)`,
     goodWins: 'Le Bien gagne !',
+    replayTitle: 'Ce qui s’est vraiment passé',
+    replayIntro: 'Tout ce qui s’est passé dans cette partie, dans l’ordre — y compris ce qui était secret.',
+    replaySetup: 'Mise en place',
+    replayNightN: (n) => `Nuit ${n}`,
+    replayDayN: (n) => `Jour ${n}`,
     evilWins: 'Le Mal gagne !',
     langLabel: 'EN',
     readyForAccusation: "Préparez-vous à entendre l'accusation.",
@@ -1455,6 +1465,256 @@ function renderDay(v) {
   return renderScreen(children);
 }
 
+// ---------------------------------------------------------------------------
+// The replay: once the game is over, everything that really happened, in order — including all
+// the secrets (who did what at night, what was poisoned, what information was false and why).
+// The server sends a list of events (players and characters as ids); each one is worded here,
+// in either language, by REPLAY[lang][type]. A template returns one or more lines; player
+// tokens (c.P) are turned into coloured "Name (Role)" spans when drawn.
+// ---------------------------------------------------------------------------
+
+const REPLAY = {
+  en: {
+    roles: (e, c) => [
+      'Roles dealt:',
+      ...e.players.map((p) => c.P(p.id) + (p.perceived !== p.character ? ' — believes they are the ' + c.R(p.perceived) : '')),
+      e.redHerring ? "The Fortune Teller's red herring (reads as the Demon): " + c.P(e.redHerring) : null,
+      "The Demon's bluffs (good characters not in play): " + e.bluffs.map((b) => c.R(b)).join(', '),
+    ],
+    info: (e, c) =>
+      c.P(e.actor) + ' learns, as the ' + c.R(e.character) + ': ' + c.M(e.msg) + (e.lost ? ' — ⚠ unreliable, they were ' + c.lost(e.lost) : ''),
+    choice: (e, c) => {
+      const [a, b] = e.targets;
+      const lostNote = e.lost ? ' — ⚠ no effect, they were ' + c.lost(e.lost) : '';
+      switch (e.ability) {
+        case 'poisoner': return c.P(e.actor) + ' poisons ' + c.P(a) + lostNote;
+        case 'monk': return c.P(e.actor) + ' protects ' + c.P(a) + lostNote;
+        case 'butler': return c.P(e.actor) + ' chooses ' + c.P(a) + ' as their master' + lostNote;
+        case 'fortuneteller': return c.P(e.actor) + ' checks ' + c.P(a) + ' and ' + c.P(b);
+        case 'ravenkeeper': return c.P(e.actor) + ' looks at ' + c.P(a);
+        default: return c.P(e.actor) + ' chooses ' + e.targets.map((t) => c.P(t)).join(', ');
+      }
+    },
+    attack: (e, c) => {
+      const base = c.P(e.actor) + ' (the Demon) attacks ' + c.P(e.target);
+      switch (e.outcome) {
+        case 'killed': return base;
+        case 'blocked': return base + (e.by === 'soldier' ? ' — the Soldier is safe from the Demon: nothing happens' : ' — protected by the Monk: nothing happens');
+        case 'alreadyDead': return base + ' — already dead: nothing happens';
+        case 'ineffective': return base + ' — nothing happens: the Demon was ' + c.lost(e.lost);
+        case 'mayorBounce':
+          return base + (e.victim === e.target ? " — the Mayor's ability, with nobody to bounce to: the Mayor dies" : " — the Mayor's ability: " + c.P(e.victim) + ' dies instead');
+        case 'starPass': return base + ' — the Demon kills themselves (star-pass)';
+        default: return base;
+      }
+    },
+    death: (e, c) =>
+      c.P(e.player) + ' dies — ' + ({
+        demon: 'killed by the Demon',
+        execution: 'executed',
+        virgin: "executed by the Virgin's power",
+        slayer: 'shot by the Slayer',
+        mayorBounce: "died in the Mayor's place",
+        starPass: 'killed themselves (star-pass)',
+      }[e.cause] || e.cause),
+    poisonEnded: (e, c) => c.P(e.poisoner) + ' is dead: the poison on ' + c.P(e.target) + ' ends',
+    promotion: (e, c) =>
+      e.reason === 'scarletWoman' ? c.P(e.player) + ' becomes the new Demon (the Scarlet Woman takes over)' : c.P(e.player) + ' becomes the new Imp (star-pass)',
+    dawn: (e, c) => (e.deaths.length ? 'Dawn breaks. Found dead: ' + e.deaths.map((d) => c.P(d)).join(', ') : 'Dawn breaks. Nobody died in the night.'),
+    nominate: (e, c) => c.P(e.nominator) + ' nominates ' + c.P(e.nominee),
+    virgin: (e, c) =>
+      e.executed
+        ? c.P(e.virgin) + ' is the Virgin — ' + c.P(e.nominator) + ', a Townsfolk, is executed at once'
+        : e.reason === 'poisoned'
+          ? c.P(e.virgin) + ' is the Virgin but was poisoned: nothing happens'
+          : c.P(e.virgin) + ' is the Virgin, but ' + c.P(e.nominator) + ' is not a Townsfolk: nothing happens',
+    vote: (e, c) => {
+      const yes = e.votes.filter((v) => v.yes).map((v) => c.P(v.id));
+      const no = e.votes.filter((v) => !v.yes).map((v) => c.P(v.id));
+      return [
+        'Vote on ' + c.P(e.nominee) + ': ' + e.yes + ' yes (' + e.needed + ' needed, ' + e.alive + ' alive) — ' +
+          ({ block: 'now on the block', tie: 'a tie: nobody is on the block', short: 'not enough votes' }[e.outcome] || e.outcome),
+        yes.length ? 'Yes: ' + yes.join(', ') : 'Nobody voted yes',
+        no.length ? 'No: ' + no.join(', ') : null,
+        ...e.dropped.map((id) => "The Butler's vote (" + c.P(id) + ') did not count: their master did not vote yes'),
+      ];
+    },
+    slayer: (e, c) => {
+      const base = c.P(e.shooter) + ' shoots ' + c.P(e.target);
+      if (e.hit) return base + ' — the Demon dies';
+      if (!e.real) return base + ' — ' + c.P(e.shooter) + ' is not the Slayer (a bluff): nothing happens';
+      if (e.lost) return base + ' — the Slayer was ' + c.lost(e.lost) + ': nothing happens';
+      if (e.targetDead) return base + ' — already dead: nothing happens';
+      return base + ' — ' + c.P(e.target) + ' is not the Demon: nothing happens';
+    },
+    execution: (e, c) =>
+      e.wasDead ? c.P(e.player) + " (already dead) is executed anyway — it counts as the day's execution" : c.P(e.player) + ' is executed',
+    dayEnd: () => 'The day ends: nobody is executed.',
+    win: (e, c) => (e.winner === 'good' ? 'Good wins: ' : 'Evil wins: ') + c.M(e.message),
+  },
+  fr: {
+    roles: (e, c) => [
+      'Rôles distribués :',
+      ...e.players.map((p) => c.P(p.id) + (p.perceived !== p.character ? ' — croit être ' + c.R(p.perceived) : '')),
+      e.redHerring ? 'Le faux positif de la Voyante (apparaît comme le Démon) : ' + c.P(e.redHerring) : null,
+      'Les bluffs du Démon (personnages bons absents de la partie) : ' + e.bluffs.map((b) => c.R(b)).join(', '),
+    ],
+    info: (e, c) =>
+      c.P(e.actor) + ' apprend, en tant que ' + c.R(e.character) + ' : ' + c.M(e.msg) + (e.lost ? ' — ⚠ peu fiable, il/elle était ' + c.lost(e.lost) : ''),
+    choice: (e, c) => {
+      const [a, b] = e.targets;
+      const lostNote = e.lost ? ' — ⚠ sans effet, il/elle était ' + c.lost(e.lost) : '';
+      switch (e.ability) {
+        case 'poisoner': return c.P(e.actor) + ' empoisonne ' + c.P(a) + lostNote;
+        case 'monk': return c.P(e.actor) + ' protège ' + c.P(a) + lostNote;
+        case 'butler': return c.P(e.actor) + ' choisit ' + c.P(a) + ' comme maître' + lostNote;
+        case 'fortuneteller': return c.P(e.actor) + ' vérifie ' + c.P(a) + ' et ' + c.P(b);
+        case 'ravenkeeper': return c.P(e.actor) + ' observe ' + c.P(a);
+        default: return c.P(e.actor) + ' choisit ' + e.targets.map((t) => c.P(t)).join(', ');
+      }
+    },
+    attack: (e, c) => {
+      const base = c.P(e.actor) + ' (le Démon) attaque ' + c.P(e.target);
+      switch (e.outcome) {
+        case 'killed': return base;
+        case 'blocked': return base + (e.by === 'soldier' ? ' — le Soldat est protégé du Démon : rien ne se passe' : ' — protégé par le Moine : rien ne se passe');
+        case 'alreadyDead': return base + ' — déjà mort(e) : rien ne se passe';
+        case 'ineffective': return base + ' — rien ne se passe : le Démon était ' + c.lost(e.lost);
+        case 'mayorBounce':
+          return base + (e.victim === e.target ? ' — la capacité du Maire, sans personne vers qui la dévier : le Maire meurt' : ' — la capacité du Maire : ' + c.P(e.victim) + ' meurt à sa place');
+        case 'starPass': return base + ' — le Démon se tue lui-même (passage d’étoile)';
+        default: return base;
+      }
+    },
+    death: (e, c) =>
+      c.P(e.player) + ' meurt — ' + ({
+        demon: 'tué(e) par le Démon',
+        execution: 'exécuté(e)',
+        virgin: 'exécuté(e) par le pouvoir de l’Immaculée',
+        slayer: 'abattu(e) par la Pourfendeuse',
+        mayorBounce: 'mort(e) à la place du Maire',
+        starPass: 's’est tué(e) (passage d’étoile)',
+      }[e.cause] || e.cause),
+    poisonEnded: (e, c) => c.P(e.poisoner) + ' est mort(e) : le poison sur ' + c.P(e.target) + ' prend fin',
+    promotion: (e, c) =>
+      e.reason === 'scarletWoman' ? c.P(e.player) + ' devient le nouveau Démon (la Femme écarlate prend la relève)' : c.P(e.player) + ' devient le nouveau Diablotin (passage d’étoile)',
+    dawn: (e, c) => (e.deaths.length ? 'L’aube se lève. Retrouvé(s) mort(s) : ' + e.deaths.map((d) => c.P(d)).join(', ') : 'L’aube se lève. Personne n’est mort cette nuit.'),
+    nominate: (e, c) => c.P(e.nominator) + ' nomine ' + c.P(e.nominee),
+    virgin: (e, c) =>
+      e.executed
+        ? c.P(e.virgin) + ' est l’Immaculée — ' + c.P(e.nominator) + ', un Villageois, est exécuté(e) aussitôt'
+        : e.reason === 'poisoned'
+          ? c.P(e.virgin) + ' est l’Immaculée mais était empoisonné(e) : rien ne se passe'
+          : c.P(e.virgin) + ' est l’Immaculée, mais ' + c.P(e.nominator) + ' n’est pas un Villageois : rien ne se passe',
+    vote: (e, c) => {
+      const yes = e.votes.filter((v) => v.yes).map((v) => c.P(v.id));
+      const no = e.votes.filter((v) => !v.yes).map((v) => c.P(v.id));
+      return [
+        'Vote sur ' + c.P(e.nominee) + ' : ' + e.yes + ' oui (' + e.needed + ' nécessaires, ' + e.alive + ' en vie) — ' +
+          ({ block: 'sur le billot', tie: 'égalité : personne sur le billot', short: 'pas assez de votes' }[e.outcome] || e.outcome),
+        yes.length ? 'Oui : ' + yes.join(', ') : 'Personne n’a voté oui',
+        no.length ? 'Non : ' + no.join(', ') : null,
+        ...e.dropped.map((id) => 'Le vote du Majordome (' + c.P(id) + ') n’a pas compté : son maître n’a pas voté oui'),
+      ];
+    },
+    slayer: (e, c) => {
+      const base = c.P(e.shooter) + ' tire sur ' + c.P(e.target);
+      if (e.hit) return base + ' — le Démon meurt';
+      if (!e.real) return base + ' — ' + c.P(e.shooter) + ' n’est pas la Pourfendeuse (un bluff) : rien ne se passe';
+      if (e.lost) return base + ' — la Pourfendeuse était ' + c.lost(e.lost) + ' : rien ne se passe';
+      if (e.targetDead) return base + ' — déjà mort(e) : rien ne se passe';
+      return base + ' — ' + c.P(e.target) + ' n’est pas le Démon : rien ne se passe';
+    },
+    execution: (e, c) =>
+      e.wasDead ? c.P(e.player) + ' (déjà mort(e)) est quand même exécuté(e) — cela compte comme l’exécution du jour' : c.P(e.player) + ' est exécuté(e)',
+    dayEnd: () => 'La journée se termine : personne n’est exécuté.',
+    win: (e, c) => (e.winner === 'good' ? 'Le Bien gagne : ' : 'Le Mal gagne : ') + c.M(e.message),
+  },
+};
+
+const REPLAY_ICONS = {
+  roles: '🎭', info: '🔎', choice: '👆', attack: '🔪', death: '💀', poisonEnded: '🧪', promotion: '😈', dawn: '🌅',
+  nominate: '📣', virgin: '🙏', vote: '✋', slayer: '🏹', execution: '🔨', dayEnd: '🌇', win: '🏆',
+};
+const LOST_LABELS = { en: { poisoned: 'poisoned', drunk: 'drunk' }, fr: { poisoned: 'empoisonné(e)', drunk: 'ivre' } };
+
+/** The lines of one event, as plain text with player tokens (a player id between two marker characters). */
+function replayLines(e, c) {
+  const template = (REPLAY[LANG] && REPLAY[LANG][e.type]) || REPLAY.en[e.type];
+  if (!template) return [];
+  const out = template(e.vars || {}, c);
+  return (Array.isArray(out) ? out : [out]).filter((line) => line != null && line !== '');
+}
+
+const TOKEN_OPEN = String.fromCharCode(1);
+const TOKEN_CLOSE = String.fromCharCode(2);
+
+/** What the wording functions need: names, characters (as dealt), and message texts. */
+function replayContext(v) {
+  const dealt = {};
+  const rolesEvent = (v.replay || []).find((e) => e.type === 'roles');
+  if (rolesEvent) for (const p of rolesEvent.vars.players) dealt[p.id] = p.character;
+  for (const p of v.players) if (!dealt[p.id]) dealt[p.id] = p.character;
+  return {
+    dealt,
+    P: (id) => TOKEN_OPEN + id + TOKEN_CLOSE,
+    R: (charId) => roleNameFor(charId),
+    M: (m) => tMsg(m),
+    lost: (why) => (LOST_LABELS[LANG] || LOST_LABELS.en)[why] || why,
+  };
+}
+
+/** Turns text with player tokens into a span: each token becomes a coloured "Name (Role)". */
+function richReplayText(text, v, ctx) {
+  const span = el('span', {});
+  const pattern = new RegExp(TOKEN_OPEN + '([^' + TOKEN_CLOSE + ']*)' + TOKEN_CLOSE, 'g');
+  let last = 0;
+  for (const m of text.matchAll(pattern)) {
+    if (m.index > last) span.append(text.slice(last, m.index));
+    const player = v.players.find((p) => p.id === m[1]);
+    const role = ctx.dealt[m[1]];
+    const team = role && charactersCache && charactersCache.find((c) => c.id === role)?.team;
+    const cls = team === 'minion' || team === 'demon' ? 'evil' : team ? 'good' : '';
+    span.appendChild(el('span', { class: 'rname ' + cls }, (player ? player.name : '?') + (role ? ' (' + roleNameFor(role) + ')' : '')));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) span.append(text.slice(last));
+  return span;
+}
+
+function renderReplay(v) {
+  if (!v.replay || !v.replay.length) return null;
+  const ctx = replayContext(v);
+  const groups = [];
+  let currentKey = null;
+  for (const e of v.replay) {
+    const key = e.phase + '-' + (e.phase === 'night' ? e.night : e.phase === 'day' ? e.day : 0);
+    if (key !== currentKey) {
+      currentKey = key;
+      groups.push({ phase: e.phase, title: e.phase === 'night' ? t('replayNightN', e.night) : e.phase === 'day' ? t('replayDayN', e.day) : t('replaySetup'), lines: [] });
+    }
+    const lines = replayLines(e, ctx);
+    lines.forEach((line, i) => groups[groups.length - 1].lines.push({ type: e.type, sub: i > 0, text: line }));
+  }
+  return el('div', { class: 'card replay' }, [
+    el('h2', {}, t('replayTitle')),
+    el('p', { class: 'muted' }, t('replayIntro')),
+    ...groups
+      .filter((g) => g.lines.length)
+      .map((g) =>
+        el('div', { class: 'replay-group ' + g.phase }, [
+          el('h3', {}, g.title),
+          ...g.lines.map((line) =>
+            el('div', { class: 'replay-line ' + line.type + (line.sub ? ' sub' : '') }, [
+              el('span', { class: 'replay-icon' }, line.sub ? '' : REPLAY_ICONS[line.type] || '•'),
+              el('span', { class: 'replay-text' }, richReplayText(line.text, v, ctx)),
+            ])
+          ),
+        ])
+      ),
+  ]);
+}
+
 function renderEnded(v) {
   const isGood = v.winner === 'good';
   const children = [
@@ -1477,6 +1737,7 @@ function renderEnded(v) {
     ),
   ];
 
+  children.push(renderReplay(v));
   children.push(renderLog(v));
   return renderScreen(children);
 }

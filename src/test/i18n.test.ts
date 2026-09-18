@@ -215,3 +215,63 @@ test('the role reference sheet lists every character exactly once', () => {
   assert.equal(new Set(names).size, names.length);
   assert.equal(names.length, 22);
 });
+
+// ---------------------------------------------------------------- the replay wording
+
+const REPLAY = literal('REPLAY', { roleNameFor });
+const recordedTypes = (): Set<string> => {
+  const out = new Set<string>();
+  for (const file of fs.readdirSync('src/game')) {
+    const src = fs.readFileSync(path.join('src/game', file), 'utf8');
+    for (const m of src.matchAll(/\brecord\(state, '([A-Za-z]+)'/g)) out.add(m[1]);
+  }
+  return out;
+};
+
+test('the replay is worded in both languages for exactly the same kinds of event', () => {
+  assert.deepEqual(keysOf(REPLAY.fr), keysOf(REPLAY.en));
+});
+
+test('every kind of event the engine records has wording (nightStart is only a heading)', () => {
+  const recorded = recordedTypes();
+  assert.ok(recorded.size >= 14, `found only ${recorded.size} event types — the scan is broken`);
+  const missing = [...recorded].filter((t) => t !== 'nightStart' && !(t in REPLAY.en));
+  assert.deepEqual(missing, []);
+  assert.deepEqual(keysOf(REPLAY.en).filter((t) => !recorded.has(t)), [], 'wording for an event that is never recorded');
+});
+
+test('every event of 130 whole games is worded, in both languages, with nothing left unfilled', () => {
+  const context = {
+    dealt: {}, P: (id: string) => `<${id}>`, R: (c: string) => roleNameFor(c), M: (m: Msg) => `[${m.key}]`, lost: (w: string) => w,
+  };
+  const problems: string[] = [];
+  let events = 0;
+  for (let n = 5; n <= 15; n++) {
+    for (let seed = 0; seed < 12; seed++) {
+      const s = playGame(seed, n);
+      for (const e of s.history) {
+        if (e.type === 'nightStart') continue;
+        events++;
+        for (const lang of LANGS) {
+          try {
+            const out = (REPLAY[lang][e.type] as (v: unknown, c: unknown) => unknown)(e.vars, context);
+            const lines = (Array.isArray(out) ? out : [out]).filter((l) => l != null && l !== '');
+            if (!lines.length) problems.push(`${lang} ${e.type}: no text`);
+            for (const l of lines) {
+              const why = looksBroken(String(l).replace(/null/g, ''));
+              if (why) problems.push(`${lang} ${e.type}: ${why}`);
+            }
+          } catch (err) {
+            problems.push(`${lang} ${e.type} threw ${(err as Error).message}`);
+          }
+        }
+      }
+    }
+  }
+  assert.ok(events > 2000, `only ${events} events checked`);
+  assert.deepEqual(problems.slice(0, 5), []);
+});
+
+test('the replay headings exist in both languages', () => {
+  for (const k of ['replayTitle', 'replayIntro', 'replaySetup', 'replayNightN', 'replayDayN']) for (const lang of LANGS) assert.ok(k in STRINGS[lang], `${lang}:${k}`);
+});
