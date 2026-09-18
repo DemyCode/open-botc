@@ -5,6 +5,8 @@ const state = {
   playerId: sessionStorage.getItem('botc.playerId'),
   view: null,
   selected: [],
+  decoy: null, // the decoy question on screen, if any — see syncDecoy
+  lastDecoyKey: null,
   dawnSeenForDay: null,
   duskSeenForNight: null,
   nightResultSeenForNight: null,
@@ -91,7 +93,11 @@ function turnKey(view) {
 function handleTurnChange(view) {
   const key = turnKey(view);
   if (key === lastTurnKey) return;
-  if (key && navigator.vibrate) navigator.vibrate([180, 80, 180]);
+  // No buzz for a turn that's queued behind a decoy question: it would tell the player (and anyone
+  // near enough to hear it) that a real turn is waiting, which is exactly what decoys hide. A
+  // player answering decoys is already looking at their phone anyway.
+  const queuedBehindDecoy = view.phase === 'night' && view.nightTurn && view.amIAlive && decoysEnabled();
+  if (key && !queuedBehindDecoy && navigator.vibrate) navigator.vibrate([180, 80, 180]);
   state.selected = [];
   lastTurnKey = key;
 }
@@ -171,12 +177,19 @@ const STRINGS = {
     gotIt: 'Got it',
     yourResult: 'Your Result',
     continueBtn: 'Continue',
-    nothingToDo: "You have nothing to do this moment — someone else's turn is happening.",
-    tapAnyway: "Tap the dot when it appears anyway, so everyone's phone looks the same and nobody can tell who's really doing something.",
     deadRest: 'You are dead and rest peacefully.',
-    practiceDotsHidden: 'Practice dots are hidden. Keep your eyes on your screen anyway.',
-    hidePracticeDots: 'Hide practice dots (testing)',
-    showPracticeDots: 'Show practice dots',
+    decoysHidden: 'Decoy questions are hidden. Keep your eyes on your screen anyway.',
+    hideDecoys: 'Hide decoy questions (testing)',
+    showDecoys: 'Show decoy questions',
+    decoyNote: "🎭 Decoy — this answer does nothing. Keep answering until your real turn shows up; it only comes once the question in front of you is answered, so rushing doesn't help.",
+    decoyTrust: 'Which player do you trust the most right now?',
+    decoySuspect: 'Which player seems the most suspicious to you?',
+    decoyQuiet: 'Which player has been the quietest so far?',
+    decoyNominate: 'If you had to nominate someone tomorrow, who would it be?',
+    decoyDemon: 'Who do you think is the Demon?',
+    decoyBelieve: 'Whose claim do you believe the most?',
+    decoySameTeam: 'Pick two players you think are on the same team.',
+    decoyOutsider: 'Who do you think might be an Outsider?',
     accuses: (a, b) => `${a} accuses ${b}`,
     makingCase: (name, s) => `${name} is making their case… (${s}s)`,
     doneMoveDefense: 'Done — move to defense',
@@ -265,12 +278,19 @@ const STRINGS = {
     gotIt: "J'ai compris",
     yourResult: 'Votre résultat',
     continueBtn: 'Continuer',
-    nothingToDo: "Vous n'avez rien à faire pour le moment — c'est le tour d'un autre joueur.",
-    tapAnyway: "Appuyez quand même sur le point quand il apparaît, pour que tous les téléphones se ressemblent et que personne ne puisse deviner qui agit vraiment.",
     deadRest: 'Vous êtes mort et reposez en paix.',
-    practiceDotsHidden: "Les points d'entraînement sont masqués. Gardez quand même les yeux sur votre écran.",
-    hidePracticeDots: "Masquer les points d'entraînement (test)",
-    showPracticeDots: "Afficher les points d'entraînement",
+    decoysHidden: 'Les questions leurres sont masquées. Gardez quand même les yeux sur votre écran.',
+    hideDecoys: 'Masquer les questions leurres (test)',
+    showDecoys: 'Afficher les questions leurres',
+    decoyNote: "🎭 Leurre — cette réponse ne fait rien. Continuez à répondre jusqu'à votre vrai tour ; il n'apparaît qu'une fois la question en cours répondue, donc se dépêcher ne sert à rien.",
+    decoyTrust: 'En quel joueur avez-vous le plus confiance en ce moment ?',
+    decoySuspect: 'Quel joueur vous semble le plus suspect ?',
+    decoyQuiet: "Quel joueur a été le plus silencieux jusqu'ici ?",
+    decoyNominate: "Si vous deviez nominer quelqu'un demain, qui serait-ce ?",
+    decoyDemon: 'Qui pensez-vous être le Démon ?',
+    decoyBelieve: 'Quel joueur vous semble le plus sincère sur son rôle ?',
+    decoySameTeam: 'Choisissez deux joueurs qui, selon vous, sont dans la même équipe.',
+    decoyOutsider: 'Qui pourrait être un Étranger selon vous ?',
     accuses: (a, b) => `${a} accuse ${b}`,
     makingCase: (name, s) => `${name} plaide sa cause… (${s}s)`,
     doneMoveDefense: 'Terminé — passer à la défense',
@@ -942,15 +962,15 @@ function renderLobby(v) {
   ]);
 }
 
-function toggleChoice(id, max) {
-  const i = state.selected.indexOf(id);
+function toggleChoice(selected, id, max) {
+  const i = selected.indexOf(id);
   if (i >= 0) {
-    state.selected.splice(i, 1);
+    selected.splice(i, 1);
     return;
   }
-  if (max <= 1) state.selected = [];
-  else if (state.selected.length >= max) state.selected.shift();
-  state.selected.push(id);
+  if (max <= 1) selected.length = 0;
+  else if (selected.length >= max) selected.shift();
+  selected.push(id);
 }
 
 function submitTurn(t) {
@@ -1054,7 +1074,7 @@ function renderNight(v) {
             {
               class: 'choice' + (state.selected.includes(c.id) ? ' selected' : '') + (c.alive ? '' : ' dead'),
               onclick: () => {
-                toggleChoice(c.id, turn.max);
+                toggleChoice(state.selected, c.id, turn.max);
                 render();
               },
             },
@@ -1078,78 +1098,112 @@ function renderNight(v) {
 
   // A nightResult, once acknowledged, is handled by renderNightResultScreen before render() ever
   // reaches here — it isn't checked again in this function, since it stays set (unseen or not)
-  // until the next night resets it.
+  // until the next night resets it. A living player only lands here with decoys switched off
+  // (otherwise render() shows renderDecoy instead).
   return renderScreen([
     roleBanner(v),
     banner,
     el('h1', { class: 'center pulse' }, t('night', v.night)),
     noTalkingBanner(),
-    v.amIAlive
-      ? dotsEnabled()
-        ? renderWaitingDots()
-        : el('p', { class: 'muted center' }, t('practiceDotsHidden'))
-      : el('p', { class: 'muted center' }, t('deadRest')),
-    v.amIAlive ? dotsToggle() : null,
+    el('p', { class: 'muted center' }, v.amIAlive ? t('decoysHidden') : t('deadRest')),
+    v.amIAlive ? decoysToggle() : null,
   ]);
 }
 
-// Purely cosmetic: gives someone who has already answered this round something to keep
-// tapping, so the moment they finish never visibly differs from someone still deliberating a
-// real choice — nobody can tell "done" from "still thinking" just by watching the table.
-// There is no penalty for missing a dot; this exists only to keep eyes on the phone.
-let waitingDotsTimer = null;
+// Decoy questions: while a living player has no real night turn, they're always answering a
+// throwaway question laid out exactly like a real one (a player grid + Confirm), so from across
+// the table everyone's phone looks busy the whole night. A real turn that arrives mid-decoy
+// waits until that decoy is answered — so racing through decoys gains nothing (you just get
+// another one), and nobody's screen ever visibly "switches" to a real turn. Answers are never
+// sent anywhere.
+const DECOY_QUESTIONS = [
+  { key: 'decoyTrust', min: 1, max: 1 },
+  { key: 'decoySuspect', min: 1, max: 1 },
+  { key: 'decoyQuiet', min: 1, max: 1 },
+  { key: 'decoyNominate', min: 1, max: 1 },
+  { key: 'decoyDemon', min: 1, max: 1 },
+  { key: 'decoyBelieve', min: 1, max: 1 },
+  { key: 'decoySameTeam', min: 2, max: 2 },
+  { key: 'decoyOutsider', min: 1, max: 1 },
+];
+let decoyCounter = 0;
 
-function stopWaitingDots() {
-  if (waitingDotsTimer) {
-    clearTimeout(waitingDotsTimer);
-    waitingDotsTimer = null;
+function decoysEnabled() {
+  return localStorage.getItem('botc.decoysDisabled') !== '1';
+}
+
+function newDecoy(previousKey) {
+  const pool = DECOY_QUESTIONS.filter((q) => q.key !== previousKey);
+  const q = pool[Math.floor(Math.random() * pool.length)];
+  return { ...q, n: ++decoyCounter, selected: [] };
+}
+
+// Called once per render, before anything reads state.decoy. A decoy is only ever dropped by
+// answering it (or by the night ending / dying / switching decoys off) — never by a real turn
+// arriving, which is what makes the real turn queue up behind it.
+function syncDecoy(v) {
+  if (!v || v.phase !== 'night' || !v.amIAlive || !decoysEnabled()) {
+    state.decoy = null;
+    return;
   }
+  if (!state.decoy && !v.nightTurn) state.decoy = newDecoy(state.lastDecoyKey);
 }
 
-function dotsEnabled() {
-  return localStorage.getItem('botc.dotsDisabled') !== '1';
+function submitDecoy() {
+  state.lastDecoyKey = state.decoy.key;
+  state.decoy = null;
+  render();
 }
 
-function dotsToggle() {
-  const enabled = dotsEnabled();
+function decoysToggle() {
+  const enabled = decoysEnabled();
   return el(
     'button',
     {
       class: 'secondary dots-toggle',
       onclick: () => {
-        localStorage.setItem('botc.dotsDisabled', enabled ? '1' : '0');
-        stopWaitingDots();
+        localStorage.setItem('botc.decoysDisabled', enabled ? '1' : '0');
         render();
       },
     },
-    enabled ? t('hidePracticeDots') : t('showPracticeDots')
+    enabled ? t('hideDecoys') : t('showDecoys')
   );
 }
 
-function renderWaitingDots() {
-  const box = el('div', { class: 'dot-box' });
-
-  function spawnDot() {
-    box.innerHTML = '';
-    const x = 12 + Math.random() * 76;
-    const y = 12 + Math.random() * 76;
-    const dot = el('button', {
-      class: 'tap-dot',
-      style: `left:${x}%; top:${y}%;`,
-      onclick: (e) => {
-        e.currentTarget.classList.add('tapped');
-        e.currentTarget.disabled = true;
-      },
-    });
-    box.appendChild(dot);
-    waitingDotsTimer = setTimeout(spawnDot, 1800 + Math.random() * 2200);
-  }
-  spawnDot();
-
-  return el('div', { class: 'card dot-card' }, [
-    el('p', { class: 'muted center' }, t('nothingToDo')),
-    el('p', { class: 'muted center', style: 'font-size:0.8rem;margin-top:6px;' }, t('tapAnyway')),
-    box,
+function renderDecoy(v) {
+  const d = state.decoy;
+  const grid = el(
+    'div',
+    { class: 'choice-grid' },
+    v.players
+      .filter((p) => p.alive)
+      .map((p) =>
+        el(
+          'button',
+          {
+            class: 'choice' + (d.selected.includes(p.id) ? ' selected' : ''),
+            onclick: () => {
+              toggleChoice(d.selected, p.id, d.max);
+              render();
+            },
+          },
+          `${p.seat + 1}. ${p.name}`
+        )
+      )
+  );
+  return renderScreen([
+    roleBanner(v),
+    el('div', { class: 'moon' }, '🌙'),
+    el('h1', { class: 'center' }, t('night', v.night)),
+    noTalkingBanner(),
+    el('div', { class: 'card' }, [
+      el('h2', {}, t('yourTurn')),
+      el('p', { class: 'muted' }, t(d.key)),
+      el('p', { class: 'muted decoy-note' }, t('decoyNote')),
+    ]),
+    grid,
+    el('button', { class: 'block', disabled: d.selected.length < d.min ? 'true' : null, onclick: submitDecoy }, t('confirm')),
+    decoysToggle(),
   ]);
 }
 
@@ -1355,16 +1409,15 @@ function computeSignature(v) {
   if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) return `dawn-${v.day}`;
   if (v.phase === 'night' && v.duskMessage && state.duskSeenForNight !== v.night) return `dusk-${v.night}`;
   if (v.phase === 'lobby') return 'lobby';
-  if (v.phase === 'night') return `night-${turnKey(v)}`;
+  if (v.phase === 'night') return state.decoy ? `night-decoy-${state.decoy.n}` : `night-${turnKey(v)}`;
   if (v.phase === 'day') return `day-${v.nomination ? v.nomination.state + ':' + v.nomination.nomineeId : 'none'}`;
   if (v.phase === 'ended') return 'ended';
   return v.phase;
 }
 
 function render() {
-  stopWaitingDots(); // avoid piling up timers across re-renders; re-armed below if still waiting
-
   const v = state.code && state.playerId ? state.view : null;
+  syncDecoy(v);
   const signature = computeSignature(v) + ':' + LANG;
   animateThisRender = signature !== lastScreenSignature;
   lastScreenSignature = signature;
@@ -1397,7 +1450,7 @@ function render() {
     return;
   }
   if (v.phase === 'lobby') app.appendChild(renderLobby(v));
-  else if (v.phase === 'night') app.appendChild(renderNight(v));
+  else if (v.phase === 'night') app.appendChild(state.decoy ? renderDecoy(v) : renderNight(v));
   else if (v.phase === 'day') app.appendChild(renderDay(v));
   else if (v.phase === 'ended') app.appendChild(renderEnded(v));
 }
@@ -1413,11 +1466,11 @@ setInterval(() => {
   if (n && (n.state === 'accusing' || n.state === 'defending')) render();
 }, 1000);
 
-// Lets toggling the practice-dots setting in one tab take effect in every other tab open on
+// Lets toggling the decoy-questions setting in one tab take effect in every other tab open on
 // this browser (localStorage writes don't fire this event in the tab that made them). Language
 // lives in sessionStorage instead (each tab/player picks their own), so it never crosses tabs.
 window.addEventListener('storage', (e) => {
-  if (e.key === 'botc.dotsDisabled') render();
+  if (e.key === 'botc.decoysDisabled') render();
 });
 
 connect();
