@@ -147,7 +147,7 @@ test('GET / serves the app, never cached', async () => {
 });
 
 test('the scripts and stylesheet are served with the right types', async () => {
-  for (const [file, type] of [['/app.js', /javascript/], ['/glossary.js', /javascript/], ['/style.css', /css/]] as const) {
+  for (const [file, type] of [['/app.js', /javascript/], ['/glossary.js', /javascript/], ['/tips.js', /javascript/], ['/style.css', /css/]] as const) {
     const res = await request(server.port, 'GET', file);
     assert.equal(res.status, 200, file);
     assert.match(res.headers['content-type']!, type, file);

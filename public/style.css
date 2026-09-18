@@ -507,3 +507,5 @@ button.block { width: 100%; }
 .rname { font-weight: 600; }
 .rname.good { color: #7ee2a8; }
 .rname.evil { color: #ff8a8a; }
+
+.tip-source { font-size: 0.75rem; margin-top: 4px; opacity: 0.7; }

@@ -283,6 +283,7 @@ const STRINGS = {
     decoyNote: "🎭 Decoy — this answer does nothing. Everyone is woken at every step of the night, so nobody can tell who really acted.",
     decoyInfo: 'Nothing to learn at this step. Read this, then tap “Got it”.',
     decoyResult: 'Your answer was noted. Nothing to learn from it.',
+    tipSource: 'Tip from the Blood on the Clocktower wiki',
     decoyTrust: 'Which player do you trust the most right now?',
     decoySuspect: 'Which player seems the most suspicious to you?',
     decoyQuiet: 'Which player has been the quietest so far?',
@@ -390,6 +391,7 @@ const STRINGS = {
     decoyNote: "🎭 Leurre — cette réponse ne fait rien. Tout le monde est réveillé à chaque étape de la nuit, donc personne ne peut savoir qui a vraiment agi.",
     decoyInfo: "Rien à apprendre à cette étape. Lisez ceci, puis touchez « J'ai compris ».",
     decoyResult: "Votre réponse est notée. Il n'y a rien à en apprendre.",
+    tipSource: 'Astuce du wiki Blood on the Clocktower',
     decoyTrust: 'En quel joueur avez-vous le plus confiance en ce moment ?',
     decoySuspect: 'Quel joueur vous semble le plus suspect ?',
     decoyQuiet: "Quel joueur a été le plus silencieux jusqu'ici ?",
@@ -695,6 +697,35 @@ function showRolesModal() {
     );
     document.body.appendChild(overlay);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Tips: where a night screen has no real information for you (a decoy), it shows a random tip for
+// YOUR character instead (see tips.js). A new tip is drawn each time a new screen appears, is
+// kept while that screen refreshes, and is never the same one twice in a row. A Drunk sees the
+// tips of the character they believe they are — the same as their role banner.
+// ---------------------------------------------------------------------------
+
+let tipPick = { key: null, character: null, index: -1 };
+
+/** The tip (in the current language) for this player's character on the screen identified by `key`, or null. */
+function currentTip(v, key) {
+  const id = v.myCharacter && v.myCharacter.id;
+  const entry = id && typeof TIPS !== 'undefined' ? TIPS[id] : null;
+  const list = entry ? entry[LANG] || entry.en : null;
+  if (!list || !list.length) return null;
+  if (tipPick.key !== key || tipPick.character !== id) {
+    let index = Math.floor(Math.random() * list.length);
+    if (list.length > 1 && tipPick.character === id && index === tipPick.index) index = (index + 1 + Math.floor(Math.random() * (list.length - 1))) % list.length;
+    tipPick = { key, character: id, index };
+  }
+  return list[Math.min(tipPick.index, list.length - 1)];
+}
+
+function tipBlock(v, key, fallback) {
+  const tip = currentTip(v, key);
+  if (!tip) return el('p', { class: 'muted' }, fallback);
+  return el('div', {}, [el('p', { class: 'muted' }, glossify('💡 ' + tip)), el('p', { class: 'muted tip-source' }, t('tipSource'))]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1197,12 +1228,13 @@ function renderNightResultScreen(v) {
 
 /** The decoy's stand-in for a result screen — laid out exactly like the real one. */
 function renderDecoyResultScreen(v) {
-  return renderResultScreen(v, t('decoyResult'), () => {
+  const tip = currentTip(v, 'result-' + state.decoyResultStep);
+  return renderResultScreen(v, tip ? '💡 ' + tip : t('decoyResult'), () => {
     state.decoyResultStep = null;
-  }, true);
+  }, true, !!tip);
 }
 
-function renderResultScreen(v, text, onDone, isDecoy) {
+function renderResultScreen(v, text, onDone, isDecoy, tipShown) {
   return renderScreen([
     roleBanner(v),
     el('div', { class: 'moon' }, '🌙'),
@@ -1212,6 +1244,7 @@ function renderResultScreen(v, text, onDone, isDecoy) {
       el('h2', {}, t('yourResult')),
       el('p', { class: 'muted' }, glossify(text)),
       isDecoy ? el('p', { class: 'muted decoy-note' }, t('decoyNote')) : null,
+      isDecoy && tipShown ? el('p', { class: 'muted tip-source' }, t('tipSource')) : null,
     ]),
     el(
       'button',
@@ -1239,7 +1272,9 @@ function renderNight(v) {
       noTalkingBanner(),
       el('div', { class: 'card' }, [
         el('h2', {}, turn.shape === 'info' ? t('yourInformation') : t('yourTurn')),
-        el('p', { class: 'muted' }, glossify(turn.decoy ? t(turn.body.key) : tMsg(turn.body))),
+        turn.decoy && turn.body.key === 'decoyInfo'
+          ? tipBlock(v, 'step-' + turn.stepKey, t('decoyInfo'))
+          : el('p', { class: 'muted' }, glossify(turn.decoy ? t(turn.body.key) : tMsg(turn.body))),
         turn.decoy ? el('p', { class: 'muted decoy-note' }, t('decoyNote')) : null,
       ]),
     ];
