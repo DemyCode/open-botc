@@ -46,6 +46,7 @@ function checkInvariants(s: GameState, where: string): void {
   }
   if (s.phase === 'night' && s.pendingRealTurn) {
     const t = s.pendingRealTurn;
+    assert.ok(t.playerIds.length > 0, `${where}: a step ran with nobody really acting (everyone would get a decoy)`);
     // Still waiting to act: only the living, or a Ravenkeeper killed tonight. (An Imp who just
     // killed themselves stays listed as this step's actor until everyone's decoy is answered.)
     for (const id of t.playerIds.filter((id) => !(id in t.responses))) {
