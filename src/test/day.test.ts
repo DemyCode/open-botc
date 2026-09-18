@@ -245,6 +245,20 @@ test("a Butler's yes vote is dropped if their master hasn't also voted yes", () 
   assert.equal(s.onBlockId, null, "the Butler's lone yes vote should not count");
 });
 
+test("a dead Butler's ghost vote is unrestricted — a dead player has no ability", () => {
+  // Regression: abilityWorks() doesn't check `alive` (it mustn't — the Saint is checked after
+  // dying, and dead-only actors like the Ravenkeeper still need it), so the Butler restriction
+  // was being applied to a dead Butler too. Per the official ruling, a dead Butler votes freely.
+  const s = mkDay(['imp', 'butler', 'empath', 'investigator', 'washerwoman', 'soldier']);
+  const [imp, butler, empath, investigator, , soldier] = s.players;
+  butler.alive = false;
+  s.butlerMasterId = investigator.id;
+  nominate(s, imp.id, soldier.id);
+  fastForwardToVote(s);
+  voteInOrder(s, [butler.id, imp.id, empath.id]); // master (investigator) never votes yes
+  assert.equal(s.onBlockId, soldier.id, "the dead Butler's vote must count even though their master didn't vote");
+});
+
 test("a Butler's yes vote counts once their master also votes yes", () => {
   const s = mkDay(['imp', 'butler', 'empath', 'investigator', 'washerwoman', 'soldier']);
   const [imp, butler, empath, investigator, washerwoman, soldier] = s.players;

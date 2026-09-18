@@ -317,7 +317,8 @@ function computeYesCount(state: GameState, nom: Nomination): number {
   let count = 0;
   for (const p of state.players) {
     let vote = nom.votes[p.id] ?? false;
-    if (vote && p.character === 'butler' && abilityWorks(state, p)) {
+    // A dead Butler has no ability, so their ghost vote is unrestricted (unlike a living one).
+    if (vote && p.alive && p.character === 'butler' && abilityWorks(state, p)) {
       const masterVote = state.butlerMasterId ? (nom.votes[state.butlerMasterId] ?? false) : false;
       if (!masterVote) vote = false;
     }
