@@ -38,11 +38,16 @@ const LANGS = ['en', 'fr'] as const;
 
 const keysOf = (o: object) => Object.keys(o).sort();
 
+/** Every .ts file of the engine, including the character definitions in chars/. */
+function engineSources(dir = 'src/game'): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((f) => (f.isDirectory() ? engineSources(path.join(dir, f.name)) : [path.join(dir, f.name)]));
+}
+
 /** Every message key the engine's source can emit: msg('key') and msg(cond ? 'a' : 'b'). */
 function emittedKeys(): Set<string> {
   const emitted = new Set<string>();
-  for (const file of fs.readdirSync('src/game')) {
-    const src = fs.readFileSync(path.join('src/game', file), 'utf8');
+  for (const file of engineSources()) {
+    const src = fs.readFileSync(file, 'utf8');
     for (const call of src.matchAll(/\bmsg\(([^()]*)/g)) {
       for (const lit of call[1].matchAll(/'([A-Za-z]+)'/g)) emitted.add(lit[1]);
     }
@@ -221,9 +226,9 @@ test('the role reference sheet lists every character exactly once', () => {
 const REPLAY = literal('REPLAY', { roleNameFor });
 const recordedTypes = (): Set<string> => {
   const out = new Set<string>();
-  for (const file of fs.readdirSync('src/game')) {
-    const src = fs.readFileSync(path.join('src/game', file), 'utf8');
-    for (const m of src.matchAll(/\brecord\(state, '([A-Za-z]+)'/g)) out.add(m[1]);
+  for (const file of engineSources()) {
+    const src = fs.readFileSync(file, 'utf8');
+    for (const m of src.matchAll(/\brecord\((?:state|s), '([A-Za-z]+)'/g)) out.add(m[1]);
   }
   return out;
 };

@@ -1,12 +1,11 @@
 import { CHARACTERS, isEvilTeam } from './characters.js';
+import { hooksOf } from './deaths.js';
 import { stableFloat, stablePick } from './rng.js';
 import type { CharacterId, GameState, PlayerState } from './types.js';
 
-/** True if this player's own ability actually functions right now (false for the Drunk, or a poisoned player). */
+/** True if this player's own ability actually functions right now (false if drunk or poisoned, or if it never does). */
 export function abilityWorks(state: GameState, p: PlayerState): boolean {
-  if (p.character === 'drunk') return false;
-  if (state.poisonedId === p.id && poisonerAlive(state)) return false;
-  return true;
+  return abilityLostReason(state, p) === null;
 }
 
 /** Poison lasts only while the Poisoner lives — it ends the moment they die (or stop being the Poisoner). */
@@ -16,8 +15,13 @@ function poisonerAlive(state: GameState): boolean {
 
 /** Why a player's ability is not working right now, if it isn't (used to explain false information in the replay). */
 export function abilityLostReason(state: GameState, p: PlayerState): 'drunk' | 'poisoned' | null {
-  if (p.character === 'drunk') return 'drunk';
+  if (hooksOf(p.character).noAbility) return 'drunk';
   if (state.poisonedId === p.id && poisonerAlive(state)) return 'poisoned';
+  for (const e of state.effects) {
+    if (e.target !== p.id) continue;
+    if (e.needsSourceAlive && !state.players.some((q) => q.id === e.source && q.alive)) continue;
+    return e.kind;
+  }
   return null;
 }
 
@@ -44,16 +48,12 @@ export function registersAs(
 
   const roll = () => stableFloat(state.secret, 'reg', state.night, ctx.asker, ctx.slot, target.id, kind) < 0.5;
 
-  if (target.character === 'recluse' && !trueEvil && (kind === 'evil' || kind === 'minion' || kind === 'demon')) {
-    return roll();
-  }
-  if (target.character === 'spy' && trueEvil && (kind === 'good' || kind === 'townsfolk' || kind === 'outsider')) {
-    return roll();
-  }
-  // "You might register as good": asked the other way round ("is this player EVIL?" — the Chef's
-  // and the Empath's question), the Spy sometimes answers no (wiki: Spy ex. 2).
-  if (target.character === 'spy' && trueEvil && kind === 'evil') {
-    return !roll();
+  const mis = hooksOf(target.character).misregister;
+  if (mis && (mis.from === 'evil') === trueEvil) {
+    if (mis.kinds.includes(kind)) return roll();
+    // Asked the other way round ("is this player EVIL?" — the Chef's and the Empath's question),
+    // a Spy sometimes answers no (wiki: Spy ex. 2).
+    if (mis.invertedKinds?.includes(kind)) return !roll();
   }
   return trueKind;
 }
@@ -72,21 +72,12 @@ export function apparentCharacter(
   const team = CHARACTERS[target.character].team;
   if (team === wantTeam) return target.character;
 
-  if (target.character === 'recluse' && (wantTeam === 'minion' || wantTeam === 'demon')) {
-    if (registersAs(state, target, wantTeam === 'demon' ? 'demon' : 'minion', ctx)) {
-      const inPlay = state.players.filter((p) => CHARACTERS[p.character].team === wantTeam).map((p) => p.character);
-      if (inPlay.length) return stablePick(state.secret, inPlay, 'appear', ctx.slot, target.id);
-      const all = Object.values(CHARACTERS).filter((c) => c.team === wantTeam).map((c) => c.id);
-      return stablePick(state.secret, all, 'appear', ctx.slot, target.id);
-    }
-  }
-  if (target.character === 'spy' && (wantTeam === 'townsfolk' || wantTeam === 'outsider')) {
-    if (registersAs(state, target, wantTeam, ctx)) {
-      const inPlay = state.players.filter((p) => CHARACTERS[p.character].team === wantTeam).map((p) => p.character);
-      if (inPlay.length) return stablePick(state.secret, inPlay, 'appear', ctx.slot, target.id);
-      const all = Object.values(CHARACTERS).filter((c) => c.team === wantTeam).map((c) => c.id);
-      return stablePick(state.secret, all, 'appear', ctx.slot, target.id);
-    }
+  const mis = hooksOf(target.character).misregister;
+  if (mis && (mis.from === 'evil') === isEvilTeam(team) && mis.kinds.includes(wantTeam) && registersAs(state, target, wantTeam, ctx)) {
+    const inPlay = state.players.filter((p) => CHARACTERS[p.character].team === wantTeam).map((p) => p.character);
+    if (inPlay.length) return stablePick(state.secret, inPlay, 'appear', ctx.slot, target.id);
+    const all = Object.values(CHARACTERS).filter((c) => c.team === wantTeam).map((c) => c.id);
+    return stablePick(state.secret, all, 'appear', ctx.slot, target.id);
   }
   return target.character;
 }

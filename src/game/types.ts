@@ -1,13 +1,8 @@
 export type Team = 'townsfolk' | 'outsider' | 'minion' | 'demon';
 export type Alignment = 'good' | 'evil';
 
-export type CharacterId =
-  | 'washerwoman' | 'librarian' | 'investigator' | 'chef' | 'empath'
-  | 'fortuneteller' | 'undertaker' | 'monk' | 'ravenkeeper' | 'virgin'
-  | 'slayer' | 'soldier' | 'mayor'
-  | 'butler' | 'drunk' | 'recluse' | 'saint'
-  | 'poisoner' | 'spy' | 'scarletwoman' | 'baron'
-  | 'imp';
+/** A character's id. Any string: the registry (characters.ts) says which ones exist. */
+export type CharacterId = string;
 
 export type Phase = 'lobby' | 'night' | 'day' | 'ended';
 
@@ -51,6 +46,8 @@ export interface PlayerState {
   diedTonight: boolean;
   virginUsed: boolean;
   slayerUsed: boolean;
+  /** Per-character memory for hooks (a Fool's first death used, a Gambler's guess...). */
+  flags: Record<string, unknown>;
   log: InfoLogEntry[];
   /**
    * The outcome of a "choose" ability that produces information (Fortune Teller, Ravenkeeper),
@@ -71,7 +68,7 @@ export type NightTurnShape = 'info' | 'choose';
  * happens when its character is in play (and, for the Ravenkeeper, was killed tonight).
  */
 export interface PendingRealTurn {
-  charId: CharacterId | 'minion-info';
+  charId: string;
   /** The real actors this step. */
   playerIds: string[];
   /** Everyone woken this step: the real actors plus every other publicly-alive player. */
@@ -86,6 +83,10 @@ export interface PendingRealTurn {
   responses: Record<string, string[]>;
   /** When this step opened (ms): nobody may answer until MIN_ANSWER_MS after it. */
   openedAt: number;
+  /** The real actor also picks a character (Gambler, Cerenovus, Pit-Hag...). */
+  pickCharacter?: boolean;
+  /** The step gives a result right after answering: decoys show a stand-in result screen. */
+  result?: boolean;
 }
 
 export type NominationState = 'readyForAccusation' | 'accusing' | 'defending' | 'voting' | 'closed';
@@ -113,7 +114,24 @@ export interface Nomination {
   yesCount: number;
 }
 
+/** A lasting effect on a player's ability: drunk or poisoned, until a night or while its source lives. */
+export interface Effect {
+  kind: 'drunk' | 'poisoned';
+  target: string;
+  /** The player whose ability caused it (null: no source, e.g. permanent). */
+  source: string | null;
+  sourceChar: string;
+  /** Removed when a night begins after this night number (null: until removed). */
+  untilNight: number | null;
+  /** Ends the moment the source stops being alive. */
+  needsSourceAlive?: boolean;
+}
+
 export interface GameState {
+  /** Which script (edition or custom mix) this game uses; see scripts.ts. */
+  scriptId: string;
+  /** Drunk / poisoned effects beyond the Poisoner's own (see registration.ts). */
+  effects: Effect[];
   code: string;
   hostId: string;
   phase: Phase;

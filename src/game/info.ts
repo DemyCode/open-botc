@@ -1,4 +1,5 @@
 import { CHARACTERS } from './characters.js';
+import { hooksOf } from './deaths.js';
 import { abilityWorks, apparentCharacter, registersAs, type RegisterKind } from './registration.js';
 import { stableFloat, stablePick } from './rng.js';
 import type { GameState, Msg, PlayerState, Team } from './types.js';
@@ -94,10 +95,11 @@ export function fortuneTellerInfo(state: GameState, self: PlayerState, targetIds
 }
 
 function apparentToObserver(state: GameState, target: PlayerState, ctx: { asker: string; slot: string }) {
-  if (target.character === 'recluse' && registersAs(state, target, 'evil', ctx)) {
+  const mis = hooksOf(target.character).misregister;
+  if (mis?.from === 'good' && registersAs(state, target, 'evil', ctx)) {
     return apparentCharacter(state, target, stableFloat(state.secret, ctx.slot, 'demon-or-minion', target.id) < 0.3 ? 'demon' : 'minion', ctx);
   }
-  if (target.character === 'spy' && registersAs(state, target, 'good', ctx)) {
+  if (mis?.from === 'evil' && registersAs(state, target, 'good', ctx)) {
     return apparentCharacter(state, target, stableFloat(state.secret, ctx.slot, 'town-or-outsider', target.id) < 0.8 ? 'townsfolk' : 'outsider', ctx);
   }
   return target.character;

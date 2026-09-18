@@ -1,10 +1,10 @@
 import { CHARACTERS } from './characters.js';
-import {
-  chefInfo, demonInfo, empathInfo, fortuneTellerInfo, investigativeInfo,
-  minionInfo, ravenkeeperInfo, spyInfo, undertakerInfo,
-} from './info.js';
+import { demonInfo, minionInfo } from './info.js';
 import { record } from './history.js';
-import { abilityLostReason, abilityWorks } from './registration.js';
+import { appendLog } from './log.js';
+import { abilityLostReason } from './registration.js';
+import { evaluateWin } from './win.js';
+import type { NightSpec } from './hooks.js';
 import type { CharacterId, GameState, Msg, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
@@ -12,9 +12,8 @@ function msg(key: string, vars?: Record<string, string | number | string[]>): Ms
   return vars ? { key, vars } : { key };
 }
 
-/** The first night's Minion info and Demon info (who's evil, plus the Demon's 3 bluffs) only
- * happen with 7 or more players — in smaller games the evil team doesn't learn each other. */
-export const EVIL_INTRO_MIN_PLAYERS = 7;
+import { EVIL_INTRO_MIN_PLAYERS } from './constants.js';
+export { EVIL_INTRO_MIN_PLAYERS };
 
 /**
  * "When you reach dawn, simply wait five to ten seconds… The small wait at dawn prevents players
@@ -42,69 +41,45 @@ export const DECOY_PICK_TWO = 'decoySameTeam';
 /** The decoy for an "info" step: something to read, then "Got it" — like the real info screen. */
 export const DECOY_INFO = 'decoyInfo';
 
-/** Sets the game's winner exactly once — later calls (e.g. a second condition firing the same
- * tick) are no-ops so the first true result always stands. */
-export function setWinner(state: GameState, alignment: 'good' | 'evil', message: Msg): void {
-  if (state.winner) return;
-  record(state, 'win', { winner: alignment, message });
-  state.winner = alignment;
-  state.phase = 'ended';
-  state.publicLog.push(message);
+export { evaluateWin, setWinner } from './win.js';
+
+export { appendLog };
+
+/** Steps that aren't a character: the first night's Minion info. */
+const PSEUDO_STEPS: Record<string, { firstNight: number; otherNight: number; night: NightSpec }> = {
+  'minion-info': {
+    firstNight: 10, otherNight: 0,
+    night: {
+      actors: (s) => (s.players.length < EVIL_INTRO_MIN_PLAYERS ? [] : s.players.filter((p) => p.alive && CHARACTERS[p.character].team === 'minion')),
+      shape: () => 'info',
+      info: (s, self) => minionInfo(s, self),
+    },
+  },
+};
+
+interface StepDef { id: string; order: number; spec: NightSpec | undefined; shape: NightTurnShape }
+
+/** The night's steps, in order: every character (any edition) with a place in tonight's order. */
+export function nightSequence(first: boolean, editions?: string[]): string[] {
+  const steps: StepDef[] = [];
+  for (const c of Object.values(CHARACTERS)) {
+    if (editions && !editions.includes(c.edition)) continue;
+    const order = first ? c.firstNight : c.otherNight;
+    if (order > 0) steps.push({ id: c.id, order, spec: c.hooks?.night, shape: c.shape });
+  }
+  for (const [id, p] of Object.entries(PSEUDO_STEPS)) {
+    const order = first ? p.firstNight : p.otherNight;
+    if (order > 0) steps.push({ id, order, spec: p.night, shape: 'info' });
+  }
+  return steps.sort((x, y) => x.order - y.order).map((x) => x.id);
 }
 
-/** The two win conditions that can become true at any moment, not just after a day action —
- * a night kill can just as easily leave no living Demon (a failed star-pass) or drop the alive
- * count to 2, and both must end the game immediately, the instant they happen. */
-export function evaluateWin(state: GameState): void {
-  if (state.winner) return;
-  const alive = state.players.filter((p) => p.alive);
-  const demonAlive = alive.some((p) => CHARACTERS[p.character].team === 'demon');
-  if (!demonAlive) {
-    setWinner(state, 'good', msg('goodWinsDemonDead'));
-    return;
-  }
-  if (alive.length <= 2) {
-    setWinner(state, 'evil', msg('evilWinsTwoLeft'));
-  }
-}
+/** Trouble Brewing's night order (kept for tests and documentation). */
+export const FIRST_NIGHT_SEQUENCE: string[] = nightSequence(true, ['tb']);
+export const OTHER_NIGHT_SEQUENCE: string[] = nightSequence(false, ['tb']);
 
-/**
- * If the player who just died was the Demon, and the Scarlet Woman is alive, able, and there
- * are still 5+ players alive, she becomes the new Demon — learning her minions and bluffs just
- * like any demon would. Returns whether she was promoted, so a caller with its own
- * demon-replacement fallback (the Imp's own star-pass) knows to skip it: the Scarlet Woman's
- * passive trigger takes priority over a random minion becoming the Imp, it doesn't compete
- * with it — only one of them ever fires.
- */
-export function promoteScarletWomanIfEligible(state: GameState, deadPlayer: PlayerState | null): boolean {
-  if (!deadPlayer || CHARACTERS[deadPlayer.character].team !== 'demon') return false;
-  // "5 or more players alive" is counted at the moment the Demon dies — the Demon is one of them,
-  // and they've already been marked dead by the time we get here.
-  const aliveWhenDemonDied = state.players.filter((p) => p.alive).length + 1;
-  const sw = state.players.find((p) => p.alive && p.character === 'scarletwoman');
-  if (sw && aliveWhenDemonDied >= 5 && abilityWorks(state, sw)) {
-    sw.character = 'imp';
-    sw.perceived = 'imp';
-    record(state, 'promotion', { player: sw.id, reason: 'scarletWoman' });
-    appendLog(state, sw.id, msg('scarletWomanPromoted'));
-    appendLog(state, sw.id, demonInfo(state, sw));
-    return true;
-  }
-  return false;
-}
-
-export const FIRST_NIGHT_SEQUENCE: (CharacterId | 'minion-info')[] = [
-  'minion-info', 'imp', 'poisoner', 'washerwoman', 'librarian', 'investigator',
-  'chef', 'empath', 'fortuneteller', 'butler', 'spy',
-];
-
-export const OTHER_NIGHT_SEQUENCE: (CharacterId | 'minion-info')[] = [
-  'poisoner', 'monk', 'imp', 'ravenkeeper', 'butler', 'empath', 'fortuneteller', 'undertaker', 'spy',
-];
-
-export function appendLog(state: GameState, playerId: string, m: Msg): void {
-  const p = state.players.find((pl) => pl.id === playerId);
-  if (p) p.log.push({ night: state.night, msg: m });
+export function specOf(step: string): NightSpec | undefined {
+  return PSEUDO_STEPS[step]?.night ?? CHARACTERS[step]?.hooks?.night;
 }
 
 function findPlayer(state: GameState, id: string): PlayerState {
@@ -113,59 +88,17 @@ function findPlayer(state: GameState, id: string): PlayerState {
   return p;
 }
 
-function sequenceFor(state: GameState): (CharacterId | 'minion-info')[] {
-  return state.night === 1 ? FIRST_NIGHT_SEQUENCE : OTHER_NIGHT_SEQUENCE;
+function actorsFor(state: GameState, step: string): PlayerState[] {
+  const spec = specOf(step);
+  if (!spec) return [];
+  if (spec.actors) return spec.actors(state, step);
+  return state.players.filter((p) => p.alive && p.perceived === step);
 }
 
-function actorsFor(state: GameState, charId: CharacterId | 'minion-info'): PlayerState[] {
-  if (charId === 'minion-info') {
-    if (state.players.length < EVIL_INTRO_MIN_PLAYERS) return [];
-    return state.players.filter((p) => p.alive && CHARACTERS[p.character].team === 'minion');
-  }
-  // The Imp only "acts" on the first night to receive the Demon info — nothing to do without it.
-  if (charId === 'imp' && state.night === 1 && state.players.length < EVIL_INTRO_MIN_PLAYERS) return [];
-  // "Each night except the first, if any player died by execution today, wake the Undertaker."
-  if (charId === 'undertaker' && !state.lastExecutedId) return [];
-  if (charId === 'ravenkeeper') {
-    return state.players.filter((p) => !p.alive && state.deathsTonight.includes(p.id) && p.perceived === 'ravenkeeper');
-  }
-  return state.players.filter((p) => p.alive && p.perceived === charId);
-}
-
-function shapeFor(state: GameState, charId: CharacterId | 'minion-info'): NightTurnShape {
-  if (charId === 'minion-info') return 'info';
-  if (charId === 'imp' && state.night === 1) return 'info';
-  return CHARACTERS[charId].shape;
-}
-
-function computeInfoText(state: GameState, self: PlayerState, charId: CharacterId | 'minion-info', slot: string): Msg {
-  switch (charId) {
-    case 'washerwoman': return investigativeInfo(state, self, 'townsfolk', slot);
-    case 'librarian': return investigativeInfo(state, self, 'outsider', slot);
-    case 'investigator': return investigativeInfo(state, self, 'minion', slot);
-    case 'chef': return chefInfo(state, self, slot);
-    case 'empath': return empathInfo(state, self, slot);
-    case 'undertaker': {
-      const executed = state.lastExecutedId ? state.players.find((p) => p.id === state.lastExecutedId) ?? null : null;
-      return undertakerInfo(state, self, executed, slot);
-    }
-    case 'minion-info': return minionInfo(state, self);
-    case 'imp': return demonInfo(state, self);
-    case 'spy': return spyInfo(state, self, slot);
-    default: return msg('empty');
-  }
-}
-
-function choosePromptFor(charId: CharacterId | 'minion-info'): { min: number; max: number; body: Msg } {
-  switch (charId) {
-    case 'poisoner': return { min: 1, max: 1, body: msg('poisonerChoose') };
-    case 'monk': return { min: 1, max: 1, body: msg('monkChoose') };
-    case 'fortuneteller': return { min: 2, max: 2, body: msg('fortuneTellerChoose') };
-    case 'butler': return { min: 1, max: 1, body: msg('butlerChoose') };
-    case 'ravenkeeper': return { min: 1, max: 1, body: msg('ravenkeeperChoose') };
-    case 'imp': return { min: 1, max: 1, body: msg('impChoose') };
-    default: return { min: 0, max: 0, body: msg('empty') };
-  }
+function shapeFor(state: GameState, step: string): NightTurnShape {
+  const spec = specOf(step);
+  if (spec?.shape) return spec.shape(state);
+  return PSEUDO_STEPS[step] ? 'info' : CHARACTERS[step]?.shape ?? 'info';
 }
 
 /** Who is woken at every step tonight: every player the table still sees as alive — including
@@ -174,25 +107,30 @@ function nightParticipants(state: GameState): PlayerState[] {
   return state.players.filter((p) => p.alive || p.diedTonight);
 }
 
-function startRound(state: GameState, charId: CharacterId | 'minion-info', actors: PlayerState[]): void {
-  const slot = `${charId}-n${state.night}`;
-  const shape = shapeFor(state, charId);
+function startRound(state: GameState, step: string, actors: PlayerState[]): void {
+  const slot = `${step}-n${state.night}`;
+  const shape = shapeFor(state, step);
+  const spec = specOf(step);
   const bodyByPlayer: Record<string, Msg> = {};
   let min = 0;
   let max = 0;
+  let pickCharacter = false;
 
   if (shape === 'info') {
     for (const p of actors) {
-      const text = computeInfoText(state, p, charId, slot);
+      const text = spec?.info ? spec.info(state, p, slot) : msg('empty');
       appendLog(state, p.id, text);
       bodyByPlayer[p.id] = text;
-      record(state, 'info', { actor: p.id, character: p.perceived, step: charId, msg: text, lost: abilityLostReason(state, p) });
+      record(state, 'info', { actor: p.id, character: p.perceived, step, msg: text, lost: abilityLostReason(state, p) });
     }
   } else {
-    const cfg = choosePromptFor(charId);
-    min = cfg.min;
-    max = cfg.max;
-    for (const p of actors) bodyByPlayer[p.id] = cfg.body;
+    for (const p of actors) {
+      const cfg = spec?.prompt ? spec.prompt(state, p) : { min: 0, max: 0, body: msg('empty') };
+      min = cfg.min;
+      max = cfg.max;
+      pickCharacter = !!cfg.pickCharacter;
+      bodyByPlayer[p.id] = cfg.body;
+    }
   }
 
   const actorIds = actors.map((p) => p.id);
@@ -210,8 +148,8 @@ function startRound(state: GameState, charId: CharacterId | 'minion-info', actor
   }
 
   state.pendingRealTurn = {
-    charId, playerIds: actorIds, participantIds, decoys, shape, min, max, bodyByPlayer,
-    responses: {}, openedAt: Date.now(),
+    charId: step, playerIds: actorIds, participantIds, decoys, shape, min, max, bodyByPlayer,
+    responses: {}, openedAt: Date.now(), pickCharacter, result: !!spec?.result,
   };
 }
 
@@ -226,6 +164,7 @@ export function beginNight(state: GameState): void {
   state.nightStartedAt = Date.now();
   state.nightStepNumber = 0;
   state.dawnAt = null;
+  state.effects = state.effects.filter((e) => e.untilNight === null || e.untilNight >= state.night);
   for (const p of state.players) {
     p.nightResult = null;
     // Reset here (not just on death) so it accurately reflects *this* night by dawn — otherwise
@@ -237,17 +176,17 @@ export function beginNight(state: GameState): void {
 
 export function advanceNightSlot(state: GameState): void {
   if (state.winner) return; // a kill this night already ended the game — finishNight must not flip phase back to 'day'
-  const seq = sequenceFor(state);
+  const seq = nightSequence(state.night === 1);
   while (state.nightSlotIndex + 1 < seq.length) {
     state.nightSlotIndex += 1;
-    const charId = seq[state.nightSlotIndex];
-    if (charId === 'poisoner') state.poisonedId = null;
-    if (charId === 'butler') state.butlerMasterId = null;
+    const step = seq[state.nightSlotIndex];
+    specOf(step)?.before?.(state);
+    if (state.winner) return;
     // Like the Storyteller, only wake a step whose character is really in play tonight.
-    const actors = actorsFor(state, charId);
+    const actors = actorsFor(state, step);
     if (actors.length === 0) continue;
     state.nightStepNumber = (state.nightStepNumber ?? 0) + 1;
-    startRound(state, charId, actors);
+    startRound(state, step, actors);
     return;
   }
   // Everyone has acted — but dawn waits (see DAWN_WAIT_*); tick() breaks it when it's time.
@@ -278,131 +217,15 @@ function finishNight(state: GameState): void {
   }
 }
 
-function isProtected(state: GameState, target: PlayerState): boolean {
-  if (target.character === 'soldier' && abilityWorks(state, target)) return true;
-  if (state.monkProtectedId === target.id) return true;
-  return false;
-}
-
-/** Records a death (and, if it was the Poisoner, the end of their poison) in the replay. */
-export function recordDeath(state: GameState, p: PlayerState, cause: 'demon' | 'execution' | 'virgin' | 'slayer' | 'mayorBounce' | 'starPass'): void {
-  record(state, 'death', { player: p.id, cause });
-  if (p.character === 'poisoner' && state.poisonedId) record(state, 'poisonEnded', { poisoner: p.id, target: state.poisonedId });
-}
-
-function killPlayer(state: GameState, target: PlayerState, cause: 'demon' | 'mayorBounce' | 'starPass' = 'demon'): void {
-  target.alive = false;
-  target.diedTonight = true;
-  state.deathsTonight.push(target.id);
-  recordDeath(state, target, cause);
-}
-
-function applyImpKill(state: GameState, imp: PlayerState, targetId: string): void {
-  const target = state.players.find((p) => p.id === targetId);
-  if (!target) return;
-  if (!target.alive) {
-    record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'alreadyDead' });
-    return;
-  }
-  if (!abilityWorks(state, imp)) {
-    // a poisoned Imp's kill (or star-pass) simply doesn't happen
-    record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'ineffective', lost: abilityLostReason(state, imp) });
-    return;
-  }
-
-  if (targetId === imp.id) {
-    if (isProtected(state, target)) {
-      record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'blocked', by: blockedBy(state, target) });
-      return;
-    }
-    record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'starPass' });
-    killPlayer(state, target, 'starPass');
-    // The Scarlet Woman's passive promotion takes priority over the star-pass — they don't both
-    // fire. Only when she isn't in play, isn't eligible, or her ability doesn't work does the
-    // star-pass fall back to promoting a random other Minion so the game still has a Demon.
-    if (!promoteScarletWomanIfEligible(state, target)) {
-      const otherMinions = state.players.filter((p) => p.alive && CHARACTERS[p.character].team === 'minion' && p.id !== imp.id);
-      if (otherMinions.length) {
-        const promoted = otherMinions[Math.floor(Math.random() * otherMinions.length)];
-        promoted.character = 'imp';
-        promoted.perceived = 'imp';
-        record(state, 'promotion', { player: promoted.id, reason: 'starPass' });
-        appendLog(state, promoted.id, msg('becameImp'));
-        appendLog(state, promoted.id, demonInfo(state, promoted));
-      }
-    }
-    // Either a new Demon now exists, or none does at all (no other Minion was left to promote) —
-    // both cases must be checked immediately, not left until the next day action.
-    evaluateWin(state);
-    return;
-  }
-
-  if (isProtected(state, target)) {
-    record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'blocked', by: blockedBy(state, target) });
-    return;
-  }
-
-  if (target.character === 'mayor' && abilityWorks(state, target)) {
-    const alternatives = state.players.filter((p) => p.alive && p.id !== target.id && p.id !== imp.id && !isProtected(state, p));
-    const alt = alternatives.length ? alternatives[Math.floor(Math.random() * alternatives.length)] : null;
-    record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'mayorBounce', victim: (alt ?? target).id });
-    killPlayer(state, alt ?? target, alt ? 'mayorBounce' : 'demon');
-    evaluateWin(state);
-    return;
-  }
-
-  record(state, 'attack', { actor: imp.id, target: target.id, outcome: 'killed' });
-  killPlayer(state, target);
-  evaluateWin(state);
-}
-
-/** What stopped the Demon: the Soldier's own safety, or the Monk's protection. */
-function blockedBy(state: GameState, target: PlayerState): 'soldier' | 'monk' {
-  return target.character === 'soldier' && abilityWorks(state, target) ? 'soldier' : 'monk';
-}
-
-const CHOICE_ABILITIES: CharacterId[] = ['poisoner', 'monk', 'butler', 'fortuneteller', 'ravenkeeper'];
-
-/** Applies a choose-shape ability's effect and, for abilities that produce information from the
- * choice (Fortune Teller, Ravenkeeper), records the result so it can be shown to the player
- * immediately — not just written to their permanent log for later. */
-function applyRealChoice(state: GameState, charId: CharacterId | 'minion-info', playerId: string, targets: string[]): void {
+/** Applies a choose-shape ability's effect (see NightSpec.apply). */
+function applyRealChoice(state: GameState, step: string, playerId: string, targets: string[], character?: string): void {
   const self = findPlayer(state, playerId);
-  const slot = `${charId}-n${state.night}`;
-  const lost = abilityLostReason(state, self);
+  const spec = specOf(step);
+  const slot = `${step}-n${state.night}`;
   // A choice is only a "choice" when the player really picked someone (an info step's "Got it"
   // is not one). The Imp's pick is told as the attack itself, with its outcome.
-  if (CHOICE_ABILITIES.includes(charId as CharacterId)) record(state, 'choice', { actor: playerId, character: self.perceived, ability: charId, targets, lost });
-  switch (charId) {
-    case 'poisoner':
-      if (abilityWorks(state, self)) state.poisonedId = targets[0] ?? null;
-      break;
-    case 'monk':
-      if (abilityWorks(state, self)) state.monkProtectedId = targets[0] ?? null;
-      break;
-    case 'butler':
-      if (abilityWorks(state, self)) state.butlerMasterId = targets[0] ?? null;
-      break;
-    case 'fortuneteller': {
-      const text = fortuneTellerInfo(state, self, targets, slot);
-      appendLog(state, playerId, text);
-      self.nightResult = text;
-      record(state, 'info', { actor: playerId, character: self.perceived, step: charId, msg: text, lost });
-      break;
-    }
-    case 'ravenkeeper': {
-      const text = ravenkeeperInfo(state, self, targets[0], slot);
-      appendLog(state, playerId, text);
-      self.nightResult = text;
-      record(state, 'info', { actor: playerId, character: self.perceived, step: charId, msg: text, lost });
-      break;
-    }
-    case 'imp':
-      applyImpKill(state, self, targets[0]);
-      break;
-    default:
-      break;
-  }
+  if (spec?.recordsChoice) record(state, 'choice', { actor: playerId, character: self.perceived, ability: step, targets, lost: abilityLostReason(state, self), ...(character ? { picked: character } : {}) });
+  spec?.apply?.(state, self, targets, slot, character);
 }
 
 function maybeAdvance(state: GameState): void {
@@ -432,24 +255,26 @@ function stepComplete(state: GameState, t: PendingRealTurn): boolean {
  * server knows which; the protocol doesn't differ). `now` is the server clock: when given, an
  * answer sooner than MIN_ANSWER_MS after the step opened is refused.
  */
-export function submitRealResponse(state: GameState, playerId: string, targetIds: string[], now?: number): void {
+export function submitRealResponse(state: GameState, playerId: string, targetIds: string[], now?: number, character?: string): void {
   const t = state.pendingRealTurn;
   if (!t || !t.participantIds.includes(playerId)) throw new GameError('No pending night turn for this player');
   if (playerId in t.responses) throw new GameError('Already responded');
   if (now !== undefined && now < t.openedAt + MIN_ANSWER_MS) throw new GameError('Too early — take a few seconds');
   const isDecoy = !t.playerIds.includes(playerId);
+  const spec = specOf(t.charId);
   if (t.shape === 'choose') {
     if (targetIds.length < t.min || targetIds.length > t.max) throw new GameError('Invalid selection count');
     if (new Set(targetIds).size !== targetIds.length) throw new GameError('Cannot choose the same player twice');
     // "If you get to choose 'any player' at night, you can choose yourself or a dead player."
     const eligible = new Set(state.players.map((p) => p.id));
     for (const id of targetIds) if (!eligible.has(id)) throw new GameError('Invalid target');
-    if (!isDecoy && (t.charId === 'monk' || t.charId === 'butler') && targetIds.includes(playerId)) {
+    if (!isDecoy && spec?.notSelf && targetIds.includes(playerId)) {
       throw new GameError('Cannot choose yourself');
     }
+    if (t.pickCharacter && !isDecoy && (!character || !CHARACTERS[character])) throw new GameError('Choose a character');
   }
   t.responses[playerId] = t.shape === 'choose' ? targetIds : [];
-  if (!isDecoy) applyRealChoice(state, t.charId, playerId, targetIds); // a decoy answer is never used
+  if (!isDecoy) applyRealChoice(state, t.charId, playerId, targetIds, character); // a decoy answer is never used
   maybeAdvance(state);
 }
 
