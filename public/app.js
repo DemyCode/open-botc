@@ -223,9 +223,11 @@ const STRINGS = {
     tapToNominate: 'Tap a player to nominate them for execution.',
     deadNoVoteLeft: "You're dead and already used your final vote — you can only watch from here.",
     deadOneVoteLeft: "You're dead, but you still have one vote left to use before the game ends.",
-    slayerShot: 'Slayer Shot',
-    slayerDesc: 'Once per game: publicly choose a player. If they are the Demon, they die.',
-    publiclyAccuse: (name) => `Publicly accuse ${name} as the Demon?`,
+    slayerShot: 'Slayer shot',
+    slayerDesc: "Once per game, anyone may publicly claim to be the Slayer and shoot a player. If you really are the Slayer and they are the Demon, they die — otherwise nothing happens. Everyone sees this same card, so a shot proves nothing about who fired it.",
+    publiclyAccuse: (name) => `Publicly shoot ${name} as the Slayer? You only get one shot per game.`,
+    nominateSelfConfirm: 'Nominate yourself for execution?',
+    nominateDeadConfirm: (name) => `${name} is already dead. Nominate them anyway? (It still uses up your nomination for today.)`,
     goodWins: 'Good Wins!',
     evilWins: 'Evil Wins!',
     langLabel: 'FR',
@@ -302,7 +304,7 @@ const STRINGS = {
     decoyDemon: 'Qui pensez-vous être le Démon ?',
     decoyBelieve: 'Quel joueur vous semble le plus sincère sur son rôle ?',
     decoySameTeam: 'Choisissez deux joueurs qui, selon vous, sont dans la même équipe.',
-    decoyOutsider: 'Qui pourrait être un Étranger selon vous ?',
+    decoyOutsider: 'Qui pourrait être un Marginal selon vous ?',
     accuses: (a, b) => `${a} accuse ${b}`,
     makingCase: (name, s) => `${name} plaide sa cause… (${s}s)`,
     doneMoveDefense: 'Terminé — passer à la défense',
@@ -324,9 +326,11 @@ const STRINGS = {
     tapToNominate: 'Touchez un joueur pour le nominer à l\'exécution.',
     deadNoVoteLeft: "Vous êtes mort et avez déjà utilisé votre dernier vote — vous ne pouvez qu'observer.",
     deadOneVoteLeft: "Vous êtes mort, mais il vous reste un vote à utiliser avant la fin de la partie.",
-    slayerShot: 'Tir du Tueur',
-    slayerDesc: 'Une fois par partie : désignez publiquement un joueur. Si c\'est le Démon, il meurt.',
-    publiclyAccuse: (name) => `Accuser publiquement ${name} d'être le Démon ?`,
+    slayerShot: 'Tir de la Pourfendeuse',
+    slayerDesc: "Une fois par partie, n'importe qui peut prétendre publiquement être la Pourfendeuse et tirer sur un joueur. Si vous êtes vraiment la Pourfendeuse et que c'est le Démon, il meurt — sinon il ne se passe rien. Tout le monde voit cette même carte : un tir ne prouve rien sur le tireur.",
+    publiclyAccuse: (name) => `Tirer publiquement sur ${name} en tant que Pourfendeuse ? Vous n'avez qu'un seul tir par partie.`,
+    nominateSelfConfirm: 'Vous nominer vous-même pour être exécuté ?',
+    nominateDeadConfirm: (name) => `${name} est déjà mort(e). Le nominer quand même ? (Cela utilise votre nomination du jour.)`,
     goodWins: 'Le Bien gagne !',
     evilWins: 'Le Mal gagne !',
     langLabel: 'EN',
@@ -567,7 +571,7 @@ function showRolesModal() {
                 svgIcon(c.id, 'roles-card-icon'),
                 el('div', { class: 'roles-card-text' }, [
                   el('div', { class: 'roles-name' }, c.name),
-                  el('div', { class: 'roles-ability' }, c.ability),
+                  el('div', { class: 'roles-ability' }, glossify(c.ability)),
                 ]),
               ])
             ),
@@ -596,6 +600,53 @@ function showRolesModal() {
     );
     document.body.appendChild(overlay);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Glossary: game terms in any text block are underlined; tapping one opens its strict definition
+// (see glossary.js). Only the first occurrence of each term per block is underlined.
+// ---------------------------------------------------------------------------
+
+/** Wraps `text` in a span where each glossary term's first occurrence is a tappable, underlined link. */
+function glossify(text, excludeId) {
+  return el(
+    'span',
+    {},
+    glossarySegments(text || '', LANG, excludeId).map((seg) => (seg.id ? termLink(seg.id, seg.text) : seg.text))
+  );
+}
+
+function termLink(id, label) {
+  const open = (e) => {
+    e.preventDefault();
+    e.stopPropagation(); // a term inside a tappable row (e.g. a nomination) must not also tap the row
+    showTermModal(id);
+  };
+  return el('span', {
+    class: 'term', role: 'button', tabindex: '0',
+    onclick: open,
+    onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') open(e); },
+  }, label);
+}
+
+function showTermModal(id) {
+  const entry = GLOSSARY.find((g) => g.id === id);
+  if (!entry) return;
+  const { title, def } = entry[LANG] || entry.en;
+  document.querySelectorAll('.term-overlay').forEach((o) => o.remove()); // one definition at a time
+  const close = () => overlay.remove();
+  const overlay = el('div', { class: 'modal-overlay term-overlay', onclick: (e) => { if (e.target === overlay) close(); } });
+  overlay.appendChild(
+    el('div', { class: 'modal term-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title }, [
+      el('div', { class: 'modal-header' }, [
+        el('h2', {}, title),
+        el('button', { class: 'secondary', onclick: close }, t('close')),
+      ]),
+      // Other terms inside a definition link onward too.
+      el('div', { class: 'modal-body term-def' }, glossify(def, id)),
+    ])
+  );
+  document.body.appendChild(overlay);
 }
 
 function rolesButton() {
@@ -645,7 +696,7 @@ function aliveStatus(v) {
     text = t('youDeadNoVote');
     cls = 'dead';
   }
-  return el('div', { class: 'status-bar ' + cls }, text);
+  return el('div', { class: 'status-bar ' + cls }, glossify(text));
 }
 
 function roleBanner(v) {
@@ -679,7 +730,7 @@ function roleBanner(v) {
     el('div', { class: 'align' }, alignmentLabel(v.myCharacter.alignment)),
     team ? el('div', { class: 'team' }, teamLabel(team)) : null,
     el('div', { class: 'name' }, char.name),
-    el('div', { class: 'ability' }, char.ability),
+    el('div', { class: 'ability' }, glossify(char.ability)),
   ]);
 }
 
@@ -724,7 +775,7 @@ function renderLog(v) {
       v.publicLog
         .slice(-12)
         .reverse()
-        .map((line) => el('div', { class: 'log-entry' }, tMsg(line)))
+        .map((line) => el('div', { class: 'log-entry' }, glossify(tMsg(line))))
     ),
   ]);
 }
@@ -995,7 +1046,7 @@ function renderDawnScreen(v) {
   return renderScreen([
     el('div', { class: 'moon' }, '☀️'),
     el('h1', { class: 'center' }, t('day', v.day)),
-    el('div', { class: 'card center' }, el('h2', {}, tMsg(v.dawnMessage))),
+    el('div', { class: 'card center' }, el('h2', {}, glossify(tMsg(v.dawnMessage)))),
     el(
       'button',
       {
@@ -1019,7 +1070,7 @@ function renderDuskScreen(v) {
     el('div', { class: 'moon' }, '🌙'),
     el('h1', { class: 'center' }, t('night', v.night)),
     noTalkingBanner(),
-    el('div', { class: 'card center' }, el('h2', {}, tMsg(v.duskMessage))),
+    el('div', { class: 'card center' }, el('h2', {}, glossify(tMsg(v.duskMessage)))),
     el(
       'button',
       {
@@ -1045,7 +1096,7 @@ function renderNightResultScreen(v) {
     el('div', { class: 'moon' }, '🌙'),
     el('h1', { class: 'center' }, t('night', v.night)),
     noTalkingBanner(),
-    el('div', { class: 'card' }, [el('h2', {}, t('yourResult')), el('p', { class: 'muted' }, tMsg(v.nightResult))]),
+    el('div', { class: 'card' }, [el('h2', {}, t('yourResult')), el('p', { class: 'muted' }, glossify(tMsg(v.nightResult)))]),
     el(
       'button',
       {
@@ -1072,7 +1123,7 @@ function renderNight(v) {
       noTalkingBanner(),
       el('div', { class: 'card' }, [
         el('h2', {}, turn.shape === 'info' ? t('yourInformation') : t('yourTurn')),
-        el('p', { class: 'muted' }, tMsg(turn.body)),
+        el('p', { class: 'muted' }, glossify(tMsg(turn.body))),
       ]),
     ];
 
@@ -1245,7 +1296,7 @@ function renderVoteList(v, n) {
 
 function renderNomination(v) {
   const n = v.nomination;
-  const card = [el('h2', {}, t('accuses', n.nominatorName, n.nomineeName))];
+  const card = [el('h2', {}, glossify(t('accuses', n.nominatorName, n.nomineeName)))];
 
   if (n.state === 'readyForAccusation' || n.state === 'readyForDefense') {
     // Everyone — including the dead, who are still watching — has to signal ready before the
@@ -1253,7 +1304,7 @@ function renderNomination(v) {
     const total = v.players.length;
     const readyCount = n.readyBy.length;
     const amReady = n.readyBy.includes(v.selfId);
-    card.push(el('p', { class: 'muted center' }, n.state === 'readyForAccusation' ? t('readyForAccusation') : t('readyForDefense')));
+    card.push(el('p', { class: 'muted center' }, glossify(n.state === 'readyForAccusation' ? t('readyForAccusation') : t('readyForDefense'))));
     card.push(el('p', { class: 'muted center' }, t('readyCount', readyCount, total)));
     card.push(
       el(
@@ -1278,7 +1329,7 @@ function renderNomination(v) {
     }
   } else if (n.state === 'voting') {
     if (v.selfId === n.currentVoterId) {
-      card.push(el('p', { class: 'center' }, t('yourTurnVote', n.nomineeName)));
+      card.push(el('p', { class: 'center' }, glossify(t('yourTurnVote', n.nomineeName))));
       card.push(
         el('div', { class: 'footer-actions' }, [
           el('button', { onclick: () => send({ t: 'vote', yes: true }) }, t('yesExecute', n.nomineeName)),
@@ -1314,19 +1365,19 @@ function renderDay(v) {
 
   if (v.onBlockId) {
     const onBlock = v.players.find((p) => p.id === v.onBlockId);
-    children.push(el('div', { class: 'card center' }, t('onBlock', onBlock ? onBlock.name : '?')));
+    children.push(el('div', { class: 'card center' }, glossify(t('onBlock', onBlock ? onBlock.name : '?'))));
   }
 
   if (v.nomination) {
     children.push(renderNomination(v));
   } else {
     children.push(
-      el('p', { class: 'muted center' }, self && self.alive
+      el('p', { class: 'muted center' }, glossify(self && self.alive
         ? t('tapToNominate')
         : v.myGhostVoteUsed
           ? t('deadNoVoteLeft')
           : t('deadOneVoteLeft')
-      )
+      ))
     );
     children.push(
       el(
@@ -1334,9 +1385,15 @@ function renderDay(v) {
         { class: 'card player-list' },
         v.players.map((p) => {
           const row = playerRow(p, { showDayStatus: true });
-          if (self && self.alive && p.alive && p.id !== v.selfId) {
+          // Any player can be nominated — yourself and the dead included (rarely wise, but legal);
+          // those two get a confirmation, since a stray tap would waste today's nomination.
+          if (self && self.alive && !self.hasNominatedToday && !p.hasBeenNominatedToday) {
             row.style.cursor = 'pointer';
-            row.addEventListener('click', () => send({ t: 'nominate', nomineeId: p.id }));
+            row.addEventListener('click', () => {
+              if (p.id === v.selfId && !confirm(t('nominateSelfConfirm'))) return;
+              if (p.id !== v.selfId && !p.alive && !confirm(t('nominateDeadConfirm', p.name))) return;
+              send({ t: 'nominate', nomineeId: p.id });
+            });
           }
           return row;
         })
@@ -1345,16 +1402,17 @@ function renderDay(v) {
     children.push(renderEndDayConsensus(v));
   }
 
-  if (v.myCharacter && v.myCharacter.id === 'slayer' && !v.mySlayerUsed && v.amIAlive) {
+  // Shown to every living player who hasn't fired yet — not just the Slayer — so anyone can bluff
+  // a shot and nobody can tell the real Slayer from their screen.
+  if (v.myCharacter && !v.mySlayerUsed && v.amIAlive) {
     children.push(
       el('div', { class: 'card' }, [
         el('h2', {}, t('slayerShot')),
-        el('p', { class: 'muted' }, t('slayerDesc')),
+        el('p', { class: 'muted' }, glossify(t('slayerDesc'))),
         el(
           'div',
           { class: 'choice-grid' },
           v.players
-            .filter((p) => p.alive)
             .map((p) =>
               el(
                 'button',
@@ -1379,7 +1437,7 @@ function renderDay(v) {
         el(
           'div',
           { class: 'log' },
-          v.myLog.map((e) => el('div', { class: 'log-entry' }, `${t('night', e.night)}: ${tMsg(e.msg)}`))
+          v.myLog.map((e) => el('div', { class: 'log-entry' }, glossify(`${t('night', e.night)}: ${tMsg(e.msg)}`)))
         ),
       ])
     );

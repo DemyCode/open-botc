@@ -479,3 +479,16 @@ button.block { width: 100%; }
   .choice:not(:disabled):hover { border-color: var(--accent); }
   .player-row[style*="cursor: pointer"]:hover { background: var(--border); }
 }
+
+/* Glossary terms: underlined, tappable, open a definition. */
+.term {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+  cursor: pointer;
+  border-radius: 3px;
+}
+.term:hover, .term:focus-visible { text-decoration-color: currentColor; outline: none; background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.term-modal { max-height: 60vh; }
+.term-def { line-height: 1.55; font-size: 1rem; }
