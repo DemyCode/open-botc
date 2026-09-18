@@ -5,7 +5,8 @@ import { createGame } from '../game/engine.js';
 import { viewFor } from '../game/view.js';
 import type { GameState } from '../game/types.js';
 
-const DATA_DIR = path.resolve('data');
+// Where rooms are saved between restarts. BOTC_DATA_DIR lets tests use a throwaway folder.
+const DATA_DIR = path.resolve(process.env.BOTC_DATA_DIR || 'data');
 const ROOMS_FILE = path.join(DATA_DIR, 'rooms.json');
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 

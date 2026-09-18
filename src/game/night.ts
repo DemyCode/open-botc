@@ -21,20 +21,25 @@ export const EVIL_INTRO_MIN_PLAYERS = 7;
  * never ends sooner than MIN_NIGHT_MS after it began — otherwise a night where nobody (or only
  * one quick player) acts would end so fast that everyone could tell.
  */
-export const DAWN_WAIT_MIN_MS = 5_000;
-export const DAWN_WAIT_MAX_MS = 10_000;
-export const MIN_NIGHT_MS = 30_000;
+// (Each can be overridden by an environment variable — only so tests can run a whole night in seconds.)
+const fromEnv = (name: string, fallback: number): number => {
+  const v = Number(process.env[name]);
+  return process.env[name] !== undefined && Number.isFinite(v) && v >= 0 ? v : fallback;
+};
+export const DAWN_WAIT_MIN_MS = fromEnv('BOTC_DAWN_MIN_MS', 5_000);
+export const DAWN_WAIT_MAX_MS = Math.max(DAWN_WAIT_MIN_MS, fromEnv('BOTC_DAWN_MAX_MS', 10_000));
+export const MIN_NIGHT_MS = fromEnv('BOTC_MIN_NIGHT_MS', 30_000);
 
 /** Nobody — real actor or not — can answer a night step sooner than this after it opens, so an
  * instant answer never marks a decoy apart from a real choice. Enforced by the server clock. */
-export const MIN_ANSWER_MS = 5_000;
+export const MIN_ANSWER_MS = fromEnv('BOTC_MIN_ANSWER_MS', 5_000);
 
 /** Decoy questions for "choose" steps (asked of everyone who isn't the real actor). Keys are
  * translated on the client. A 2-player step always gets the 2-player question. */
-const DECOY_PICK_ONE = ['decoyTrust', 'decoySuspect', 'decoyQuiet', 'decoyNominate', 'decoyDemon', 'decoyBelieve', 'decoyOutsider'];
-const DECOY_PICK_TWO = 'decoySameTeam';
+export const DECOY_PICK_ONE = ['decoyTrust', 'decoySuspect', 'decoyQuiet', 'decoyNominate', 'decoyDemon', 'decoyBelieve', 'decoyOutsider'];
+export const DECOY_PICK_TWO = 'decoySameTeam';
 /** The decoy for an "info" step: something to read, then "Got it" — like the real info screen. */
-const DECOY_INFO = 'decoyInfo';
+export const DECOY_INFO = 'decoyInfo';
 
 /** Sets the game's winner exactly once — later calls (e.g. a second condition firing the same
  * tick) are no-ops so the first true result always stands. */

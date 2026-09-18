@@ -36,7 +36,9 @@ const server = http.createServer((req, res) => {
   let urlPath = (req.url || '/').split('?')[0];
   if (urlPath === '/') urlPath = '/index.html';
   const filePath = path.join(PUBLIC_DIR, urlPath);
-  if (!filePath.startsWith(PUBLIC_DIR)) {
+  // Must be INSIDE the public folder — a bare startsWith(PUBLIC_DIR) would also allow a sibling
+  // folder like "public-old/" (same prefix).
+  if (filePath !== PUBLIC_DIR && !filePath.startsWith(PUBLIC_DIR + path.sep)) {
     res.writeHead(403);
     res.end();
     return;
@@ -56,7 +58,8 @@ const server = http.createServer((req, res) => {
   });
 });
 
-const wss = new WebSocketServer({ server, path: '/ws' });
+// No legitimate message is anywhere near this big; a larger one closes the connection.
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
 
 interface Conn {
   code: string | null;
@@ -69,6 +72,10 @@ function requireHost(state: ReturnType<typeof engine.createGame>, playerId: stri
 
 wss.on('connection', (ws: WebSocket) => {
   const conn: Conn = { code: null, playerId: null };
+  // A malformed or oversized frame makes the socket emit 'error'. With no listener that is an
+  // uncaught exception — one bad client would take the whole server (every room) down. The
+  // library closes the offending connection itself; we only have to not crash.
+  ws.on('error', () => {});
   const send = (msg: unknown) => {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
   };
@@ -80,6 +87,8 @@ wss.on('connection', (ws: WebSocket) => {
     } catch {
       return;
     }
+    // Every real message is a JSON object; anything else ("null", "123", "[]") is just noise.
+    if (typeof msg !== 'object' || msg === null || Array.isArray(msg)) return;
 
     try {
       if (msg.t === 'join' || msg.t === 'auth') {
