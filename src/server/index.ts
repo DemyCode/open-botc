@@ -137,7 +137,7 @@ wss.on('connection', (ws: WebSocket) => {
           engine.declareNeighbor(state, playerId, String(msg.neighborId));
           break;
         case 'nightReal':
-          engine.submitRealResponse(state, playerId, Array.isArray(msg.targetIds) ? (msg.targetIds as string[]) : []);
+          engine.submitRealResponse(state, playerId, Array.isArray(msg.targetIds) ? (msg.targetIds as string[]) : [], Date.now());
           break;
         case 'nominate':
           engine.nominate(state, playerId, String(msg.nomineeId));

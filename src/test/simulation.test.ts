@@ -45,10 +45,16 @@ function checkInvariants(s: GameState, where: string): void {
     assert.ok(s.publicLog.some((m) => m.key === 'goodWinsMayor'), `${where}: good only wins with a living Demon via the Mayor`);
   }
   if (s.phase === 'night' && s.pendingRealTurn) {
-    for (const id of s.pendingRealTurn.playerIds) {
+    const t = s.pendingRealTurn;
+    // Still waiting to act: only the living, or a Ravenkeeper killed tonight. (An Imp who just
+    // killed themselves stays listed as this step's actor until everyone's decoy is answered.)
+    for (const id of t.playerIds.filter((id) => !(id in t.responses))) {
       const p = s.players.find((q) => q.id === id)!;
       assert.ok(p.alive || p.perceived === 'ravenkeeper', `${where}: only the living (or a just-killed Ravenkeeper) wake`);
     }
+    // Everyone the table still sees as alive is woken at every step — and nobody else.
+    const seenAlive = s.players.filter((p) => p.alive || p.diedTonight).map((p) => p.id).sort();
+    assert.deepEqual([...t.participantIds].sort(), seenAlive, `${where}: everyone seen as alive is woken, nobody else`);
   }
   if (s.phase === 'day') {
     assert.equal(s.pendingRealTurn, null, `${where}: no night turn during the day`);
@@ -81,28 +87,32 @@ function playNight(s: GameState, rand: Rand, where: string): void {
       tick(s, s.dawnAt!);
       break;
     }
-    // Someone who isn't acting tries to answer: always refused.
-    const outsider = s.players.find((p) => !t.playerIds.includes(p.id));
+    // Someone who isn't woken at all (dead from an earlier night) tries to answer: always refused.
+    const outsider = s.players.find((p) => !t.participantIds.includes(p.id));
     if (outsider) assert.equal(attempt(() => submitRealResponse(s, outsider.id, [])), false, `${where}: stranger answered`);
+    // Answering before the 5-second minimum is always refused, real turn or decoy.
+    const anyone = t.participantIds.find((id) => !(id in t.responses))!;
+    assert.equal(attempt(() => submitRealResponse(s, anyone, [], t.openedAt + 4_999)), false, `${where}: answered too early`);
 
-    const actorId = t.playerIds.find((id) => !(id in t.responses))!;
+    const actorId = t.participantIds.find((id) => !(id in t.responses))!;
     if (rand() < 0.2 && t.shape === 'choose') {
       // A bad answer (wrong count, duplicates, nonsense id) must be refused, not applied.
       const bad = pick(rand, [[], ['nobody'], [actorId, actorId, actorId]]);
       attempt(() => submitRealResponse(s, actorId, bad));
     }
     if (t.shape === 'choose') {
+      const isReal = t.playerIds.includes(actorId);
       const pool = s.players
-        .filter((p) => !((t.charId === 'monk' || t.charId === 'butler') && p.id === actorId))
+        .filter((p) => !(isReal && (t.charId === 'monk' || t.charId === 'butler') && p.id === actorId))
         .map((p) => p.id);
       const targets: string[] = [];
       while (targets.length < t.min) {
         const id = pick(rand, pool);
         if (!targets.includes(id)) targets.push(id);
       }
-      submitRealResponse(s, actorId, targets);
+      submitRealResponse(s, actorId, targets, t.openedAt + 5_000);
     } else {
-      submitRealResponse(s, actorId, []);
+      submitRealResponse(s, actorId, [], t.openedAt + 5_000);
     }
     checkInvariants(s, where);
   }

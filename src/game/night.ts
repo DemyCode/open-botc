@@ -4,7 +4,7 @@ import {
   minionInfo, ravenkeeperInfo, spyInfo, undertakerInfo,
 } from './info.js';
 import { abilityWorks } from './registration.js';
-import type { CharacterId, GameState, Msg, NightTurnShape, PlayerState } from './types.js';
+import type { CharacterId, GameState, Msg, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
 function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
@@ -24,6 +24,17 @@ export const EVIL_INTRO_MIN_PLAYERS = 7;
 export const DAWN_WAIT_MIN_MS = 5_000;
 export const DAWN_WAIT_MAX_MS = 10_000;
 export const MIN_NIGHT_MS = 30_000;
+
+/** Nobody — real actor or not — can answer a night step sooner than this after it opens, so an
+ * instant answer never marks a decoy apart from a real choice. Enforced by the server clock. */
+export const MIN_ANSWER_MS = 5_000;
+
+/** Decoy questions for "choose" steps (asked of everyone who isn't the real actor). Keys are
+ * translated on the client. A 2-player step always gets the 2-player question. */
+const DECOY_PICK_ONE = ['decoyTrust', 'decoySuspect', 'decoyQuiet', 'decoyNominate', 'decoyDemon', 'decoyBelieve', 'decoyOutsider'];
+const DECOY_PICK_TWO = 'decoySameTeam';
+/** The decoy for an "info" step: something to read, then "Got it" — like the real info screen. */
+const DECOY_INFO = 'decoyInfo';
 
 /** Sets the game's winner exactly once — later calls (e.g. a second condition firing the same
  * tick) are no-ops so the first true result always stands. */
@@ -147,6 +158,12 @@ function choosePromptFor(charId: CharacterId | 'minion-info'): { min: number; ma
   }
 }
 
+/** Who is woken at every step tonight: every player the table still sees as alive — including
+ * someone killed earlier tonight, who mustn't notice their screens stopping before dawn. */
+function nightParticipants(state: GameState): PlayerState[] {
+  return state.players.filter((p) => p.alive || p.diedTonight);
+}
+
 function startRound(state: GameState, charId: CharacterId | 'minion-info', actors: PlayerState[]): void {
   const slot = `${charId}-n${state.night}`;
   const shape = shapeFor(state, charId);
@@ -167,9 +184,23 @@ function startRound(state: GameState, charId: CharacterId | 'minion-info', actor
     for (const p of actors) bodyByPlayer[p.id] = cfg.body;
   }
 
+  const actorIds = actors.map((p) => p.id);
+  const participantIds = [...new Set([...actorIds, ...nightParticipants(state).map((p) => p.id)])];
+  const decoys: Record<string, string> = {};
+  for (const id of participantIds) {
+    if (actorIds.includes(id)) continue;
+    if (shape === 'info') decoys[id] = DECOY_INFO;
+    else if (max === 2) decoys[id] = DECOY_PICK_TWO;
+    else {
+      const last = (state.lastDecoyKeys ??= {});
+      const pool = DECOY_PICK_ONE.filter((k) => k !== last[id]); // never the same question twice in a row
+      decoys[id] = last[id] = pool[Math.floor(Math.random() * pool.length)];
+    }
+  }
+
   state.pendingRealTurn = {
-    charId, playerIds: actors.map((p) => p.id), shape, min, max, bodyByPlayer,
-    responses: {},
+    charId, playerIds: actorIds, participantIds, decoys, shape, min, max, bodyByPlayer,
+    responses: {}, openedAt: Date.now(),
   };
 }
 
@@ -199,9 +230,9 @@ export function advanceNightSlot(state: GameState): void {
     const charId = seq[state.nightSlotIndex];
     if (charId === 'poisoner') state.poisonedId = null;
     if (charId === 'butler') state.butlerMasterId = null;
-    const actors = actorsFor(state, charId);
-    if (actors.length === 0) continue;
-    startRound(state, charId, actors);
+    // Every step runs, even with no real actor (then everyone gets a decoy): skipping it would let
+    // anyone count tonight's screens and work out which characters aren't in play.
+    startRound(state, charId, actorsFor(state, charId));
     return;
   }
   // Everyone has acted — but dawn waits (see DAWN_WAIT_*); tick() breaks it when it's time.
@@ -329,30 +360,49 @@ function maybeAdvance(state: GameState): void {
     return;
   }
   const t = state.pendingRealTurn;
-  if (t && t.playerIds.every((id) => id in t.responses)) advanceNightSlot(state);
+  if (t && stepComplete(state, t)) advanceNightSlot(state);
 }
 
-export function submitRealResponse(state: GameState, playerId: string, targetIds: string[]): void {
+/** A step is done once every real actor has answered, and every decoy too — except a decoy of
+ * someone who has lost connection: a real turn is always waited for, a decoy never blocks. */
+function stepComplete(state: GameState, t: PendingRealTurn): boolean {
+  return t.participantIds.every((id) => {
+    if (id in t.responses) return true;
+    if (t.playerIds.includes(id)) return false;
+    return !state.players.find((p) => p.id === id)?.connected;
+  });
+}
+
+/**
+ * A player's answer to the current night step — their real turn, or their decoy question (the
+ * server knows which; the protocol doesn't differ). `now` is the server clock: when given, an
+ * answer sooner than MIN_ANSWER_MS after the step opened is refused.
+ */
+export function submitRealResponse(state: GameState, playerId: string, targetIds: string[], now?: number): void {
   const t = state.pendingRealTurn;
-  if (!t || !t.playerIds.includes(playerId)) throw new GameError('No pending real turn for this player');
+  if (!t || !t.participantIds.includes(playerId)) throw new GameError('No pending night turn for this player');
   if (playerId in t.responses) throw new GameError('Already responded');
+  if (now !== undefined && now < t.openedAt + MIN_ANSWER_MS) throw new GameError('Too early — take a few seconds');
+  const isDecoy = !t.playerIds.includes(playerId);
   if (t.shape === 'choose') {
     if (targetIds.length < t.min || targetIds.length > t.max) throw new GameError('Invalid selection count');
     if (new Set(targetIds).size !== targetIds.length) throw new GameError('Cannot choose the same player twice');
     // "If you get to choose 'any player' at night, you can choose yourself or a dead player."
     const eligible = new Set(state.players.map((p) => p.id));
     for (const id of targetIds) if (!eligible.has(id)) throw new GameError('Invalid target');
-    if ((t.charId === 'monk' || t.charId === 'butler') && targetIds.includes(playerId)) {
+    if (!isDecoy && (t.charId === 'monk' || t.charId === 'butler') && targetIds.includes(playerId)) {
       throw new GameError('Cannot choose yourself');
     }
   }
-  t.responses[playerId] = targetIds;
-  applyRealChoice(state, t.charId, playerId, targetIds);
+  t.responses[playerId] = t.shape === 'choose' ? targetIds : [];
+  if (!isDecoy) applyRealChoice(state, t.charId, playerId, targetIds); // a decoy answer is never used
   maybeAdvance(state);
 }
 
-/** Breaks dawn once its time has come — the only timed thing at night; no one's turn ever times out. */
+/** Night upkeep, once a second: a step whose only missing answers are decoys of disconnected
+ * players moves on, and dawn breaks once its time has come. Nobody's real turn ever times out. */
 export function tick(state: GameState, now: number): void {
-  if (state.phase !== 'night' || state.winner || state.dawnAt == null) return;
-  if (now >= state.dawnAt) finishNight(state);
+  if (state.phase !== 'night' || state.winner) return;
+  if (state.pendingRealTurn) maybeAdvance(state);
+  if (state.dawnAt != null && now >= state.dawnAt) finishNight(state);
 }

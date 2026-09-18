@@ -200,8 +200,8 @@ test('a night result is still delivered even when answering was the very last ac
   advanceUntil(s, 'empath');
   answerRealTurn(s, []); // info-shape round, just needs acknowledging
   advanceUntil(s, 'fortuneteller');
-  submitRealResponse(s, ft.id, [imp.id, empath.id]); // the last actor of the whole night
-  assert.equal(s.pendingRealTurn, null, 'nobody else has anything left to do');
+  submitRealResponse(s, ft.id, [imp.id, empath.id]); // the last real actor of the whole night
+  while (s.pendingRealTurn) skipRound(s); // everyone else's decoys, then the remaining steps
   breakDawn(s);
 
   assert.equal(s.phase, 'day');
@@ -276,7 +276,7 @@ test('dawn waits 5-10 seconds after the last action — and a night lasts at lea
   const s = mk(['imp', 'soldier', 'mayor', 'virgin', 'saint']); // 5 players, nobody acts on night 1
   const before = Date.now();
   startNight(s);
-  assert.equal(s.pendingRealTurn, null);
+  while (s.pendingRealTurn) skipRound(s); // only decoys tonight
   assert.equal(s.phase, 'night', 'even a night where nobody acts does not end instantly');
   assert.ok(s.dawnAt! >= before + 30_000, 'a night lasts at least 30 seconds');
   tick(s, s.dawnAt! - 1);

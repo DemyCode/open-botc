@@ -5,8 +5,8 @@ const state = {
   playerId: sessionStorage.getItem('botc.playerId'),
   view: null,
   selected: [],
-  decoy: null, // the decoy question on screen, if any — see syncDecoy
-  lastDecoyKey: null,
+  turnReadyAt: 0, // when the current night screen may be answered (the 5-second minimum)
+  decoyResultStep: null, // a decoy's stand-in result screen, still to be dismissed (see submitTurn)
   dawnSeenForDay: null,
   duskSeenForNight: null,
   nightResultSeenForNight: null,
@@ -81,7 +81,7 @@ function handleMessage(msg) {
 }
 
 function turnKey(view) {
-  if (view.nightTurn) return `turn-${view.phase}-${view.night}-${JSON.stringify(view.nightTurn.body)}`;
+  if (view.nightTurn) return `turn-${view.nightTurn.stepKey}`;
   // Deliberately not keyed on phase — a fast night can flip to 'day' while she still hasn't
   // acknowledged the same, unchanged result, and that isn't a new turn worth resetting for again.
   if (view.nightResult) return `result-${view.night}-${JSON.stringify(view.nightResult)}`;
@@ -98,7 +98,14 @@ function handleTurnChange(view) {
   // Never buzz for anything at night: a buzz is audible across a silent table and would give away
   // who just got a real turn or result — the very thing decoy questions exist to hide.
   state.selected = [];
+  // Small margin on top of the server's wait, so the button never unlocks before the server
+  // would accept the answer.
+  state.turnReadyAt = view.nightTurn ? Date.now() + view.nightTurn.waitMs + 300 : 0;
   lastTurnKey = key;
+}
+
+function turnSecondsLeft() {
+  return Math.max(0, Math.ceil((state.turnReadyAt - Date.now()) / 1000));
 }
 
 // Buzzes are for the day only: the one moment the day needs your phone is your turn to vote.
@@ -190,10 +197,10 @@ const STRINGS = {
     yourResult: 'Your Result',
     continueBtn: 'Continue',
     deadRest: 'You are dead and rest peacefully.',
-    decoysHidden: 'Decoy questions are hidden. Keep your eyes on your screen anyway.',
-    hideDecoys: 'Hide decoy questions (testing)',
-    showDecoys: 'Show decoy questions',
-    decoyNote: "🎭 Decoy — this answer does nothing. Keep answering until your real turn shows up; it only comes once the question in front of you is answered, so rushing doesn't help.",
+    waitingEveryone: 'Waiting for everyone to answer… Keep your eyes on your phone.',
+    decoyNote: "🎭 Decoy — this answer does nothing. Everyone is woken at every step of the night, so nobody can tell who really acted.",
+    decoyInfo: 'Nothing to learn at this step. Read this, then tap “Got it”.',
+    decoyResult: 'Your answer was noted. Nothing to learn from it.',
     decoyTrust: 'Which player do you trust the most right now?',
     decoySuspect: 'Which player seems the most suspicious to you?',
     decoyQuiet: 'Which player has been the quietest so far?',
@@ -293,10 +300,10 @@ const STRINGS = {
     yourResult: 'Votre résultat',
     continueBtn: 'Continuer',
     deadRest: 'Vous êtes mort et reposez en paix.',
-    decoysHidden: 'Les questions leurres sont masquées. Gardez quand même les yeux sur votre écran.',
-    hideDecoys: 'Masquer les questions leurres (test)',
-    showDecoys: 'Afficher les questions leurres',
-    decoyNote: "🎭 Leurre — cette réponse ne fait rien. Continuez à répondre jusqu'à votre vrai tour ; il n'apparaît qu'une fois la question en cours répondue, donc se dépêcher ne sert à rien.",
+    waitingEveryone: 'En attente des réponses de tout le monde… Gardez les yeux sur votre téléphone.',
+    decoyNote: "🎭 Leurre — cette réponse ne fait rien. Tout le monde est réveillé à chaque étape de la nuit, donc personne ne peut savoir qui a vraiment agi.",
+    decoyInfo: "Rien à apprendre à cette étape. Lisez ceci, puis touchez « J'ai compris ».",
+    decoyResult: "Votre réponse est notée. Il n'y a rien à en apprendre.",
     decoyTrust: 'En quel joueur avez-vous le plus confiance en ce moment ?',
     decoySuspect: 'Quel joueur vous semble le plus suspect ?',
     decoyQuiet: "Quel joueur a été le plus silencieux jusqu'ici ?",
@@ -1037,9 +1044,13 @@ function toggleChoice(selected, id, max) {
 }
 
 function submitTurn(t) {
+  if (turnSecondsLeft() > 0) return;
   if (t.shape === 'choose') send({ t: 'nightReal', targetIds: state.selected.slice() });
   else send({ t: 'nightReal', targetIds: [] });
   state.selected = [];
+  // After a Fortune Teller / Ravenkeeper step, the real player sees their result: a decoy gets
+  // a result screen too, so the two look the same from across the table.
+  if (t.decoy && t.decoyResult) state.decoyResultStep = t.stepKey;
 }
 
 function renderDawnScreen(v) {
@@ -1091,18 +1102,35 @@ function renderDuskScreen(v) {
 // dawn/dusk screens. Requires an explicit "Got it" tap rather than just fading away on its own,
 // so a quick game around the table can never race past it.
 function renderNightResultScreen(v) {
+  return renderResultScreen(v, tMsg(v.nightResult), () => {
+    state.nightResultSeenForNight = v.night;
+  });
+}
+
+/** The decoy's stand-in for a result screen — laid out exactly like the real one. */
+function renderDecoyResultScreen(v) {
+  return renderResultScreen(v, t('decoyResult'), () => {
+    state.decoyResultStep = null;
+  }, true);
+}
+
+function renderResultScreen(v, text, onDone, isDecoy) {
   return renderScreen([
     roleBanner(v),
     el('div', { class: 'moon' }, '🌙'),
     el('h1', { class: 'center' }, t('night', v.night)),
     noTalkingBanner(),
-    el('div', { class: 'card' }, [el('h2', {}, t('yourResult')), el('p', { class: 'muted' }, glossify(tMsg(v.nightResult)))]),
+    el('div', { class: 'card' }, [
+      el('h2', {}, t('yourResult')),
+      el('p', { class: 'muted' }, glossify(text)),
+      isDecoy ? el('p', { class: 'muted decoy-note' }, t('decoyNote')) : null,
+    ]),
     el(
       'button',
       {
         class: 'block',
         onclick: () => {
-          state.nightResultSeenForNight = v.night;
+          onDone();
           render();
         },
       },
@@ -1123,9 +1151,13 @@ function renderNight(v) {
       noTalkingBanner(),
       el('div', { class: 'card' }, [
         el('h2', {}, turn.shape === 'info' ? t('yourInformation') : t('yourTurn')),
-        el('p', { class: 'muted' }, glossify(tMsg(turn.body))),
+        el('p', { class: 'muted' }, glossify(turn.decoy ? t(turn.body.key) : tMsg(turn.body))),
+        turn.decoy ? el('p', { class: 'muted decoy-note' }, t('decoyNote')) : null,
       ]),
     ];
+    // Nobody can answer in the first 5 seconds of a step — real turn or decoy alike.
+    const wait = turnSecondsLeft();
+    const label = (text) => (wait > 0 ? `${text} (${wait})` : text);
 
     if (turn.shape === 'choose') {
       const grid = el(
@@ -1149,124 +1181,23 @@ function renderNight(v) {
       children.push(
         el(
           'button',
-          { class: 'block', disabled: state.selected.length < turn.min ? 'true' : null, onclick: () => submitTurn(turn) },
-          t('confirm')
+          { class: 'block', disabled: wait > 0 || state.selected.length < turn.min ? 'true' : null, onclick: () => submitTurn(turn) },
+          label(t('confirm'))
         )
       );
     } else {
-      children.push(el('button', { class: 'block', onclick: () => submitTurn(turn) }, t('gotIt')));
+      children.push(el('button', { class: 'block', disabled: wait > 0 ? 'true' : null, onclick: () => submitTurn(turn) }, label(t('gotIt'))));
     }
     return renderScreen(children);
   }
 
-  // A nightResult, once acknowledged, is handled by renderNightResultScreen before render() ever
-  // reaches here — it isn't checked again in this function, since it stays set (unseen or not)
-  // until the next night resets it. A living player only lands here with decoys switched off
-  // (otherwise render() shows renderDecoy instead).
+  // Between steps: you've answered, the others haven't yet. The same screen for everyone.
   return renderScreen([
     roleBanner(v),
     banner,
     el('h1', { class: 'center pulse' }, t('night', v.night)),
     noTalkingBanner(),
-    el('p', { class: 'muted center' }, v.amIAlive ? t('decoysHidden') : t('deadRest')),
-    v.amIAlive ? decoysToggle() : null,
-  ]);
-}
-
-// Decoy questions: while a living player has no real night turn, they're always answering a
-// throwaway question laid out exactly like a real one (a player grid + Confirm), so from across
-// the table everyone's phone looks busy the whole night. A real turn that arrives mid-decoy
-// waits until that decoy is answered — so racing through decoys gains nothing (you just get
-// another one), and nobody's screen ever visibly "switches" to a real turn. Answers are never
-// sent anywhere.
-const DECOY_QUESTIONS = [
-  { key: 'decoyTrust', min: 1, max: 1 },
-  { key: 'decoySuspect', min: 1, max: 1 },
-  { key: 'decoyQuiet', min: 1, max: 1 },
-  { key: 'decoyNominate', min: 1, max: 1 },
-  { key: 'decoyDemon', min: 1, max: 1 },
-  { key: 'decoyBelieve', min: 1, max: 1 },
-  { key: 'decoySameTeam', min: 2, max: 2 },
-  { key: 'decoyOutsider', min: 1, max: 1 },
-];
-let decoyCounter = 0;
-
-function decoysEnabled() {
-  return localStorage.getItem('botc.decoysDisabled') !== '1';
-}
-
-function newDecoy(previousKey) {
-  const pool = DECOY_QUESTIONS.filter((q) => q.key !== previousKey);
-  const q = pool[Math.floor(Math.random() * pool.length)];
-  return { ...q, n: ++decoyCounter, selected: [] };
-}
-
-// Called once per render, before anything reads state.decoy. A decoy is only ever dropped by
-// answering it (or by the night ending / dying / switching decoys off) — never by a real turn
-// arriving, which is what makes the real turn queue up behind it.
-function syncDecoy(v) {
-  if (!v || v.phase !== 'night' || !v.amIAlive || !decoysEnabled()) {
-    state.decoy = null;
-    return;
-  }
-  if (!state.decoy && !v.nightTurn) state.decoy = newDecoy(state.lastDecoyKey);
-}
-
-function submitDecoy() {
-  state.lastDecoyKey = state.decoy.key;
-  state.decoy = null;
-  render();
-}
-
-function decoysToggle() {
-  const enabled = decoysEnabled();
-  return el(
-    'button',
-    {
-      class: 'secondary dots-toggle',
-      onclick: () => {
-        localStorage.setItem('botc.decoysDisabled', enabled ? '1' : '0');
-        render();
-      },
-    },
-    enabled ? t('hideDecoys') : t('showDecoys')
-  );
-}
-
-function renderDecoy(v) {
-  const d = state.decoy;
-  const grid = el(
-    'div',
-    { class: 'choice-grid' },
-    v.players
-      .filter((p) => p.alive)
-      .map((p) =>
-        el(
-          'button',
-          {
-            class: 'choice' + (d.selected.includes(p.id) ? ' selected' : ''),
-            onclick: () => {
-              toggleChoice(d.selected, p.id, d.max);
-              render();
-            },
-          },
-          `${p.seat + 1}. ${p.name}`
-        )
-      )
-  );
-  return renderScreen([
-    roleBanner(v),
-    el('div', { class: 'moon' }, '🌙'),
-    el('h1', { class: 'center' }, t('night', v.night)),
-    noTalkingBanner(),
-    el('div', { class: 'card' }, [
-      el('h2', {}, t('yourTurn')),
-      el('p', { class: 'muted' }, t(d.key)),
-      el('p', { class: 'muted decoy-note' }, t('decoyNote')),
-    ]),
-    grid,
-    el('button', { class: 'block', disabled: d.selected.length < d.min ? 'true' : null, onclick: submitDecoy }, t('confirm')),
-    decoysToggle(),
+    el('p', { class: 'muted center' }, v.amIAlive ? t('waitingEveryone') : t('deadRest')),
   ]);
 }
 
@@ -1479,7 +1410,8 @@ function computeSignature(v) {
   if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) return `dawn-${v.day}`;
   if (v.phase === 'night' && v.duskMessage && state.duskSeenForNight !== v.night) return `dusk-${v.night}`;
   if (v.phase === 'lobby') return 'lobby';
-  if (v.phase === 'night') return state.decoy ? `night-decoy-${state.decoy.n}` : `night-${turnKey(v)}`;
+  if (v.phase === 'night' && state.decoyResultStep) return `decoyresult-${state.decoyResultStep}`;
+  if (v.phase === 'night') return `night-${turnKey(v)}`;
   if (v.phase === 'day') return `day-${v.nomination ? v.nomination.state + ':' + v.nomination.nomineeId : 'none'}`;
   if (v.phase === 'ended') return 'ended';
   return v.phase;
@@ -1487,7 +1419,7 @@ function computeSignature(v) {
 
 function render() {
   const v = state.code && state.playerId ? state.view : null;
-  syncDecoy(v);
+  if (!v || v.phase !== 'night') state.decoyResultStep = null;
   const signature = computeSignature(v) + ':' + LANG;
   animateThisRender = signature !== lastScreenSignature;
   lastScreenSignature = signature;
@@ -1520,7 +1452,7 @@ function render() {
     return;
   }
   if (v.phase === 'lobby') app.appendChild(renderLobby(v));
-  else if (v.phase === 'night') app.appendChild(state.decoy ? renderDecoy(v) : renderNight(v));
+  else if (v.phase === 'night') app.appendChild(state.decoyResultStep ? renderDecoyResultScreen(v) : renderNight(v));
   else if (v.phase === 'day') app.appendChild(renderDay(v));
   else if (v.phase === 'ended') app.appendChild(renderEnded(v));
 }
@@ -1534,14 +1466,9 @@ function leaveButtonIfJoined() {
 setInterval(() => {
   const n = state.view && state.view.nomination;
   if (n && (n.state === 'accusing' || n.state === 'defending')) render();
+  // The 5-second countdown on a night screen's button.
+  else if (state.view && state.view.nightTurn && Date.now() < state.turnReadyAt + 1000) render();
 }, 1000);
-
-// Lets toggling the decoy-questions setting in one tab take effect in every other tab open on
-// this browser (localStorage writes don't fire this event in the tab that made them). Language
-// lives in sessionStorage instead (each tab/player picks their own), so it never crosses tabs.
-window.addEventListener('storage', (e) => {
-  if (e.key === 'botc.decoysDisabled') render();
-});
 
 connect();
 render();

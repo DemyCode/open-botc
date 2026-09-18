@@ -1,4 +1,5 @@
 import { CHARACTERS } from './characters.js';
+import { MIN_ANSWER_MS } from './night.js';
 import type { GameState, Msg, Nomination, NominationState, Phase, PlayerState } from './types.js';
 
 function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
@@ -35,10 +36,20 @@ export interface NightTurnChoice {
 export interface NightTurnView {
   shape: 'info' | 'choose';
   title: string;
+  /** The real prompt/info, or for a decoy `{ key: <decoy question key> }`. */
   body: Msg;
   min: number;
   max: number;
   choices: NightTurnChoice[];
+  /** True when this screen is a decoy question — only ever told to the player it's shown to. */
+  decoy: boolean;
+  /** For a decoy at a step whose real actor gets a result right after answering (Fortune Teller,
+   * Ravenkeeper): show a result screen after it too, so the two look alike. */
+  decoyResult: boolean;
+  /** Identifies this night step — changes at every step, even when two steps look the same. */
+  stepKey: string;
+  /** How long (ms) until this screen may be answered (see MIN_ANSWER_MS). */
+  waitMs: number;
 }
 
 export interface NominationView {
@@ -106,13 +117,22 @@ function publiclyAlive(p: PlayerState): boolean {
 
 function buildNightTurn(state: GameState, viewerId: string): NightTurnView | null {
   const t = state.pendingRealTurn;
-  if (!t || !t.playerIds.includes(viewerId) || viewerId in t.responses) return null;
+  if (!t || !t.participantIds.includes(viewerId) || viewerId in t.responses) return null;
+  const decoy = !t.playerIds.includes(viewerId);
   const choices: NightTurnChoice[] =
     t.shape === 'choose'
       ? state.players // any player, dead or alive, yourself included — the rules allow it
           .map((p) => ({ id: p.id, name: p.name, seat: p.seat, alive: publiclyAlive(p) }))
       : [];
-  return { shape: t.shape, title: 'Your turn', body: t.bodyByPlayer[viewerId] ?? msg('empty'), min: t.min, max: t.max, choices };
+  return {
+    shape: t.shape, title: 'Your turn',
+    body: decoy ? msg(t.decoys[viewerId]) : t.bodyByPlayer[viewerId] ?? msg('empty'),
+    min: t.min, max: t.max, choices,
+    decoy,
+    decoyResult: decoy && (t.charId === 'fortuneteller' || t.charId === 'ravenkeeper'),
+    stepKey: `${state.night}-${state.nightSlotIndex}`,
+    waitMs: Math.max(0, t.openedAt + MIN_ANSWER_MS - Date.now()),
+  };
 }
 
 /** Fixed seating-chart neighbours (not "nearest alive" — a dead player still keeps their chair). */

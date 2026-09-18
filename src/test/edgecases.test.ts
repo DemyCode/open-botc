@@ -360,13 +360,15 @@ test('the Imp may attack a dead player — nothing happens, and nobody is report
   assert.equal(s.publicLog.at(-1)!.key, 'nobodyDiedLastNight');
 });
 
-test('a player cannot answer a night turn that is not theirs', () => {
+test('a player dead from an earlier night is never woken, and cannot answer a night step', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
   const empath = byChar(s, 'empath');
   const soldier = byChar(s, 'soldier');
+  empath.alive = false;
   startNight(s);
   advanceUntil(s, 'poisoner');
-  assert.throws(() => submitRealResponse(s, empath.id, [soldier.id]), /No pending real turn/);
+  assert.ok(!s.pendingRealTurn!.participantIds.includes(empath.id));
+  assert.throws(() => submitRealResponse(s, empath.id, [soldier.id]), /No pending night turn/);
 });
 
 test('a player cannot answer the same night turn twice', () => {

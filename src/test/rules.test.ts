@@ -22,13 +22,14 @@ for (const n of [5, 6]) {
     const imp = byChar(s, 'imp');
     const poisoner = byChar(s, 'poisoner');
     startNight(s);
-    const seen: string[] = [];
+    const realActors: Record<string, string[]> = {};
     while (s.phase === 'night') {
-      if (s.pendingRealTurn) seen.push(s.pendingRealTurn.charId);
+      if (s.pendingRealTurn) realActors[s.pendingRealTurn.charId] = s.pendingRealTurn.playerIds;
       skipRound(s);
     }
-    assert.ok(!seen.includes('minion-info'), 'no Minion info');
-    assert.ok(!seen.includes('imp'), 'the Imp has nothing to do on the first night');
+    // The steps still happen (everyone gets a decoy), but nobody really acts in them.
+    assert.deepEqual(realActors['minion-info'], [], 'no Minion info');
+    assert.deepEqual(realActors['imp'], [], 'the Imp has nothing to do on the first night');
     assert.ok(!imp.log.some((e) => e.msg.key === 'demonInfo'));
     assert.ok(!poisoner.log.some((e) => e.msg.key.startsWith('minionInfo')));
   });

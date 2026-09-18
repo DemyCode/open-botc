@@ -64,15 +64,28 @@ export interface PlayerState {
 
 export type NightTurnShape = 'info' | 'choose';
 
+/**
+ * One step of the night order (Poisoner, Monk, Imp, ...). Every living player is "woken" at every
+ * step: the real actors (`playerIds`) get their real screen, everyone else gets a decoy question
+ * of the same shape — so nobody can tell who really acted. Every step of the night order runs
+ * every night, even for characters not in play, so counting screens reveals nothing either.
+ */
 export interface PendingRealTurn {
   charId: CharacterId | 'minion-info';
+  /** The real actors this step (may be empty — then everyone gets a decoy). */
   playerIds: string[];
+  /** Everyone woken this step: the real actors plus every other publicly-alive player. */
+  participantIds: string[];
+  /** The decoy question shown to each non-actor participant (a client-side question key). */
+  decoys: Record<string, string>;
   shape: NightTurnShape;
   min: number;
   max: number;
   /** Per-player prompt, since minion-info/imp differ slightly per recipient. */
   bodyByPlayer: Record<string, Msg>;
   responses: Record<string, string[]>;
+  /** When this step opened (ms): nobody may answer until MIN_ANSWER_MS after it. */
+  openedAt: number;
 }
 
 export type NominationState = 'readyForAccusation' | 'accusing' | 'readyForDefense' | 'defending' | 'voting' | 'closed';
@@ -118,6 +131,8 @@ export interface GameState {
   pendingRealTurn: PendingRealTurn | null;
   /** When the current night began (ms), for the minimum night length. */
   nightStartedAt?: number;
+  /** Each player's most recent "pick a player" decoy question, so the next one is always different. */
+  lastDecoyKeys?: Record<string, string>;
   /** Set once everyone has acted: dawn breaks at this time (ms), not the instant the last answer lands. */
   dawnAt?: number | null;
   publicLog: Msg[];

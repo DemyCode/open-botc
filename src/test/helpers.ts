@@ -39,13 +39,24 @@ export function startNight(state: GameState): void {
   beginNight(state);
 }
 
-/** Answers the current pending real turn for every acting player with `targetIds`. */
+/** Answers every still-open decoy question of the current night step with something valid. */
+export function answerDecoys(state: GameState): void {
+  const t = state.pendingRealTurn;
+  if (!t) return;
+  for (const id of t.participantIds.slice()) {
+    if (t.playerIds.includes(id) || id in t.responses || state.pendingRealTurn !== t) continue;
+    submitRealResponse(state, id, t.shape === 'choose' ? state.players.slice(0, t.min).map((p) => p.id) : []);
+  }
+}
+
+/** Answers the current night step: every real actor with `targetIds`, everyone else's decoy with anything. */
 export function answerRealTurn(state: GameState, targetIds: string[] = []): void {
   const t = state.pendingRealTurn;
   if (!t) throw new Error('No pending real turn');
   for (const id of t.playerIds) {
     if (!(id in t.responses)) submitRealResponse(state, id, targetIds);
   }
+  answerDecoys(state);
 }
 
 /** Skips the wait between the last night action and dawn (see DAWN_WAIT_* in night.ts). */
@@ -62,7 +73,7 @@ export function skipRound(state: GameState): void {
     return;
   }
   for (const id of t.playerIds.slice()) {
-    if (id in t.responses) continue;
+    if (id in t.responses || state.pendingRealTurn !== t) continue;
     // A skipped Poisoner poisons themselves (legal, and harmless): poisoning anyone else would
     // quietly switch off whichever ability the test is actually about.
     const targets =
@@ -73,6 +84,7 @@ export function skipRound(state: GameState): void {
           : [];
     submitRealResponse(state, id, targets);
   }
+  answerDecoys(state);
 }
 
 /** Fast-forwards the night until the pending real turn matches `charId`, throwing if it's never reached. */
