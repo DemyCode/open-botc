@@ -14,7 +14,7 @@ const VIEW_KEYS = [
   'amIAlive', 'code', 'dawnMessage', 'day', 'duskMessage', 'endDayAliveCount', 'endDayReadyCount', 'endDayReadyNames', 'hostId',
   'leftNeighborName', 'mySlayerUsed', 'myCharacter', 'myEndDayReady', 'myGhostVoteUsed', 'myLog', 'mySeatRightId', 'night',
   'nightResult', 'nightTurn', 'nomination', 'onBlockId', 'phase', 'publicLog', 'players', 'rightNeighborName', 'seatingConfirmed',
-  'selfId', 'waitingForOthers', 'winner', 'replay',
+  'selfId', 'waitingForOthers', 'winner', 'replay', 'script',
 ];
 const PLAYER_KEYS = [
   'alive', 'character', 'characterName', 'connected', 'declaredRightId', 'ghostVoteUsed', 'hasBeenNominatedToday',
@@ -97,7 +97,8 @@ test('a Drunk is told (and shown) their false character, never the truth, until 
   const drunk = byChar(s, 'drunk');
   const v = viewFor(s, drunk.id);
   assert.equal(v.myCharacter!.id, 'empath');
-  assert.ok(!JSON.stringify(v).includes('"drunk"'));
+  // (The script — the character sheet everyone can read — lists the Drunk like any other character.)
+  assert.ok(!JSON.stringify({ ...v, script: null }).includes('"drunk"'));
   assert.equal(v.myCharacter!.alignment, 'good');
   s.phase = 'ended';
   s.winner = 'good';

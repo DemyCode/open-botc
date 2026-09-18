@@ -509,3 +509,8 @@ button.block { width: 100%; }
 .rname.evil { color: #ff8a8a; }
 
 .tip-label { font-weight: 700; margin-bottom: 2px; }
+
+.script-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.script-btn { flex: 1 1 45%; }
+.script-chars { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin-bottom: 8px; }
+.script-char { font-size: 0.9rem; }

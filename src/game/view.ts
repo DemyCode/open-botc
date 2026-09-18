@@ -71,6 +71,8 @@ export interface NominationView {
 
 export interface GameView {
   code: string;
+  /** The script (edition or custom mix) and the characters it holds — public, chosen in the lobby. */
+  script: { id: string; characters: string[] };
   phase: Phase;
   night: number;
   day: number;
@@ -227,7 +229,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
   const amIAlive = self ? shownAlive(self) : false;
 
   return {
-    code: state.code, phase: state.phase, night: state.night, day: state.day,
+    code: state.code, script: { id: state.scriptId, characters: state.scriptChars }, phase: state.phase, night: state.night, day: state.day,
     hostId: state.hostId, selfId: viewerId, players, publicLog: state.publicLog,
     myCharacter: self ? { id: self.perceived, name: CHARACTERS[self.perceived].name, ability: CHARACTERS[self.perceived].ability, alignment: self.alignment } : null,
     myLog: self ? self.log : [],

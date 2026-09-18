@@ -4,6 +4,7 @@ import path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { allCharactersSummary } from '../game/characters.js';
 import * as engine from '../game/engine.js';
+import { SCRIPTS } from '../game/scripts.js';
 import { GameError } from '../game/types.js';
 import { viewFor } from '../game/view.js';
 import { RoomManager } from './rooms.js';
@@ -30,6 +31,12 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/api/characters') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(ALL_CHARACTERS));
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/api/scripts') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(Object.values(SCRIPTS).map((s) => ({ id: s.id, name: s.name, characters: s.characters }))));
     return;
   }
 
@@ -148,11 +155,15 @@ wss.on('connection', (ws: WebSocket) => {
           requireHost(state, playerId);
           engine.startGame(state);
           break;
+        case 'setScript':
+          requireHost(state, playerId);
+          engine.setScript(state, String(msg.script), Array.isArray(msg.characters) ? (msg.characters as unknown[]).map(String) : undefined);
+          break;
         case 'declareNeighbor':
           engine.declareNeighbor(state, playerId, String(msg.neighborId));
           break;
         case 'nightReal':
-          engine.submitRealResponse(state, playerId, Array.isArray(msg.targetIds) ? (msg.targetIds as string[]) : [], Date.now());
+          engine.submitRealResponse(state, playerId, Array.isArray(msg.targetIds) ? (msg.targetIds as string[]) : [], Date.now(), typeof msg.character === 'string' ? msg.character : undefined);
           break;
         case 'nominate':
           engine.nominate(state, playerId, String(msg.nomineeId));

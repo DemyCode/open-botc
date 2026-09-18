@@ -266,6 +266,10 @@ const STRINGS = {
     need5to15: (n) => `Need 5-15 players (${n})`,
     waitingOnSeatingConfirm: 'Waiting on seating to be confirmed',
     waitingHost: 'Waiting for the host to start…',
+    scriptTitle: 'Script',
+    scriptCustom: 'Custom mix',
+    scriptCustomHint: 'Tick the characters to play with (at least 1 Demon, 1 Minion and 3 Townsfolk).',
+    scriptName: (id) => ({ tb: 'Trouble Brewing', bmr: 'Bad Moon Rising', sv: 'Sects & Violets', custom: 'Custom mix' })[id] || id,
     you: ' (you)',
     youAlive: '🟢 You are alive',
     youDeadOneVote: '💀 You are dead — you can still vote one more time this game',
@@ -375,6 +379,10 @@ const STRINGS = {
     need5to15: (n) => `Il faut 5 à 15 joueurs (${n})`,
     waitingOnSeatingConfirm: 'En attente de la confirmation du placement',
     waitingHost: "En attente que l'hôte démarre…",
+    scriptTitle: 'Script',
+    scriptCustom: 'Mélange personnalisé',
+    scriptCustomHint: 'Cochez les personnages de la partie (au moins 1 Démon, 1 Sbire et 3 Villageois).',
+    scriptName: (id) => ({ tb: 'Trouble Brewing', bmr: 'Bad Moon Rising', sv: 'Sects & Violets', custom: 'Mélange personnalisé' })[id] || id,
     you: ' (vous)',
     youAlive: '🟢 Vous êtes vivant',
     youDeadOneVote: '💀 Vous êtes mort — il vous reste un dernier vote pour cette partie',
@@ -649,7 +657,8 @@ function showRolesModal() {
   loadCharacters().then((chars) => {
     const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
     const teams = ['townsfolk', 'outsider', 'minion', 'demon'];
-    const localized = chars.map((c) => localizeChar(c));
+    const inScript = state.view && state.view.script && state.view.script.characters.length ? state.view.script.characters : null;
+    const localized = chars.filter((c) => !inScript || inScript.includes(c.id)).map((c) => localizeChar(c));
     const body = el('div', { class: 'modal-body' });
 
     function renderSections(query) {
@@ -667,7 +676,7 @@ function showRolesModal() {
             el('h3', { class: 'roles-team ' + team }, [svgIcon(team, 'roles-team-icon'), teamLabel(team)]),
             ...teamChars.map((c) =>
               el('div', { class: 'roles-card ' + team }, [
-                svgIcon(c.id, 'roles-card-icon'),
+                characterIcon(c.id, 'roles-card-icon'),
                 el('div', { class: 'roles-card-text' }, [
                   el('div', { class: 'roles-name' }, c.name),
                   el('div', { class: 'roles-ability' }, glossify(c.ability)),
@@ -715,7 +724,9 @@ let tipPick = { key: null, pick: null };
 /** Everything readable, flattened: every tip and bluffing idea of EVERY character, then every game term. */
 function readingPool() {
   const pool = [];
-  if (typeof TIPS !== 'undefined') for (const id of Object.keys(TIPS)) TIPS[id].forEach((e, i) => pool.push({ character: id, index: i }));
+  // Only the characters of this game's script have tips shown (a full sheet is public knowledge; who is in play is not).
+  const sheet = state.view && state.view.script && state.view.script.characters.length ? state.view.script.characters : null;
+  if (typeof TIPS !== 'undefined') for (const id of Object.keys(TIPS)) if (!sheet || sheet.includes(id)) TIPS[id].forEach((e, i) => pool.push({ character: id, index: i }));
   const own = typeof GLOSSARY !== 'undefined' ? GLOSSARY.length : 0;
   const wiki = typeof WIKI_TERMS !== 'undefined' ? WIKI_TERMS.length : 0;
   for (let i = 0; i < own + wiki; i++) pool.push({ term: i });
@@ -876,7 +887,7 @@ function roleBanner(v) {
   const alignCls = v.myCharacter.alignment === 'evil' ? 'evil' : 'good';
   const char = localizeChar(v.myCharacter);
   const team = charactersCache && charactersCache.find((c) => c.id === v.myCharacter.id)?.team;
-  const icon = svgIcon(ICON_PATHS[v.myCharacter.id] ? v.myCharacter.id : (alignCls === 'evil' ? 'demon' : 'townsfolk'), 'role-icon');
+  const icon = ICON_PATHS[v.myCharacter.id] ? svgIcon(v.myCharacter.id, 'role-icon') : characterIcon(v.myCharacter.id, 'role-icon');
   return el('div', { class: 'role-banner ' + alignCls + (animateThisRender ? '' : ' no-anim') }, [
     aliveStatus(v),
     toggleBtn,
@@ -1158,6 +1169,50 @@ function renderSeatingSetup(v) {
   ]);
 }
 
+/** A character's icon: its own, or its team's when it has none of its own. */
+function characterIcon(id, cls) {
+  const team = charactersCache && charactersCache.find((c) => c.id === id)?.team;
+  return svgIcon(ICON_PATHS[id] ? id : team || 'townsfolk', cls);
+}
+
+const SCRIPT_IDS = ['tb', 'bmr', 'sv', 'custom'];
+
+/** The host picks what the game is played with; everyone else just sees it. */
+function renderScriptPicker(v, isHost) {
+  const current = v.script ? v.script.id : 'tb';
+  const chars = v.script ? v.script.characters : [];
+  const head = el('h3', {}, t('scriptTitle'));
+  if (!isHost) return el('div', { class: 'card script-card' }, [head, el('p', { class: 'center' }, t('scriptName', current))]);
+  const buttons = SCRIPT_IDS.map((id) =>
+    el('button', {
+      class: 'script-btn' + (id === current ? ' selected' : ' secondary'),
+      onclick: () => send(id === 'custom' ? { t: 'setScript', script: 'custom', characters: chars } : { t: 'setScript', script: id }),
+    }, t('scriptName', id))
+  );
+  const children = [head, el('div', { class: 'script-buttons' }, buttons)];
+  if (current === 'custom' && charactersCache) {
+    children.push(el('p', { class: 'muted' }, t('scriptCustomHint')));
+    for (const team of ['townsfolk', 'outsider', 'minion', 'demon']) {
+      const inTeam = localizedCharacters().filter((c) => c.team === team);
+      children.push(el('div', { class: 'roles-team ' + team }, teamLabel(team)));
+      children.push(el('div', { class: 'script-chars' }, inTeam.map((c) =>
+        el('label', { class: 'script-char' }, [
+          el('input', {
+            type: 'checkbox', checked: chars.includes(c.id) ? 'true' : null,
+            onchange: (e) => send({ t: 'setScript', script: 'custom', characters: e.target.checked ? chars.concat(c.id) : chars.filter((x) => x !== c.id) }),
+          }),
+          ' ' + c.name,
+        ])
+      )));
+    }
+  }
+  return el('div', { class: 'card script-card' }, children);
+}
+
+function localizedCharacters() {
+  return (charactersCache || []).map((c) => localizeChar(c));
+}
+
 function renderLobby(v) {
   const isHost = v.hostId === v.selfId;
   const count = v.players.length;
@@ -1172,6 +1227,7 @@ function renderLobby(v) {
     el('div', { class: 'code-badge' }, v.code),
     el('p', { class: 'muted center' }, t('shareCode')),
     el('div', { class: 'card player-list' }, v.players.map((p) => playerRow(p, { showSeating: true }))),
+    renderScriptPicker(v, isHost),
     renderSeatingSetup(v),
     isHost
       ? el('button', { class: 'block', disabled: !canStart ? 'true' : null, onclick: () => send({ t: 'start' }) }, startLabel)
