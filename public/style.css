@@ -508,4 +508,4 @@ button.block { width: 100%; }
 .rname.good { color: #7ee2a8; }
 .rname.evil { color: #ff8a8a; }
 
-.tip-source { font-size: 0.75rem; margin-top: 4px; opacity: 0.7; }
+.tip-label { font-weight: 700; margin-bottom: 2px; }

@@ -283,9 +283,8 @@ const STRINGS = {
     decoyNote: "🎭 Decoy — this answer does nothing. Everyone is woken at every step of the night, so nobody can tell who really acted.",
     decoyInfo: 'Nothing to learn at this step. Read this, then tap “Got it”.',
     decoyResult: 'Your answer was noted. Nothing to learn from it.',
-    tipSource: 'Tip from the Blood on the Clocktower wiki',
-    bluffSource: 'Bluffing advice from the Blood on the Clocktower wiki',
-    termSource: 'Definition from the Blood on the Clocktower glossary',
+    tipLabel: (name) => `Tip for "${name}":`,
+    termLabel: (name) => `Definition of "${name}":`,
     decoyTrust: 'Which player do you trust the most right now?',
     decoySuspect: 'Which player seems the most suspicious to you?',
     decoyQuiet: 'Which player has been the quietest so far?',
@@ -393,9 +392,8 @@ const STRINGS = {
     decoyNote: "🎭 Leurre — cette réponse ne fait rien. Tout le monde est réveillé à chaque étape de la nuit, donc personne ne peut savoir qui a vraiment agi.",
     decoyInfo: "Rien à apprendre à cette étape. Lisez ceci, puis touchez « J'ai compris ».",
     decoyResult: "Votre réponse est notée. Il n'y a rien à en apprendre.",
-    tipSource: 'Astuce du wiki Blood on the Clocktower',
-    bluffSource: 'Conseil de bluff du wiki Blood on the Clocktower',
-    termSource: 'Définition du glossaire Blood on the Clocktower',
+    tipLabel: (name) => `Astuce de « ${name} » :`,
+    termLabel: (name) => `Définition de « ${name} » :`,
     decoyTrust: 'En quel joueur avez-vous le plus confiance en ce moment ?',
     decoySuspect: 'Quel joueur vous semble le plus suspect ?',
     decoyQuiet: "Quel joueur a été le plus silencieux jusqu'ici ?",
@@ -705,7 +703,7 @@ function showRolesModal() {
 
 // ---------------------------------------------------------------------------
 // Reading material: where a night screen has no real information for you (a decoy), it shows
-// something to read instead — a tip or a bluffing idea for ANY character (tips.js: every bullet of
+// something to read instead — a tip for ANY character (tips.js: every Tips & Tricks bullet of
 // the wiki pages) or the definition of a game term (glossary.js + terms.js: the whole wiki Glossary),
 // all mixed uniformly. A new entry is drawn each time a new screen appears, is kept while that
 // screen refreshes, and is never the same one twice in a row. Nothing here depends on your own
@@ -746,19 +744,16 @@ function currentTip(v, key) {
   if (!pick) return null;
   if (pick.term !== undefined) {
     const term = termAt(pick.term);
-    return term ? { text: '📖 ' + term.title + ' — ' + term.def, source: t('termSource') } : null;
+    return term ? { label: '📖 ' + t('termLabel', term.title), text: term.def } : null;
   }
   const entry = TIPS[pick.character][pick.index];
-  const who = ' · ' + roleNameFor(pick.character);
-  return entry.kind === 'bluff'
-    ? { text: '🎭 ' + (entry[LANG] || entry.en), source: t('bluffSource') + who }
-    : { text: '💡 ' + (entry[LANG] || entry.en), source: t('tipSource') + who };
+  return { label: '💡 ' + t('tipLabel', roleNameFor(pick.character)), text: entry[LANG] || entry.en };
 }
 
 function tipBlock(v, key, fallback) {
   const tip = currentTip(v, key);
   if (!tip) return el('p', { class: 'muted' }, fallback);
-  return el('div', {}, [el('p', { class: 'muted' }, glossify(tip.text)), el('p', { class: 'muted tip-source' }, tip.source)]);
+  return el('div', {}, [el('p', { class: 'tip-label' }, tip.label), el('p', { class: 'muted' }, glossify(tip.text))]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1264,7 +1259,7 @@ function renderDecoyResultScreen(v) {
   const tip = currentTip(v, 'result-' + state.decoyResultStep);
   return renderResultScreen(v, tip ? tip.text : t('decoyResult'), () => {
     state.decoyResultStep = null;
-  }, true, tip ? tip.source : null);
+  }, true, tip ? tip.label : null);
 }
 
 function renderResultScreen(v, text, onDone, isDecoy, tipShown) {
@@ -1275,9 +1270,9 @@ function renderResultScreen(v, text, onDone, isDecoy, tipShown) {
     noTalkingBanner(),
     el('div', { class: 'card' }, [
       el('h2', {}, t('yourResult')),
+      isDecoy && tipShown ? el('p', { class: 'tip-label' }, tipShown) : null,
       el('p', { class: 'muted' }, glossify(text)),
       isDecoy ? el('p', { class: 'muted decoy-note' }, t('decoyNote')) : null,
-      isDecoy && tipShown ? el('p', { class: 'muted tip-source' }, tipShown) : null,
     ]),
     el(
       'button',

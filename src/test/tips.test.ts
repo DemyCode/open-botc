@@ -1,6 +1,6 @@
-// The reading material shown on night screens that carry no real information: every tip and every
-// bluffing idea of the player's own character (public/tips.js — all the bullets of the wiki page),
-// and the game-term definitions of the wiki Glossary (public/glossary.js + public/terms.js).
+// The reading material shown on night screens that carry no real information: every tip of every
+// character (public/tips.js — all the Tips & Tricks bullets of the wiki) and the game-term definitions
+// of the wiki Glossary (public/glossary.js + public/terms.js), each with a label saying what it is.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +14,7 @@ import { brokenText, loadApp } from './fakedom.js';
 import { advanceUntil, byChar, mk, runFullNight, startNight } from './helpers.js';
 
 type Lang = 'en' | 'fr';
-type Entry = { kind: 'tip' | 'bluff'; en: string; fr: string };
+type Entry = { kind: 'tip'; en: string; fr: string };
 type Term = { en: { title: string; def: string }; fr: { title: string; def: string } };
 
 const sandbox: Record<string, unknown> = {};
@@ -27,11 +27,11 @@ const GLOSSARY = sandbox.GLOSSARY as Term[];
 const LANGS: Lang[] = ['en', 'fr'];
 const withTips = (Object.keys(CHARACTERS) as CharacterId[]).filter((c) => c !== 'drunk');
 const allTerms = (lang: Lang) => GLOSSARY.map((g) => g[lang]).concat(WIKI_TERMS.map((g) => g[lang]));
-const termText = (t: { title: string; def: string }) => `${t.title} — ${t.def}`;
+const termText = (t: { title: string; def: string }) => t.def;
 
 // ---------------------------------------------------------------- the data
 
-/** How many bullets each wiki page has under "Tips & Tricks" / "Bluffing as the X" — [tips, bluffs]. */
+/** How many bullets each wiki page has under "Tips & Tricks" — [tips, (dropped) bluffs]. */
 const WIKI_COUNTS: Record<string, [number, number]> = {
   washerwoman: [16, 6], librarian: [10, 7], investigator: [9, 8], chef: [9, 6], empath: [9, 7], fortuneteller: [10, 9],
   undertaker: [12, 6], monk: [10, 6], ravenkeeper: [11, 7], virgin: [13, 8], slayer: [13, 5], soldier: [11, 6],
@@ -44,22 +44,18 @@ test('every character has entries — except the Drunk, who is shown those of th
   assert.ok(!('drunk' in TIPS), 'a Drunk must never see "you are the Drunk" entries');
 });
 
-test('EVERY bullet of the wiki is there: the full number of tips and of bluffing ideas per character', () => {
+test('EVERY Tips & Tricks bullet of the wiki is there — and no bluffing ideas any more', () => {
   for (const c of withTips) {
-    const [tips, bluffs] = WIKI_COUNTS[c];
-    assert.equal(TIPS[c].filter((e) => e.kind === 'tip').length, tips, `${c}: tips`);
-    assert.equal(TIPS[c].filter((e) => e.kind === 'bluff').length, bluffs, `${c}: bluffing ideas`);
+    assert.equal(TIPS[c].length, WIKI_COUNTS[c][0], `${c}: tips`);
+    assert.ok(TIPS[c].every((e) => e.kind === 'tip'), `${c}: only tips`);
   }
   assert.equal(WIKI_TERMS.length, 52, 'the rest of the wiki Glossary');
 });
 
-test('the wiki bullets are word for word — the Ravenkeeper examples given by the user are there in full', () => {
+test('the wiki bullets are word for word — the Ravenkeeper tips are there in full', () => {
   const rk = TIPS.ravenkeeper;
   assert.ok(rk.some((e) => e.kind === 'tip' && e.en.startsWith('If the Demon knows you are the Ravenkeeper, they are very unlikely to kill you. It is to your benefit to bluff as a character who is a constant threat to the evil team, such as the Empath, Fortune Teller, Slayer, or Undertaker.')));
   assert.ok(rk.some((e) => e.kind === 'tip' && e.en.startsWith('If you have told nobody that you are the Ravenkeeper, and you are still alive late in the game, then it is probable that a Spy is in play')));
-  assert.ok(rk.some((e) => e.kind === 'bluff' && e.en === "Don't know the identity of the player you are confirming? Claim that person is the Drunk. This will also cast doubt on their information, adding an extra layer of usefulness to the strategy."));
-  assert.ok(rk.some((e) => e.kind === 'bluff' && e.en.startsWith('The Ravenkeeper would wake only when they die during the night, not the day.')));
-  assert.ok(rk.some((e) => e.kind === 'bluff' && /Throwing blame allows you to point the finger at a good player as an evil one/.test(e.en) && /An advanced technique is to claim they are in fact a different character/.test(e.en)), 'sub-bullets are kept with their bullet');
 });
 
 test('every entry is real: both languages present, no wiki markup, no scraping debris, no duplicates', () => {
@@ -77,7 +73,7 @@ test('every entry is real: both languages present, no wiki markup, no scraping d
         if (text !== text.trim() || /\s{2}/.test(text)) problems.push(`${c}/${lang}#${i}: stray whitespace`);
         if (!/[.!?»)…"”]$/.test(text)) problems.push(`${c}/${lang}#${i}: does not end like a sentence: …${text.slice(-30)}`);
         if (/\{\{|\}\}|\[\[|\]\]|Category:|<\/?\w+>|'''/.test(text)) problems.push(`${c}/${lang}#${i}: markup`);
-        if (e.kind !== 'tip' && e.kind !== 'bluff') problems.push(`${c}#${i}: kind ${e.kind}`);
+        if (e.kind !== 'tip') problems.push(`${c}#${i}: kind ${e.kind}`);
       });
     }
   }
@@ -106,10 +102,6 @@ test('the French entries are translations, in the French names of the characters
   assert.deepEqual(problems, []);
 });
 
-test('bluffing ideas exist for the 16 characters whose wiki page has a Bluffing section, and only for them', () => {
-  for (const c of withTips) assert.equal(TIPS[c].some((e) => e.kind === 'bluff'), WIKI_COUNTS[c][1] > 0, c);
-});
-
 test('the wiki glossary terms do not repeat the app\'s own terms', () => {
   const own = new Set(GLOSSARY.map((g) => g.en.title.toLowerCase().replace(/[ *]+$/, '')));
   for (const t of WIKI_TERMS) assert.ok(!own.has(t.en.title.toLowerCase()), `${t.en.title} is already defined by the app`);
@@ -132,7 +124,7 @@ function decoyView(character: CharacterId, stepKey = '2-1'): GameView {
   return v;
 }
 
-type Shown = { kind: 'tip' | 'bluff' | 'term'; index: number; character?: string };
+type Shown = { kind: 'tip' | 'term'; index: number; character?: string };
 /** Which entry a screen's text carries: an entry of ANY character, or a term. */
 function shown(text: string, lang: Lang): Shown | null {
   for (const c of withTips) {
@@ -143,10 +135,10 @@ function shown(text: string, lang: Lang): Shown | null {
   return j >= 0 ? { kind: 'term', index: j } : null;
 }
 const id = (s: Shown | null) => (s ? `${s.kind}:${s.character ?? ''}:${s.index}` : 'none');
-const CREDIT: Record<Shown['kind'], Record<Lang, string>> = {
-  tip: { en: 'Tip from the Blood on the Clocktower wiki', fr: 'Astuce du wiki Blood on the Clocktower' },
-  bluff: { en: 'Bluffing advice from the Blood on the Clocktower wiki', fr: 'Conseil de bluff du wiki Blood on the Clocktower' },
-  term: { en: 'Definition from the Blood on the Clocktower glossary', fr: 'Définition du glossaire Blood on the Clocktower' },
+/** The label above what is shown: says what it is and what it is about. */
+const label = (what: Shown, lang: Lang) => {
+  if (what.kind === 'tip') return lang === 'en' ? `Tip for "${CHARACTERS[what.character as CharacterId].name}":` : null;
+  return lang === 'en' ? `Definition of "${allTerms('en')[what.index].title}":` : `Définition de « ${allTerms('fr')[what.index].title} » :`;
 };
 /** Makes every random draw of the app deterministic (mulberry32), so coverage tests can't flake. */
 const seedApp = (app: { run<T>(c: string): T }, seed: number) =>
@@ -154,7 +146,7 @@ const seedApp = (app: { run<T>(c: string): T }, seed: number) =>
 // The wiki repeats one Spy bullet word for word on two pages; a screen can't tell those two apart.
 const POOL = new Set(withTips.flatMap((c) => TIPS[c].map((e) => e.en))).size + GLOSSARY.length + WIKI_TERMS.length;
 
-test('the decoy information screen shows something to read instead of "nothing to learn", credited to its source — both languages', async () => {
+test('the decoy information screen shows something to read instead of "nothing to learn" labelled — both languages', async () => {
   const app = await loadApp('en');
   seedApp(app, 2);
   for (const character of withTips) {
@@ -164,17 +156,19 @@ test('the decoy information screen shows something to read instead of "nothing t
         const what = shown(text, lang);
         assert.ok(what, `${character}/${lang}: nothing readable on the screen`);
         assert.ok(!/Nothing to learn|Rien à apprendre/.test(text));
-        assert.ok(text.includes(CREDIT[what.kind][lang]), `${what.kind} source credited`);
+        const l = label(what, lang);
+        if (l) assert.ok(text.includes(l), `label "${l}" is on the screen`);
+        assert.ok(/📖|💡/.test(text));
       }
     }
   }
 });
 
-test('the draw mixes EVERYTHING: tips and bluffs of every character, and glossary terms — each one comes up, whatever your own character', async () => {
+test('the draw mixes EVERYTHING: tips of every character and glossary terms — each one comes up, whatever your own character', async () => {
   const app = await loadApp('en');
   seedApp(app, 1);
   const seen = new Set<string>();
-  const kinds = { tip: 0, bluff: 0, term: 0 };
+  const kinds = { tip: 0, term: 0 };
   const characters = new Set<string>();
   const N = 12000;
   for (let i = 0; i < N; i++) {
@@ -186,7 +180,7 @@ test('the draw mixes EVERYTHING: tips and bluffs of every character, and glossar
   }
   assert.equal(characters.size, 21, 'entries of all 21 characters, not only the Empath');
   assert.equal(seen.size, POOL, 'every single entry and term comes up');
-  assert.ok(kinds.tip > 0 && kinds.bluff > 0 && kinds.term > 0, JSON.stringify(kinds));
+  assert.ok(kinds.tip > 0 && kinds.term > 0, JSON.stringify(kinds));
 });
 
 test('what you read does not depend on your character: an Imp and a Soldier draw from the same pool (nothing hints at your role)', async () => {
@@ -218,18 +212,39 @@ test('never the same entry twice in a row, and the first one a player sees is ra
   assert.ok(first.size >= 20, `the first entry was one of only ${first.size} different ones in 40 fresh starts`);
 });
 
-test('a tip or bluff names the character it is about, so a foreign tip is not mistaken for advice on your own role', async () => {
+test('a tip says "Tip for <character>:" and a term says "Definition of <term>:" — in English and French', async () => {
   const app = await loadApp('en');
   seedApp(app, 6);
-  let checked = 0;
-  for (let i = 0; i < 300 && checked < 30; i++) {
-    const text = app.show(decoyView('chef', `2-${i}`), { seen: true });
+  let tips = 0, terms = 0;
+  for (let i = 0; i < 400 && (tips < 25 || terms < 25); i++) {
+    const view = decoyView('chef', `2-${i}`);
+    const text = app.show(view, { seen: true });
     const what = shown(text, 'en')!;
-    if (what.kind === 'term') continue;
-    assert.ok(text.includes(CHARACTERS[what.character as CharacterId].name), `${what.character} named`);
-    checked++;
+    if (what.kind === 'tip') {
+      assert.ok(text.includes(`💡 Tip for "${CHARACTERS[what.character as CharacterId].name}":`), 'English tip label');
+      const fr = app.show(view, { seen: true, lang: 'fr' });
+      assert.ok(/💡 Astuce de « [^»]+ » :/.test(fr), 'French tip label: ' + fr.slice(0, 200));
+      app.show(view, { seen: true, lang: 'en' });
+      tips++;
+    } else {
+      assert.ok(text.includes(`📖 Definition of "${allTerms('en')[what.index].title}":`), 'English term label');
+      const fr = app.show(view, { seen: true, lang: 'fr' });
+      assert.ok(fr.includes(`📖 Définition de « ${allTerms('fr')[what.index].title} » :`), 'French term label');
+      app.show(view, { seen: true, lang: 'en' });
+      terms++;
+    }
   }
-  assert.equal(checked, 30);
+  assert.ok(tips >= 25 && terms >= 25, `${tips} tips, ${terms} terms`);
+});
+
+test('the French tip label uses the French name of the character', async () => {
+  const app = await loadApp('fr');
+  seedApp(app, 8);
+  for (let i = 0; i < 60; i++) {
+    const text = app.show(decoyView('chef', `2-${i}`), { seen: true, lang: 'fr' });
+    const m = text.match(/💡 Astuce de « ([^»]+) » :/);
+    if (m) assert.ok(!/^(Washerwoman|Fortune Teller|Slayer|Imp|Empath)$/.test(m[1].trim()), m[1]);
+  }
 });
 
 test('while the same screen refreshes (the countdown ticks) the entry does not change', async () => {
@@ -239,7 +254,7 @@ test('while the same screen refreshes (the countdown ticks) the entry does not c
   for (let i = 0; i < 20; i++) assert.equal(id(shown(app.show(view, { seen: true }), 'en')), first);
 });
 
-test('switching language keeps the same entry, translated — tips, bluffs and terms alike', async () => {
+test('switching language keeps the same entry, translated — tips and terms alike', async () => {
   const app = await loadApp('en');
   seedApp(app, 5);
   const kinds = new Set<string>();
@@ -251,7 +266,7 @@ test('switching language keeps the same entry, translated — tips, bluffs and t
     assert.equal(id(fr), id(en));
     kinds.add(en.kind);
   }
-  assert.equal(kinds.size, 3, 'the check covered tips, bluffs and terms');
+  assert.equal(kinds.size, 2, 'the check covered tips and terms');
 });
 
 test('a Drunk draws from the same pool as everyone else', async () => {
@@ -302,7 +317,8 @@ test('a decoy that stands in for a result screen (Fortune Teller / Ravenkeeper s
   assert.ok(text.includes('Your Result'));
   const what = shown(text, 'en');
   assert.ok(what, 'something readable');
-  assert.ok(text.includes(CREDIT[what.kind].en), 'credited');
+  const l = label(what, "en");
+  assert.ok(l && text.includes(l), "labelled");
   assert.ok(!text.includes('Nothing to learn'));
 });
 
