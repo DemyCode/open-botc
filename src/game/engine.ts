@@ -1,5 +1,5 @@
 import { alignmentOfCharacter } from './characters.js';
-import { beginNight, evaluateWin, promoteScarletWomanIfEligible, setWinner, tick as nightTick } from './night.js';
+import { beginNight, evaluateWin, promoteScarletWomanIfEligible, setWinner } from './night.js';
 import { abilityWorks, registersAs } from './registration.js';
 import { randomId } from './rng.js';
 import { dealCharacters } from './setup.js';
@@ -340,10 +340,7 @@ function finishVoting(state: GameState, nom: Nomination): void {
 }
 
 export function tick(state: GameState, now: number): void {
-  if (state.phase === 'night') {
-    nightTick(state, now);
-    return;
-  }
+  // Nothing at night is timed: the night waits for every real answer, however long it takes.
   if (state.phase !== 'day') return;
   const nom = state.currentNomination;
   if (!nom) return;

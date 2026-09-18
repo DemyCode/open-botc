@@ -4,7 +4,7 @@ import {
   minionInfo, ravenkeeperInfo, spyInfo, undertakerInfo,
 } from './info.js';
 import { abilityWorks } from './registration.js';
-import type { CharacterId, GameState, Msg, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
+import type { CharacterId, GameState, Msg, NightTurnShape, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
 function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
@@ -79,8 +79,6 @@ export const FIRST_NIGHT_SEQUENCE: (CharacterId | 'minion-info')[] = [
 export const OTHER_NIGHT_SEQUENCE: (CharacterId | 'minion-info')[] = [
   'poisoner', 'monk', 'imp', 'ravenkeeper', 'butler', 'empath', 'fortuneteller', 'undertaker', 'spy',
 ];
-
-const TURN_TIMEOUT_MS = 60_000;
 
 export function appendLog(state: GameState, playerId: string, m: Msg): void {
   const p = state.players.find((pl) => pl.id === playerId);
@@ -165,7 +163,7 @@ function startRound(state: GameState, charId: CharacterId | 'minion-info', actor
 
   state.pendingRealTurn = {
     charId, playerIds: actors.map((p) => p.id), shape, min, max, bodyByPlayer,
-    responses: {}, deadline: Date.now() + TURN_TIMEOUT_MS,
+    responses: {},
   };
 }
 
@@ -335,31 +333,5 @@ export function submitRealResponse(state: GameState, playerId: string, targetIds
   }
   t.responses[playerId] = targetIds;
   applyRealChoice(state, t.charId, playerId, targetIds);
-  maybeAdvance(state);
-}
-
-function randomTargets(state: GameState, t: PendingRealTurn): string[] {
-  const pool = state.players.filter((p) => p.alive);
-  const copy = pool.slice();
-  const chosen: string[] = [];
-  for (let i = 0; i < t.min && copy.length; i++) {
-    const idx = Math.floor(Math.random() * copy.length);
-    chosen.push(copy.splice(idx, 1)[0].id);
-  }
-  return chosen;
-}
-
-export function tick(state: GameState, now: number): void {
-  if (state.phase !== 'night') return;
-  const t = state.pendingRealTurn;
-  if (t && now >= t.deadline) {
-    for (const id of t.playerIds) {
-      if (!(id in t.responses)) {
-        const fallback = t.shape === 'choose' ? randomTargets(state, t) : [];
-        t.responses[id] = fallback;
-        applyRealChoice(state, t.charId, id, fallback);
-      }
-    }
-  }
   maybeAdvance(state);
 }

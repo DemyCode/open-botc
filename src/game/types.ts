@@ -73,7 +73,6 @@ export interface PendingRealTurn {
   /** Per-player prompt, since minion-info/imp differ slightly per recipient. */
   bodyByPlayer: Record<string, Msg>;
   responses: Record<string, string[]>;
-  deadline: number;
 }
 
 export type NominationState = 'readyForAccusation' | 'accusing' | 'readyForDefense' | 'defending' | 'voting' | 'closed';

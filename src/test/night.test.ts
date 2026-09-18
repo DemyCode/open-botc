@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CHARACTERS } from '../game/characters.js';
 import { submitRealResponse } from '../game/night.js';
+import { tick } from '../game/engine.js';
 import { viewFor } from '../game/view.js';
 import { advanceUntil, answerRealTurn, byChar, byPerceived, mk, runFullNight, skipRound, startNight } from './helpers.js';
 
@@ -253,4 +254,16 @@ test('Poisoner and Monk still cannot target a dead player — targeting a corpse
   const poisoner = byChar(state, 'poisoner');
   advanceUntil(state, 'poisoner');
   assert.throws(() => submitRealResponse(state, poisoner.id, [empath.id]));
+});
+
+test('a night turn never times out — the night waits for a real answer however long it takes', () => {
+  // Regression: an unanswered turn used to be auto-answered (random targets) after 60s.
+  const state = mk(['imp', 'monk', 'empath', 'washerwoman', 'soldier', 'poisoner']);
+  startNight(state);
+  const t = state.pendingRealTurn!;
+  assert.ok(t, 'expected a pending real turn');
+  tick(state, Date.now() + 24 * 60 * 60 * 1000); // a whole day later
+  assert.equal(state.phase, 'night');
+  assert.equal(state.pendingRealTurn, t, 'the same turn must still be waiting');
+  assert.deepEqual(t.responses, {}, 'nobody may be answered for automatically');
 });
