@@ -1,5 +1,6 @@
 import { CHARACTERS } from './characters.js';
 import { offeredActions, type OfferedAction } from './dayactions.js';
+import { nominationRefusal, slayerShotRefusal } from './offers.js';
 import { msg } from './messages.js';
 import { MIN_ANSWER_MS, specOf } from './night.js';
 import type { GameState, HistoryEvent, Msg, Nomination, NominationState, Phase, PlayerState } from './types.js';
@@ -86,7 +87,11 @@ export interface GameView {
   publicLog: Msg[];
   myCharacter: { id: string; name: string; ability: string; alignment: string } | null;
   myLog: { night: number; msg: Msg }[];
-  mySlayerUsed: boolean;
+  /** The Slayer shot is on offer to this player (the same for everyone, so it proves nothing about who the Slayer is). */
+  slayerShotAvailable: boolean;
+  /** This player may nominate right now, and whom (the client just renders these). */
+  canNominate: boolean;
+  nominatableIds: string[];
   /** Day abilities this player may claim right now (see dayactions.ts). */
   myDayActions: OfferedAction[];
   myGhostVoteUsed: boolean;
@@ -249,7 +254,9 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     hostId: state.hostId, selfId: viewerId, players, publicLog: state.publicLog,
     myCharacter: self ? { id: self.perceived, name: CHARACTERS[self.perceived].name, ability: CHARACTERS[self.perceived].ability, alignment: self.alignment } : null,
     myLog: self ? self.log : [],
-    mySlayerUsed: self?.slayerUsed ?? false,
+    slayerShotAvailable: !!self && slayerShotRefusal(state, self) === null,
+    canNominate: !!self && nominationRefusal(state, self) === null,
+    nominatableIds: self && nominationRefusal(state, self) === null ? state.players.filter((p) => nominationRefusal(state, self, p) === null).map((p) => p.id) : [],
     myDayActions: self ? offeredActions(state, self) : [],
     myGhostVoteUsed: self?.ghostVoteUsed ?? false,
     amIAlive,

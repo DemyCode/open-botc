@@ -1049,3 +1049,18 @@ test('at 5-6 players the Demon and Minions are not told about each other (offici
     assert.deepEqual((s.history.find((e) => e.type === 'roles')!.vars as { bluffs: string[] }).bluffs, []);
   }
 });
+
+// ---------------------------------------------------------------- the client renders the engine's offers, nothing more
+
+test('the client shows the Slayer card and nomination rows exactly when the view says so — it derives no rule itself', async () => {
+  const s = mkDay(['imp', 'slayer', 'empath', 'washerwoman', 'soldier']);
+  const v = viewFor(s, s.players[2].id);
+  const app = await loadApp('en');
+  // Same game state, but the engine (the view) withholds everything: the client must follow.
+  app.show({ ...v, slayerShotAvailable: false, canNominate: false, nominatableIds: [] }, { seen: true });
+  assert.ok(!app.text().includes('Slayer shot'), 'no Slayer card when not offered');
+  assert.equal(rows(app).filter((r) => r.listeners.click).length, 0, 'no nomination rows when not offered');
+  // And the reverse: only the offered target is tappable.
+  app.show({ ...v, canNominate: true, nominatableIds: [s.players[3].id] }, { seen: true });
+  assert.equal(rows(app).filter((r) => r.listeners.click).length, 1, 'exactly the offered nominee');
+});

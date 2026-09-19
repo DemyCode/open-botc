@@ -1741,7 +1741,7 @@ function renderDay(v) {
           const row = playerRow(p, { showDayStatus: true });
           // Any player can be nominated — yourself and the dead included (rarely wise, but legal);
           // those two get a confirmation, since a stray tap would waste today's nomination.
-          if (self && self.alive && !self.hasNominatedToday && !p.hasBeenNominatedToday) {
+          if (v.canNominate && v.nominatableIds.includes(p.id)) {
             row.style.cursor = 'pointer';
             row.addEventListener('click', () => {
               if (p.id === v.selfId && !confirm(t('nominateSelfConfirm'))) return;
@@ -1758,8 +1758,7 @@ function renderDay(v) {
 
   // Shown to every living player who hasn't fired yet — not just the Slayer — so anyone can bluff
   // a shot and nobody can tell the real Slayer from their screen.
-  // Only when the Slayer is on the script — otherwise the card itself would prove they aren't in play.
-  if (v.myCharacter && !v.mySlayerUsed && v.amIAlive && v.script.characters.includes('slayer')) {
+  if (v.slayerShotAvailable) {
     children.push(
       el('div', { class: 'card' }, [
         el('h2', {}, t('slayerShot')),

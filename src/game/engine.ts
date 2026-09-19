@@ -2,6 +2,7 @@ import { CHARACTERS, alignmentOfCharacter } from './characters.js';
 import { executePlayer, hooksOf, markDead } from './deaths.js';
 import { record } from './history.js';
 import { msg } from './messages.js';
+import { nominationRefusal, slayerShotRefusal } from './offers.js';
 import { EVIL_INTRO_MIN_PLAYERS, beginNight, tick as nightTick } from './night.js';
 import { evaluateWin, setWinner } from './win.js';
 import { abilityLostReason, abilityWorks, noteMalfunction, registersAs } from './registration.js';
@@ -182,11 +183,9 @@ export function startGame(state: GameState): void {
  * nothing about who fired it.
  */
 export function useSlayer(state: GameState, slayerId: string, targetId: string): void {
-  if (state.phase !== 'day') throw new GameError('Slayer can only be used during the day');
-  if (!state.scriptChars.includes('slayer')) throw new GameError('The Slayer is not in this script');
   const self = findPlayer(state, slayerId);
-  if (!self.alive) throw new GameError('Dead players cannot use the Slayer shot');
-  if (self.slayerUsed) throw new GameError('Slayer shot already used');
+  const refusal = slayerShotRefusal(state, self);
+  if (refusal) throw new GameError(refusal);
   const target = findPlayer(state, targetId);
   self.slayerUsed = true;
   // The true character decides it (a Drunk who thinks they're the Slayer never hits either).
@@ -210,14 +209,10 @@ export function useSlayer(state: GameState, slayerId: string, targetId: string):
 export { useDayAbility } from './dayactions.js';
 
 export function nominate(state: GameState, nominatorId: string, nomineeId: string): void {
-  if (state.phase !== 'day') throw new GameError('Not day phase');
-  if (state.currentNomination) throw new GameError('A nomination is already in progress');
   const nominator = findPlayer(state, nominatorId);
   const nominee = findPlayer(state, nomineeId);
-  if (!nominator.alive) throw new GameError('Dead players cannot nominate');
-  // Dead players can be nominated (rarely wise, but legal) — only the living may nominate.
-  if (state.usedNominatorIds.includes(nominatorId)) throw new GameError('Already nominated today');
-  if (state.usedNomineeIds.includes(nomineeId)) throw new GameError('Already nominated today');
+  const refusal = nominationRefusal(state, nominator, nominee);
+  if (refusal) throw new GameError(refusal);
 
   state.usedNominatorIds.push(nominatorId);
   state.usedNomineeIds.push(nomineeId);
