@@ -212,9 +212,13 @@ button.block { width: 100%; }
   text-align: left;
   color: var(--text);
   font-size: 0.9rem;
+  line-height: 1.2;
+  min-width: 0; /* lets a long name wrap inside its half of the grid instead of being cut off */
+  overflow-wrap: anywhere;
 }
 .char-choice.selected { border-color: var(--accent); background: rgba(124,92,255,0.18); }
-.char-choice svg { flex: 0 0 auto; }
+/* An SVG with no size of its own fills the whole button: always a small icon beside the name. */
+.char-choice svg, .icon-svg.inline { flex: 0 0 auto; width: 22px; height: 22px; }
 
 .pulse {
   animation: pulse 2.2s ease-in-out infinite;

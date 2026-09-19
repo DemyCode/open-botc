@@ -1301,7 +1301,7 @@ function svgEl(tag, attrs = {}) {
 const ICON_PATHS = {
   logo: '<path d="M12 2a1 1 0 0 1 1 1v1.07A7.002 7.002 0 0 1 19 11v3.38l1.45 2.9A1 1 0 0 1 19.55 19H4.45a1 1 0 0 1-.9-1.72L5 14.38V11a7.002 7.002 0 0 1 6-6.93V3a1 1 0 0 1 1-1z"/><rect x="10" y="20" width="4" height="2" rx="1"/>',
   townsfolk: '<path d="M12 2c.3 1.6-.4 2.5-1.1 3.6-.5.8-.9 1.7-.9 2.9a2.5 2.5 0 0 0 5 0c0-.9-.4-1.6-.9-2.2 1.7 1 2.9 2.8 2.9 4.7a4.5 4.5 0 1 1-9 0c0-3.6 2.6-5.9 4-9z"/><rect x="11" y="15" width="2" height="7" rx="1"/>',
-  outsider: '<path d="M14.5 3a8.5 8.5 0 1 0 0 17 6.8 6.8 0 0 1 0-17z"/><circle cx="18.6" cy="6" r="1.2"/>',
+  outsider: '<path d="M14.5 3a8.5 8.5 0 1 0 0 17a10.5 10.5 0 0 1 0-17z"/><circle cx="18.6" cy="6" r="1.2"/>',
   minion: '<path d="M12 1.5 13 12h-2z"/><rect x="8.5" y="12" width="7" height="2" rx="0.5"/><rect x="11" y="14.5" width="2" height="7.5" rx="1"/>',
   demon: '<circle cx="12" cy="13.5" r="6"/><path d="M6.5 10 3 3.5 9 8Z"/><path d="M17.5 10 21 3.5 15 8Z"/>',
 

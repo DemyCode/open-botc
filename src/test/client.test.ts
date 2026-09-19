@@ -1182,3 +1182,29 @@ test('replay: a blocked kill by another ability names the ability and who stoppe
   const line = await replayOfAttack({ outcome: 'blocked', cause: 'godfather', by: 'innkeeper' }, 'en');
   assert.ok(line.includes('Godfather') && line.includes('Innkeeper'), line);
 });
+
+// ---------------------------------------------------------------- icons on a phone
+
+test('regression: every class the app draws a character/team icon with has an explicit size (an unsized SVG fills the whole button)', () => {
+  const appJs = fs.readFileSync(path.resolve('public/app.js'), 'utf8');
+  const css = fs.readFileSync(path.resolve('public/style.css'), 'utf8');
+  const classes = new Set([...appJs.matchAll(/(?:characterIcon|svgIcon)\([^,()]+,\s*'([a-z-]+)'\)/g)].map((m) => m[1]));
+  assert.ok(classes.has('inline'), 'the character buttons (Courtier, Gambler, Juggler...) use "inline"');
+  for (const cls of classes) {
+    const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, sel]) => new RegExp(`\\.${cls}\\b`).test(sel)).map(([, , body]) => body);
+    const sized = rules.some((b) => /\bwidth\s*:/.test(b) && /\bheight\s*:/.test(b))
+      || (cls === 'hero-icon' && /\.hero-icon \.icon-svg\s*\{[^}]*width[^}]*height/.test(css));
+    assert.ok(sized, `.${cls} has no width/height in style.css`);
+  }
+  assert.match(css, /\.char-choice svg[^{]*\{[^}]*width:\s*22px[^}]*height:\s*22px/, 'a small icon beside the name on the character buttons');
+});
+
+test('regression: the Outsider icon (a crescent moon) is not collapsed to a dot — its inner arc can span the crescent', () => {
+  const appJs = fs.readFileSync(path.resolve('public/app.js'), 'utf8');
+  const outsider = /\n {2}outsider: '([^']*)'/.exec(appJs)![1];
+  // "M14.5 3 a8.5 8.5 0 1 0 0 17 a<r> ... 0-17z": an arc across a 17-unit chord needs a radius of at least 8.5,
+  // or the browser scales it up until it exactly cancels the outer arc — leaving only the small star.
+  const inner = /a8\.5 8\.5 0 1 0 0 17a([\d.]+) [\d.]+ 0 0 1 0-17z/.exec(outsider);
+  assert.ok(inner, `unexpected crescent path: ${outsider}`);
+  assert.ok(Number(inner[1]) > 8.5, 'the inner arc is wider than the gap it spans');
+});
