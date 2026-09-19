@@ -348,6 +348,69 @@ test('the Fortune Teller\'s screen asks for exactly two players', async () => {
   assert.equal(app.root.find((n) => n.hasClass('choice') && n.hasClass('selected')).length, 2);
 });
 
+function courtierView(): { s: GameState; view: GameView } {
+  const s = mk(['imp', 'poisoner', 'courtier', 'soldier', 'empath', 'chef', 'mayor']);
+  startNight(s);
+  runFullNight(s);
+  startNight(s);
+  advanceUntil(s, 'courtier');
+  return { s, view: viewFor(s, byChar(s, 'courtier').id) };
+}
+
+test("the Courtier's turn asks for a character (not a player) and can be declined with No one", async () => {
+  const { view } = courtierView();
+  assert.ok(view.nightTurn);
+  assert.equal(view.nightTurn.pickCharacter, true);
+  assert.equal(view.nightTurn.optionalCharacter, true);
+  assert.equal(view.nightTurn.max, 0, 'no player is chosen');
+  assert.ok(view.nightTurn.characters.some((c) => c.id === 'empath'));
+  const app = await loadApp('en');
+  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
+  app.show(view, { seen: true });
+  assert.equal(app.root.find((n) => n.hasClass('choice')).length, 0, 'no player buttons');
+  assert.equal(app.root.find((n) => n.hasClass('char-choice')).length, view.nightTurn.characters.length + 1, 'a button per character plus No one');
+  assert.equal(app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.disabled, false, 'declining is allowed');
+  app.root.find((n) => n.hasClass('char-choice') && n.text().includes('Empath'))[0].click();
+  app.run('render()');
+  app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [], character: 'empath' });
+});
+
+test('the Courtier can decline: No one is preselected and Confirm sends no character', async () => {
+  const { view } = courtierView();
+  const app = await loadApp('en');
+  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
+  app.show(view, { seen: true });
+  const noOne = app.root.find((n) => n.hasClass('char-choice') && n.hasClass('selected'));
+  assert.equal(noOne.length, 1, 'No one starts selected');
+  app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [] });
+});
+
+test('a step that needs both a player and a character (the Gambler) unlocks only once both are chosen', async () => {
+  const s = mk(['imp', 'poisoner', 'gambler', 'soldier', 'empath', 'chef', 'mayor']);
+  startNight(s);
+  runFullNight(s);
+  startNight(s);
+  advanceUntil(s, 'gambler');
+  const view = viewFor(s, byChar(s, 'gambler').id);
+  assert.equal(view.nightTurn!.pickCharacter, true);
+  assert.equal(view.nightTurn!.optionalCharacter, false);
+  assert.equal(view.nightTurn!.max, 1);
+  const app = await loadApp('en');
+  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
+  app.show(view, { seen: true });
+  const confirm = () => app.root.buttons().find((b) => /^Confirm/.test(b.text()))!;
+  app.root.find((n) => n.hasClass('char-choice') && n.text().includes('Empath'))[0].click();
+  app.run('render()');
+  assert.equal(confirm().disabled, true, 'a character alone is not enough');
+  app.root.find((n) => n.hasClass('choice'))[3].click();
+  app.run('render()');
+  assert.equal(confirm().disabled, false);
+  confirm().click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [s.players[3].id], character: 'empath' });
+});
+
 test('an info screen has a "Got it" button that sends an empty answer once unlocked', async () => {
   const { view } = nightView('washerwoman', 'actor');
   const app = await loadApp('en');

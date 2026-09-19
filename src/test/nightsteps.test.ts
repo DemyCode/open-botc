@@ -206,13 +206,14 @@ test('someone killed tonight keeps getting decoys until dawn — their screens d
   assert.ok(screens > 0);
 });
 
-test('a player dead from an earlier night rests: no screens at all', () => {
+test('a player dead from an earlier night never gets a real turn, only decoys', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
   const empath = byChar(s, 'empath');
   empath.alive = false;
   startNight(s);
   while (s.pendingRealTurn) {
-    assert.equal(viewFor(s, empath.id).nightTurn, null);
+    assert.equal(viewFor(s, empath.id).nightTurn?.decoy, true, 'the dead only ever get decoys');
+    assert.ok(!s.pendingRealTurn.playerIds.includes(empath.id));
     skipRound(s);
   }
 });

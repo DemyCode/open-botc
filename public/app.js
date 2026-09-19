@@ -5,6 +5,7 @@ const state = {
   playerId: sessionStorage.getItem('botc.playerId'),
   view: null,
   selected: [],
+  selectedCharacter: null, // the "choose a character" half of a Gambler/Courtier/Philosopher/... turn
   turnReadyAt: 0, // when the current night screen may be answered (the 5-second minimum)
   decoyResultStep: null, // a decoy's stand-in result screen, still to be dismissed (see submitTurn)
   dawnSeenForDay: null,
@@ -100,6 +101,7 @@ function handleTurnChange(view) {
   // Never buzz for anything at night: a buzz is audible across a silent table and would give away
   // who just got a real turn or result — the very thing decoy questions exist to hide.
   state.selected = [];
+  state.selectedCharacter = null;
   // Small margin on top of the server's wait, so the button never unlocks before the server
   // would accept the answer.
   state.turnReadyAt = view.nightTurn ? Date.now() + view.nightTurn.waitMs + 300 : 0;
@@ -280,6 +282,7 @@ const STRINGS = {
     yourTurn: 'Your Turn',
     confirm: 'Confirm',
     gotIt: 'Got it',
+    nobody: 'No one',
     yourResult: 'Your Result',
     continueBtn: 'Continue',
     deadRest: 'You are dead and rest peacefully.',
@@ -393,6 +396,7 @@ const STRINGS = {
     yourTurn: 'Votre tour',
     confirm: 'Confirmer',
     gotIt: "J'ai compris",
+    nobody: 'Personne',
     yourResult: 'Votre résultat',
     continueBtn: 'Continuer',
     deadRest: 'Vous êtes mort et reposez en paix.',
@@ -1122,7 +1126,7 @@ function renderLog(v) {
 }
 
 function renderLanding() {
-  const nameInput = el('input', { placeholder: t('yourName'), value: localStorage.getItem('botc.name') || '' });
+  const nameInput = el('input', { placeholder: t('yourName'), value: sessionStorage.getItem('botc.name') || '' });
   const codeInput = el('input', { placeholder: t('roomCode') });
   codeInput.style.textTransform = 'uppercase';
 
@@ -1134,7 +1138,7 @@ function renderLanding() {
         const name = nameInput.value.trim();
         const code = codeInput.value.trim().toUpperCase();
         if (!name || !code) return showError(t('enterNameCode'));
-        localStorage.setItem('botc.name', name);
+        sessionStorage.setItem('botc.name', name);
         doJoin(code, name);
       },
     },
@@ -1148,7 +1152,7 @@ function renderLanding() {
       onclick: async () => {
         const name = nameInput.value.trim();
         if (!name) return showError(t('enterNameFirst'));
-        localStorage.setItem('botc.name', name);
+        sessionStorage.setItem('botc.name', name);
         const res = await fetch('/api/rooms', { method: 'POST' });
         const data = await res.json();
         doJoin(data.code, name);
@@ -1424,9 +1428,12 @@ function toggleChoice(selected, id, max) {
 
 function submitTurn(t) {
   if (turnSecondsLeft() > 0) return;
-  if (t.shape === 'choose') send({ t: 'nightReal', targetIds: state.selected.slice() });
-  else send({ t: 'nightReal', targetIds: [] });
+  if (t.shape === 'choose') {
+    const character = t.pickCharacter && state.selectedCharacter ? { character: state.selectedCharacter } : {};
+    send({ t: 'nightReal', targetIds: state.selected.slice(), ...character });
+  } else send({ t: 'nightReal', targetIds: [] });
   state.selected = [];
+  state.selectedCharacter = null;
   // After a Fortune Teller / Ravenkeeper step, the real player sees their result: a decoy gets
   // a result screen too, so the two look the same from across the table.
   if (t.decoy && t.decoyResult) state.decoyResultStep = t.stepKey;
@@ -1543,28 +1550,64 @@ function renderNight(v) {
     const label = (text) => (wait > 0 ? `${text} (${wait})` : text);
 
     if (turn.shape === 'choose') {
-      const grid = el(
-        'div',
-        { class: 'choice-grid' },
-        turn.choices.map((c) =>
+      if (turn.max > 0) {
+        const grid = el(
+          'div',
+          { class: 'choice-grid' },
+          turn.choices.map((c) =>
+            el(
+              'button',
+              {
+                class: 'choice' + (state.selected.includes(c.id) ? ' selected' : '') + (c.alive ? '' : ' dead'),
+                onclick: () => {
+                  toggleChoice(state.selected, c.id, turn.max);
+                  render();
+                },
+              },
+              `${c.seat + 1}. ${c.name}` + (c.alive ? '' : t('deadSuffix'))
+            )
+          )
+        );
+        children.push(grid);
+      }
+      // Some steps also ask which character (Gambler, Courtier, Philosopher, Cerenovus, Pit-Hag).
+      if (turn.pickCharacter) {
+        const charButtons = turn.characters.map((c) =>
           el(
             'button',
             {
-              class: 'choice' + (state.selected.includes(c.id) ? ' selected' : '') + (c.alive ? '' : ' dead'),
+              class: 'char-choice' + (state.selectedCharacter === c.id ? ' selected' : ''),
               onclick: () => {
-                toggleChoice(state.selected, c.id, turn.max);
+                state.selectedCharacter = state.selectedCharacter === c.id ? null : c.id;
                 render();
               },
             },
-            `${c.seat + 1}. ${c.name}` + (c.alive ? '' : t('deadSuffix'))
+            [characterIcon(c.id, 'inline'), ' ' + roleNameFor(c.id)]
           )
-        )
-      );
-      children.push(grid);
+        );
+        // "Choose a character (or no one)": an explicit way to decline (the Courtier, the Philosopher).
+        if (turn.optionalCharacter) {
+          charButtons.unshift(
+            el(
+              'button',
+              {
+                class: 'char-choice' + (state.selectedCharacter == null ? ' selected' : ''),
+                onclick: () => {
+                  state.selectedCharacter = null;
+                  render();
+                },
+              },
+              t('nobody')
+            )
+          );
+        }
+        children.push(el('div', { class: 'choice-grid char-grid' }, charButtons));
+      }
+      const needsCharacter = turn.pickCharacter && !turn.optionalCharacter && !state.selectedCharacter;
       children.push(
         el(
           'button',
-          { class: 'block', disabled: wait > 0 || state.selected.length < turn.min ? 'true' : null, onclick: () => submitTurn(turn) },
+          { class: 'block', disabled: wait > 0 || state.selected.length < turn.min || needsCharacter ? 'true' : null, onclick: () => submitTurn(turn) },
           label(t('confirm'))
         )
       );

@@ -25,12 +25,10 @@ function playStep(s: GameState, char: string, real: Record<string, PlayerState[]
   assert.equal(t.charId, char, `step order: expected ${char}, got ${t.charId}`);
   const actors = Object.keys(real).map((n) => s.players.find((p) => p.name === n)!);
   assert.deepEqual(names(t.participantIds.map((id) => s.players.find((p) => p.id === id)!)),
-    names([...s.players.filter((p) => p.alive || p.diedTonight)]), `${char}: everyone the table sees as alive is woken`);
+    names(s.players), `${char}: everyone is woken (real or decoy)`);
   for (const p of s.players) {
     const turn = viewFor(s, p.id).nightTurn;
-    const woken = p.alive || p.diedTonight;
-    if (!woken) assert.equal(turn, null, `${char}: ${p.name} is dead and rests`);
-    else if (actors.includes(p)) assert.equal(turn?.decoy, false, `${char}: ${p.name} has the REAL turn`);
+    if (actors.includes(p)) assert.equal(turn?.decoy, false, `${char}: ${p.name} has the REAL turn`);
     else assert.equal(turn?.decoy, true, `${char}: ${p.name} has a decoy`);
   }
   for (const p of alsoWokenAsDecoys) assert.equal(viewFor(s, p.id).nightTurn?.decoy, true, `${char}: ${p.name} still gets decoys`);

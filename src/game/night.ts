@@ -117,8 +117,13 @@ function shapeFor(state: GameState, step: string): NightTurnShape {
 
 /** Who is woken at every step tonight: every player the table still sees as alive — including
  * someone killed earlier tonight, who mustn't notice their screens stopping before dawn. */
+/**
+ * Who gets a screen during a step: everyone. The living get the real prompt or a decoy; the dead
+ * get decoys too, so that a player who *looks* dead but still wakes (the Zombuul, a Vigormortis'
+ * Minion, the Sage) cannot be spotted by being the only "corpse" with something to do.
+ */
 function nightParticipants(state: GameState): PlayerState[] {
-  return state.players.filter((p) => p.alive || p.diedTonight);
+  return state.players;
 }
 
 function startRound(state: GameState, step: string, actors: PlayerState[]): void {

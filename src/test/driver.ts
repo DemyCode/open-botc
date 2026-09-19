@@ -62,13 +62,10 @@ export function checkInvariants(s: GameState, where: string): void {
       const p = s.players.find((q) => q.id === id)!;
       assert.ok(p.alive || wakesWhileDead(p), `${where}: only the living (or an ability that wakes the dead) wake`);
     }
-    // Everyone the table still sees as alive is woken at every step — and nobody else, bar the real
-    // actors (a dead actor may legitimately have been woken, checked just above).
-    const seenAlive = s.players.filter((p) => p.alive || p.diedTonight).map((p) => p.id);
-    for (const id of seenAlive) assert.ok(t.participantIds.includes(id), `${where}: a player seen as alive was not woken`);
-    for (const id of t.participantIds.filter((id) => !seenAlive.includes(id))) {
-      assert.ok(t.playerIds.includes(id), `${where}: a non-actor who is not seen as alive was woken`);
-    }
+    // Everyone gets a screen at every step: the living get the real prompt or a decoy, and the dead
+    // get decoys too, so a player who looks dead but still wakes (the Zombuul) is not the only
+    // "corpse" with something to do.
+    assert.deepEqual(new Set(t.participantIds), new Set(s.players.map((p) => p.id)), `${where}: everyone is woken`);
   }
   if (s.phase === 'day') {
     assert.equal(s.pendingRealTurn, null, `${where}: no night turn during the day`);

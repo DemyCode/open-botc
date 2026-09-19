@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { castVote, nominate, startGame, tick, toggleEndDayRequest, useSlayer } from '../game/engine.js';
 import { submitRealResponse } from '../game/night.js';
+import { viewFor } from '../game/view.js';
 import {
   advanceUntil, answerRealTurn, byChar, endDayByConsensus, fastForwardToVote, mk, mkDay, runFullNight, startNight, voteInOrder,
 } from './helpers.js';
@@ -360,15 +361,29 @@ test('the Imp may attack a dead player — nothing happens, and nobody is report
   assert.equal(s.publicLog.at(-1)!.key, 'nobodyDiedLastNight');
 });
 
-test('a player dead from an earlier night is never woken, and cannot answer a night step', () => {
+test('a player dead from an earlier night is never woken for real, but still gets a decoy screen', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
   const empath = byChar(s, 'empath');
-  const soldier = byChar(s, 'soldier');
   empath.alive = false;
   startNight(s);
   advanceUntil(s, 'poisoner');
-  assert.ok(!s.pendingRealTurn!.participantIds.includes(empath.id));
-  assert.throws(() => submitRealResponse(s, empath.id, [soldier.id]), /No pending night turn/);
+  assert.ok(s.pendingRealTurn!.participantIds.includes(empath.id), 'the dead still get a screen');
+  assert.ok(!s.pendingRealTurn!.playerIds.includes(empath.id), 'but never a real turn');
+});
+
+test('a Zombuul that looks dead still acts, and the other dead players get decoys so it blends in', () => {
+  const s = mkDay(['zombuul', 'poisoner', 'empath', 'soldier', 'mayor', 'chef', 'butler']);
+  const zombuul = byChar(s, 'zombuul');
+  const empath = byChar(s, 'empath');
+  zombuul.alive = false;
+  zombuul.flags.hiddenAlive = true; // the Zombuul's first "death": it looks dead but lives on
+  empath.alive = false; // dead for real, several nights ago
+  startNight(s);
+  advanceUntil(s, 'zombuul');
+  assert.ok(s.pendingRealTurn!.playerIds.includes(zombuul.id), 'the hidden Zombuul wakes for real');
+  assert.equal(viewFor(s, zombuul.id).nightTurn?.decoy, false, 'and gets the real turn');
+  assert.equal(viewFor(s, empath.id).nightTurn?.decoy, true, 'a long-dead player gets a decoy, masking it');
+  assert.equal(viewFor(s, byChar(s, 'soldier').id).nightTurn?.decoy, true);
 });
 
 test('a player cannot answer the same night turn twice', () => {

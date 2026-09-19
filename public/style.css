@@ -200,6 +200,23 @@ button.block { width: 100%; }
 .choice.selected { border-color: var(--accent); background: rgba(124,92,255,0.18); }
 .choice.dead { opacity: 0.6; font-style: italic; }
 
+/* The "choose a character" half of a night turn (Gambler, Courtier, Philosopher, ...). */
+.char-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.char-choice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--panel-2);
+  text-align: left;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.char-choice.selected { border-color: var(--accent); background: rgba(124,92,255,0.18); }
+.char-choice svg { flex: 0 0 auto; }
+
 .pulse {
   animation: pulse 2.2s ease-in-out infinite;
 }
