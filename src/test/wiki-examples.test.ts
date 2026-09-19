@@ -378,9 +378,9 @@ test('Ravenkeeper ex. 2 — the Mayor bounce kills the Ravenkeeper, who looks at
     byChar(s, 'recluse').alive = false;
     byChar(s, 'scarletwoman').alive = false;
     night(s, { imp: ['mayor'], ravenkeeper: ['recluse'] });
-    assert.equal(byChar(s, 'mayor').alive, true, 'the Mayor does not die');
-    assert.equal(byChar(s, 'ravenkeeper').alive, false, 'the Ravenkeeper dies instead');
-    return byChar(s, 'ravenkeeper').nightResult?.vars?.role === 'scarletwoman';
+    // (The bounce itself is the Storyteller's choice: this looks for the night the wiki describes.)
+    return byChar(s, 'mayor').alive && !byChar(s, 'ravenkeeper').alive
+      && byChar(s, 'ravenkeeper').nightResult?.vars?.role === 'scarletwoman';
   }, 'the dead Recluse registering as the Scarlet Woman');
 });
 
@@ -478,10 +478,28 @@ test('Soldier ex. 3 — the Imp attacks the "Soldier" who is actually the Drunk:
 
 // 1. "The Imp attacks the Mayor. The Storyteller chooses that the Ravenkeeper dies instead."
 test('Mayor ex. 1 — the Imp attacks the Mayor: the Ravenkeeper dies instead', () => {
+  // "The Storyteller chooses that the Ravenkeeper dies instead": a night on which they so choose.
+  const secret = findSecret((sec) => {
+    const t = afterNight1(['imp', 'mayor', 'soldier', 'ravenkeeper']);
+    t.secret = sec;
+    night(t, { imp: ['mayor'] });
+    return byChar(t, 'mayor').alive && !byChar(t, 'ravenkeeper').alive;
+  }, 'the Storyteller bouncing the kill onto the Ravenkeeper');
   const s = afterNight1(['imp', 'mayor', 'soldier', 'ravenkeeper']); // the Soldier is immune: the Ravenkeeper is the only one who can die instead
+  s.secret = secret;
   night(s, { imp: ['mayor'] });
   assert.equal(byChar(s, 'mayor').alive, true);
   assert.equal(byChar(s, 'ravenkeeper').alive, false);
+});
+
+test('Mayor: the Storyteller may also let the attack through — the Mayor dies on some nights', () => {
+  const died = Array.from({ length: 40 }, (_, i) => {
+    const s = afterNight1(['imp', 'mayor', 'soldier', 'ravenkeeper']);
+    s.secret = `mayor-dies-${i}`;
+    night(s, { imp: ['mayor'] });
+    return !byChar(s, 'mayor').alive;
+  }).filter(Boolean).length;
+  assert.ok(died > 5, `the Mayor really dies on some nights (${died}/40)`);
 });
 
 // 2. "There are three players alive. There are no nominations for execution today. Good wins."

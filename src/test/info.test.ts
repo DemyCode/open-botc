@@ -2,7 +2,7 @@
 // deals (5-15 players), with dead players, poison and drunkenness mixed in. What a healthy player
 // is told must be TRUE; what a poisoned/drunk player is told must be well-formed and sometimes false.
 import assert from 'node:assert/strict';
-import { poison } from './helpers.js';
+import { byChar, mk, poison } from './helpers.js';
 import { test } from 'node:test';
 import { alignmentOfCharacter, CHARACTERS } from '../game/characters.js';
 import { addPlayer, createGame } from '../game/engine.js';
@@ -466,6 +466,32 @@ test('Spy: sees every player\'s true character and who is dead, in seat order', 
     assert.deepEqual(m.vars!.roles, s.players.map((p) => p.character));
     assert.deepEqual(m.vars!.dead, s.players.map((p) => (p.alive ? '' : '1')));
   }, { dead: true }, 20);
+});
+
+test('Spy: the grimoire carries the Storyteller\'s reminder tokens — who is poisoned, drunk, the red herring, protected', () => {
+  const s = mk(['spy', 'poisoner', 'monk', 'drunk', 'fortuneteller', 'soldier', 'imp'], { drunkFakeChar: 'empath' });
+  const spy = byChar(s, 'spy');
+  poison(s, byChar(s, 'soldier').id);
+  byChar(s, 'fortuneteller').isRedHerring = true;
+  s.data.monkProtectedId = byChar(s, 'imp').id;
+  const marks = spyInfo(s, spy, 'slot').vars!.marks as string[];
+  const markOf = (c: CharacterId) => marks[s.players.findIndex((p) => p.character === c)];
+  assert.equal(markOf('soldier'), 'poisoned', 'the Poisoner\'s target');
+  assert.equal(markOf('drunk'), 'drunk', 'the Drunk');
+  assert.equal(markOf('fortuneteller'), 'redHerring', 'the Fortune Teller\'s red herring');
+  assert.equal(markOf('imp'), 'protected', 'the Monk\'s protection tonight');
+  assert.equal(markOf('monk'), '', 'and nothing on a player with no reminder');
+});
+
+test('Spy: a drunk or poisoned Spy still sees reminder tokens (their absence would give the poison away)', () => {
+  const s = mk(['spy', 'poisoner', 'monk', 'empath', 'fortuneteller', 'soldier', 'imp']);
+  poison(s, byChar(s, 'spy').id);
+  const seen = new Set<string>();
+  for (let i = 0; i < 40; i++) {
+    s.secret = `fake-${i}`;
+    (spyInfo(s, byChar(s, 'spy'), 'slot').vars!.marks as string[]).forEach((m) => seen.add(m));
+  }
+  assert.ok(seen.size > 1, `a false grimoire still shows some reminders (${[...seen]})`);
 });
 
 test('Spy: a poisoned Spy sees a full but wrong grimoire', () => {

@@ -28,10 +28,25 @@ const roleNameFor = (id: string): string => {
   if (!CHARACTERS[id as keyof typeof CHARACTERS]) unknownRoles.add(id);
   return CHARACTERS[id as keyof typeof CHARACTERS]?.name ?? id;
 };
+/** Pulls one top-level `function NAME(...) {...}` out of app.js and evaluates it (the helpers the messages call). */
+function declaration(name: string, sandbox: Record<string, unknown> = {}): (...args: never[]) => string {
+  const start = appJs.indexOf('\nfunction ' + name + '(');
+  assert.ok(start >= 0, `function ${name} not found in app.js`);
+  const end = appJs.indexOf('\n}', start);
+  const body = appJs.slice(start + 1, end + 2);
+  return vm.runInNewContext(`(() => { ${body}; return ${name}; })()`, sandbox);
+}
+
 const TEAM_SINGULAR = literal('TEAM_SINGULAR');
 const TEAM_PLURAL = literal('TEAM_PLURAL');
 const STRINGS = literal('STRINGS');
-const MESSAGES = literal('MESSAGES', { TEAM_SINGULAR, TEAM_PLURAL, roleNameFor });
+// The messages call these helpers of app.js (the Spy's reminder tokens, statements): use the real ones, not stubs.
+const langBox: { LANG: 'en' | 'fr' } = { LANG: 'en' };
+const helperBox = { GRIMOIRE_MARKS: literal('GRIMOIRE_MARKS'), COUNT_OPS: literal('COUNT_OPS'), roleNameFor, TEAM_SINGULAR, get LANG() { return langBox.LANG; } };
+const STATEMENT_WORDS = literal('STATEMENT_WORDS', helperBox);
+const grimoireMarks = declaration('grimoireMarks', helperBox);
+const sayStatement = declaration('sayStatement', { ...helperBox, STATEMENT_WORDS, get LANG() { return langBox.LANG; } });
+const MESSAGES = literal('MESSAGES', { TEAM_SINGULAR, TEAM_PLURAL, roleNameFor, grimoireMarks, sayStatement });
 const CHAR_I18N_FR = literal('CHAR_I18N_FR') as unknown as Record<string, { name: string; ability: string }>;
 const LANGS = ['en', 'fr'] as const;
 
@@ -166,6 +181,7 @@ test('every message produced over whole games of every edition renders cleanly i
   assert.ok(seen.size > 100, `only ${seen.size} distinct messages were seen`);
   const problems: string[] = [];
   for (const lang of LANGS) {
+    langBox.LANG = lang; // the helpers the messages call word themselves in the current language
     for (const m of seen.values()) {
       const fn = MESSAGES[lang][m.key] as ((v: unknown) => unknown) | undefined;
       if (!fn) { problems.push(`${lang}: no text for ${m.key}`); continue; }

@@ -1246,3 +1246,21 @@ test('replay: a character named at night is shown (the Courtier chooses the Empa
   const lines = await replayAfterNight2(['imp', 'poisoner', 'courtier', 'washerwoman', 'soldier', 'monk', 'chef'], 'courtier', [[]], 'empath', 'en');
   assert.ok(lines.some((l) => /chooses the Empath/.test(l)), lines.join('\n'));
 });
+
+test('the Spy\'s grimoire screen names the reminder tokens (poisoned, red herring), in English and French', async () => {
+  const s = mk(['spy', 'poisoner', 'monk', 'empath', 'fortuneteller', 'soldier', 'imp']);
+  startNight(s);
+  advanceUntil(s, 'poisoner');
+  answerRealTurn(s, [byChar(s, 'soldier').id]);
+  byChar(s, 'fortuneteller').isRedHerring = true;
+  advanceUntil(s, 'spy');
+  const view = viewFor(s, byChar(s, 'spy').id);
+  for (const [lang, poisoned, herring] of [['en', 'poisoned', 'red herring'], ['fr', 'empoisonné', 'faux Démon']] as const) {
+    const app = await loadApp(lang);
+    app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
+    const text = app.show(view, { seen: true, lang });
+    assert.ok(text.includes(`${byChar(s, 'soldier').name}: `) || text.includes(`${byChar(s, 'soldier').name} : `), text.slice(0, 200));
+    assert.ok(text.includes(poisoned), `${lang}: the Poisoner's target is marked\n${text.slice(0, 400)}`);
+    assert.ok(text.includes(herring), `${lang}: the red herring is marked`);
+  }
+});

@@ -194,22 +194,28 @@ test('a Drunk who believes they are the Slayer can attempt the ability, but it n
   assert.equal(s.winner, null);
 });
 
-test('Mayor redirect can pick any eligible alternative, not always the same one', () => {
-  // Regression: the redirect target was always the first eligible match in player order —
-  // effectively the same player every time for a given seating, instead of a real choice.
-  const seen = new Set<string>();
+test('Mayor: the Storyteller decides whether the kill bounces, and onto whom — the Mayor is not unkillable', () => {
+  // "You choose if the Mayor actually dies, or if the Mayor remains alive and another player dies
+  // instead" — so BOTH outcomes must happen over many games, and the bounce must not always hit the
+  // same player (it used to be the first eligible one in player order).
+  const victims = new Set<string>();
+  let mayorDied = 0;
   for (let i = 0; i < 200; i++) {
     const s = mk(['imp', 'mayor', 'empath', 'investigator', 'washerwoman', 'soldier']);
+    s.secret = `mayor-${i}`;
     startNight(s);
     runFullNight(s);
     startNight(s); // night 2
     const mayor = byChar(s, 'mayor');
     advanceUntil(s, 'imp');
     answerRealTurn(s, [mayor.id]);
-    assert.notEqual(s.deathsTonight[0], mayor.id, 'a working Mayor redirect must never let the Mayor die directly');
-    seen.add(s.deathsTonight[0]);
+    assert.equal(s.deathsTonight.length, 1, 'exactly one death');
+    assert.notEqual(s.deathsTonight[0], byChar(s, 'imp').id, 'never the Imp');
+    if (s.deathsTonight[0] === mayor.id) mayorDied++;
+    else victims.add(s.deathsTonight[0]);
   }
-  assert.ok(seen.size > 1, 'expected the redirect target to vary across trials, not always hit the same player');
+  assert.ok(mayorDied > 20, `the Mayor must sometimes really die (${mayorDied}/200)`);
+  assert.ok(victims.size > 1, 'and when it bounces, not always onto the same player');
 });
 
 test('regression: a player can still nominate even after every other living player has already nominated or been nominated', () => {

@@ -9,7 +9,7 @@ import {
   chefInfo, demonInfo, empathInfo, fortuneTellerInfo, investigativeInfo,
   ravenkeeperInfo, spyInfo, undertakerInfo,
 } from '../info.js';
-import { stablePick } from '../rng.js';
+import { stableFloat, stablePick } from '../rng.js';
 import { addPoison } from '../effects.js';
 import { abilityLostReason, abilityWorks, registersAs } from '../registration.js';
 import { isDemon, isMinion } from './util.js';
@@ -96,6 +96,9 @@ export const TB: CharacterDef[] = [
     hooks: {
       redirectsKill: (s, owner, _victim, killer) => {
         if (!abilityWorks(s, owner)) return null;
+        // "You choose if the Mayor actually dies, or if the Mayor remains alive and another player dies
+        // instead": the Storyteller's call, NOT automatic — otherwise the Demon could never kill a Mayor.
+        if (stableFloat(s.secret, 'mayor-bounce-decide', s.night) < 0.5) return null;
         const alternatives = s.players.filter((p) => p.alive && p.id !== owner.id && p.id !== killer.id && !protectionFor(s, p, 'demon'));
         return alternatives.length ? stablePick(s.secret, alternatives, 'mayor-bounce', s.night) : owner;
       },

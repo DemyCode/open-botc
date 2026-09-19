@@ -1,7 +1,7 @@
 import { CHARACTERS } from './characters.js';
 import { hooksOf } from './deaths.js';
 import { msg } from './messages.js';
-import { abilityWorks, apparentCharacter, registersAs, scriptCharacters, type RegisterKind } from './registration.js';
+import { abilityLostReason, abilityWorks, apparentCharacter, registersAs, scriptCharacters, type RegisterKind } from './registration.js';
 import { stableFloat, stablePick } from './rng.js';
 import type { GameState, Msg, PlayerState, Team } from './types.js';
 
@@ -199,20 +199,41 @@ export function demonInfo(state: GameState, self: PlayerState): Msg {
   return msg('demonInfo', { names: minions.map((p) => p.name), bluffs: state.bluffs, ...(lunatic ? { lunatic: lunatic.name } : {}) });
 }
 
+/**
+ * The Storyteller's reminder tokens on a player, which the Spy sees along with the characters:
+ * "you will not only see who everyone is, but the Storyteller reminder tokens ... who is a Drunk, who
+ * your Poisoner targeted, who the Fortune Teller red herring is, who the Demon killed".
+ */
+function grimoireMarks(state: GameState, p: PlayerState): string {
+  const marks: string[] = [];
+  const lost = abilityLostReason(state, p);
+  if (lost === 'poisoned') marks.push('poisoned');
+  if (lost === 'drunk') marks.push('drunk');
+  if (p.isRedHerring) marks.push('redHerring');
+  if (state.data.monkProtectedId === p.id) marks.push('protected');
+  if (state.data.butlerMasterId === p.id) marks.push('butlerMaster');
+  return marks.join(',');
+}
+
 export function spyInfo(state: GameState, self: PlayerState, slot: string): Msg {
+  const names = state.players.map((p) => p.name);
+  const dead = state.players.map((p) => (p.alive ? '' : '1'));
   if (abilityWorks(state, self)) {
     return msg('spyGrimoire', {
-      names: state.players.map((p) => p.name),
+      names,
       roles: state.players.map((p) => p.character),
-      dead: state.players.map((p) => (p.alive ? '' : '1')),
+      dead,
+      marks: state.players.map((p) => grimoireMarks(state, p)),
     });
   }
+  // A drunk or poisoned Spy is shown a full but false grimoire — reminder tokens included, or their
+  // absence alone would tell them their own ability is not working.
   const fakeRoles = state.players.map((_, i) => stablePick(state.secret, scriptCharacters(state), slot, self.id, 'fake', i));
-  return msg('spyGrimoire', {
-    names: state.players.map((p) => p.name),
-    roles: fakeRoles,
-    dead: state.players.map((p) => (p.alive ? '' : '1')),
+  const fakeMarks = state.players.map((p, i) => {
+    const roll = stableFloat(state.secret, slot, self.id, 'fake-mark', i);
+    return roll < 0.12 ? 'poisoned' : roll < 0.22 ? 'redHerring' : roll < 0.3 ? 'protected' : '';
   });
+  return msg('spyGrimoire', { names, roles: fakeRoles, dead, marks: fakeMarks });
 }
 
 export type { RegisterKind };

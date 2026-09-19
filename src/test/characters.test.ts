@@ -142,16 +142,23 @@ test('Soldier: a poisoned Soldier is not immune', () => {
 });
 
 test('Mayor: the Demon\'s kill redirects to someone else instead', () => {
-  const s = mk(['imp', 'mayor', 'poisoner', 'empath', 'soldier', 'washerwoman']);
-  startNight(s);
-  runFullNight(s);
-  startNight(s); // night 2
-  const mayor = byChar(s, 'mayor');
-  advanceUntil(s, 'imp');
-  answerRealTurn(s, [mayor.id]);
-  assert.equal(mayor.alive, true, 'a working Mayor should not die directly from the Demon');
-  assert.equal(s.deathsTonight.length, 1, 'someone else should die instead');
-  assert.notEqual(s.deathsTonight[0], mayor.id);
+  // "Another player MIGHT die instead" is the Storyteller's choice, so play nights until one bounces:
+  // there, the Mayor lives and exactly one other player dies.
+  for (let i = 0; i < 60; i++) {
+    const s = mk(['imp', 'mayor', 'poisoner', 'empath', 'soldier', 'washerwoman']);
+    s.secret = `bounce-${i}`;
+    startNight(s);
+    runFullNight(s);
+    startNight(s); // night 2
+    const mayor = byChar(s, 'mayor');
+    advanceUntil(s, 'imp');
+    answerRealTurn(s, [mayor.id]);
+    assert.equal(s.deathsTonight.length, 1, 'exactly one death');
+    if (s.deathsTonight[0] === mayor.id) continue; // tonight the Storyteller let the Mayor die
+    assert.equal(mayor.alive, true, 'on a bouncing night the Mayor lives');
+    return;
+  }
+  assert.fail('no night bounced the Demon\'s kill off the Mayor');
 });
 
 test('Poisoner: may target themselves', () => {

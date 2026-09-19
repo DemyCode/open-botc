@@ -166,7 +166,6 @@ const ATTACKS: { name: string; picks: Partial<Record<CharacterId, CharacterId[]>
   { name: 'the Soldier is safe', picks: { imp: ['soldier'] }, outcome: 'blocked', extra: (e) => assert.equal(e.vars.by, 'soldier') },
   { name: 'the Monk protects', picks: { monk: ['washerwoman'], imp: ['washerwoman'] }, outcome: 'blocked', extra: (e) => assert.equal(e.vars.by, 'monk') },
   { name: 'a poisoned Imp', picks: { poisoner: ['imp'], imp: ['washerwoman'] }, outcome: 'ineffective', extra: (e) => assert.equal(e.vars.lost, 'poisoned') },
-  { name: 'the Mayor bounces', picks: { imp: ['mayor'] }, outcome: 'mayorBounce', extra: (e, s) => assert.notEqual(e.vars.victim, byChar(s, 'mayor').id) },
   { name: 'the star-pass', picks: { monk: ['empath'], imp: ['imp'] }, outcome: 'starPass' },
 ];
 for (const row of ATTACKS) {
@@ -180,6 +179,36 @@ for (const row of ATTACKS) {
   });
 }
 
+/** A night on which the Storyteller bounced the Mayor's death (their choice, so not every night). */
+function mayorBounced(): GameState {
+  for (let i = 0; i < 60; i++) {
+    const s = atNight2(LAYOUT);
+    s.secret = `bounce-${i}`;
+    night(s, { imp: ['mayor'] });
+    if (byChar(s, 'mayor').alive) return s;
+  }
+  throw new Error('no night bounced the Mayor\'s death');
+}
+
+test("the Imp's attack is recorded with its outcome — the Mayor bounces", () => {
+  const s = mayorBounced();
+  const attack = last(s, 'attack');
+  assert.equal(attack.vars.outcome, 'mayorBounce');
+  assert.notEqual(attack.vars.victim, byChar(s, 'mayor').id);
+});
+
+test("the Imp's attack is recorded with its outcome — the Mayor is allowed to die", () => {
+  for (let i = 0; i < 60; i++) {
+    const s = atNight2(LAYOUT);
+    s.secret = `nobounce-${i}`;
+    night(s, { imp: ['mayor'] });
+    if (byChar(s, 'mayor').alive) continue;
+    assert.equal(last(s, 'attack').vars.outcome, 'killed');
+    return;
+  }
+  assert.fail('the Mayor was spared on every night tried');
+});
+
 test('an attack on a dead player is recorded as doing nothing', () => {
   const s = atNight2(LAYOUT);
   byChar(s, 'washerwoman').alive = false;
@@ -192,8 +221,7 @@ test('every death is recorded with its cause: the Demon, the Mayor\'s bounce, th
   let s = atNight2(LAYOUT);
   night(s, { imp: ['washerwoman'] });
   assert.equal(last(s, 'death').vars.cause, 'demon');
-  s = atNight2(LAYOUT);
-  night(s, { imp: ['mayor'] });
+  s = mayorBounced();
   assert.equal(last(s, 'death').vars.cause, 'mayorBounce');
   s = atNight2(LAYOUT);
   night(s, { monk: ['empath'], imp: ['imp'] });

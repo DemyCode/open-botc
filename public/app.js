@@ -629,7 +629,7 @@ const MESSAGES = {
     minionInfoSolo: (v) => `You have no fellow Minions. The Demon is ${v.demon || 'unknown'}.`,
     minionInfoGroup: (v) => `Your fellow Minion${v.names.length === 1 ? ' is' : 's are'} ${v.names.join(', ')}. The Demon is ${v.demon || 'unknown'}.`,
     demonInfo: (v) => `Your Minion${v.names.length === 1 ? ' is' : 's are'} ${v.names.join(', ') || 'no one'}. Those roles are not in this game: ${v.bluffs.map(roleNameFor).join(', ')}. You are safe to claim being one of them.`,
-    spyGrimoire: (v) => 'Grimoire — ' + v.names.map((n, i) => `${n}: ${roleNameFor(v.roles[i])}${v.dead[i] ? ' (dead)' : ''}`).join('; ') + '.',
+    spyGrimoire: (v) => 'Grimoire — ' + v.names.map((n, i) => `${n}: ${roleNameFor(v.roles[i])}${v.dead[i] ? ' (dead)' : ''}${grimoireMarks(v.marks && v.marks[i])}`).join('; ') + '.',
     poisonerChoose: () => 'Choose a player to poison.',
     monkChoose: () => 'Choose a player to protect (not yourself).',
     fortuneTellerChoose: () => 'Choose 2 players to check for the Demon.',
@@ -736,7 +736,7 @@ const MESSAGES = {
     minionInfoSolo: (v) => `Vous n'avez aucun autre Sbire. Le Démon est ${v.demon || 'inconnu'}.`,
     minionInfoGroup: (v) => `Vos autres Sbires sont ${v.names.join(', ')}. Le Démon est ${v.demon || 'inconnu'}.`,
     demonInfo: (v) => `Sbire(s) : ${v.names.join(', ') || 'personne'}. Ces rôles ne sont pas dans cette partie : ${v.bluffs.map(roleNameFor).join(', ')}. Vous pouvez sans risque prétendre être l'un d'eux.`,
-    spyGrimoire: (v) => 'Grimoire — ' + v.names.map((n, i) => `${n} : ${roleNameFor(v.roles[i])}${v.dead[i] ? ' (mort)' : ''}`).join('; ') + '.',
+    spyGrimoire: (v) => 'Grimoire — ' + v.names.map((n, i) => `${n} : ${roleNameFor(v.roles[i])}${v.dead[i] ? ' (mort)' : ''}${grimoireMarks(v.marks && v.marks[i])}`).join('; ') + '.',
     poisonerChoose: () => 'Choisissez un joueur à empoisonner.',
     monkChoose: () => 'Choisissez un joueur à protéger (pas vous-même).',
     fortuneTellerChoose: () => 'Choisissez 2 joueurs pour vérifier le Démon.',
@@ -835,7 +835,10 @@ const MESSAGES = {
 
 // Statements (the Gossip's, the Savant's, the Artist's question) arrive as JSON with player NAMES
 // (`{"t":"team","p":"Alice","v":"demon"}`); this turns one into a plain sentence.
-const COUNT_OPS = { en: { '>=': 'at least', '<=': 'at most', '=': 'exactly' }, fr: { '>=': 'au moins', '<=': 'au plus', '=': 'exactement' } };
+const COUNT_OPS = {
+  en: { '>=': 'at least', '<=': 'at most', '=': 'exactly' },
+  fr: { '>=': 'au moins', '<=': 'au plus', '=': 'exactement' },
+};
 const STATEMENT_WORDS = {
   en: {
     alignment: (x) => `${x.p} is ${x.v === 'evil' ? 'evil' : 'good'}`,
@@ -858,6 +861,20 @@ const STATEMENT_WORDS = {
     not: (x, say) => `il est faux que ${say(x.s)}`,
   },
 };
+
+// The Storyteller's reminder tokens the Spy sees beside each character (poisoned, drunk, ...).
+const GRIMOIRE_MARKS = {
+  en: { poisoned: 'poisoned', drunk: 'drunk', redHerring: 'red herring', protected: 'protected tonight', butlerMaster: "the Butler's master" },
+  fr: { poisoned: 'empoisonné', drunk: 'ivre', redHerring: 'faux Démon (Voyante)', protected: 'protégé cette nuit', butlerMaster: 'maître du Majordome' },
+};
+
+/** " [poisoned, red herring]" for a player's reminder tokens, or '' when they have none. */
+function grimoireMarks(marks) {
+  if (!marks) return '';
+  const words = GRIMOIRE_MARKS[LANG] || GRIMOIRE_MARKS.en;
+  const list = String(marks).split(',').filter(Boolean).map((m) => words[m] || m);
+  return list.length ? ' [' + list.join(', ') + ']' : '';
+}
 
 /** A statement (JSON text or object) as a sentence; anything unreadable is shown as it came. */
 function sayStatement(raw, lang = LANG) {

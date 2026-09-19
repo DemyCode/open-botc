@@ -67,8 +67,9 @@ for (const row of ATTACKS) {
   });
 }
 
-test('Imp attack — the Mayor is attacked: somebody ELSE dies (not the Mayor, the Imp or the immune Soldier)', () => {
+test('Imp attack — the Mayor is attacked: the kill bounces onto somebody else (never the Imp or the immune Soldier), or the Mayor dies', () => {
   const dies = new Set<string>();
+  let mayorDied = 0;
   for (let i = 0; i < 40; i++) {
     const s = atNight2();
     s.secret = `mayor-${i}`;
@@ -82,19 +83,27 @@ test('Imp attack — the Mayor is attacked: somebody ELSE dies (not the Mayor, t
     }
     const dead = s.players.filter((p) => !p.alive);
     assert.equal(dead.length, 1, 'exactly one death');
-    assert.ok(!['mayor', 'imp', 'soldier'].includes(dead[0].character), `${dead[0].character} should not be the one who dies`);
-    dead.forEach((p) => dies.add(p.character));
+    assert.ok(!['imp', 'soldier'].includes(dead[0].character), `${dead[0].character} should not be the one who dies`);
+    if (dead[0].character === 'mayor') mayorDied++;
+    else dies.add(dead[0].character);
   }
-  assert.ok(dies.size >= 3, `the death should be spread across several players (${[...dies]})`);
+  assert.ok(mayorDied > 0, 'the Storyteller sometimes lets the Mayor die');
+  assert.ok(dies.size >= 3, `and the bounce is spread across several players (${[...dies]})`);
 });
 
-test('Imp attack — a Mayor whose only other option is a protected player dies instead of bouncing to a protected one', () => {
-  const s = atNight2(['imp', 'mayor', 'soldier', 'monk', 'washerwoman']);
-  playNight(s, { monk: ['washerwoman'], imp: ['mayor'] });
-  // Candidates: Monk (unprotected) only — the Soldier is immune and the Washerwoman is protected.
-  assert.equal(byChar(s, 'monk').alive, false);
-  assert.equal(byChar(s, 'mayor').alive, true);
-  assert.equal(byChar(s, 'washerwoman').alive, true);
+test('Imp attack — a Mayor bounce never lands on a protected or immune player: only the Monk can die here', () => {
+  // Candidates: the Monk only — the Soldier is immune and the Washerwoman is Monk-protected. So every
+  // night either the Monk dies (the Storyteller bounced) or the Mayor does; never those two.
+  const dead = new Set<string>();
+  for (let i = 0; i < 30; i++) {
+    const s = atNight2(['imp', 'mayor', 'soldier', 'monk', 'washerwoman']);
+    s.secret = `bounce-${i}`;
+    playNight(s, { monk: ['washerwoman'], imp: ['mayor'] });
+    assert.equal(byChar(s, 'washerwoman').alive, true, 'the protected player never dies');
+    assert.equal(byChar(s, 'soldier').alive, true, 'nor the Soldier');
+    s.players.filter((p) => !p.alive).forEach((p) => dead.add(p.character));
+  }
+  assert.deepEqual([...dead].sort(), ['mayor', 'monk'], 'both outcomes happen, and nothing else');
 });
 
 test('Imp attack — a Mayor with nobody to bounce to dies themselves', () => {
@@ -107,12 +116,18 @@ test('Imp attack — a Mayor with nobody to bounce to dies themselves', () => {
 });
 
 test('Imp attack — a Mayor bounce that hits the Ravenkeeper wakes them', () => {
-  const s = atNight2(['imp', 'mayor', 'soldier', 'ravenkeeper']);
-  startNight(s);
-  advanceUntil(s, 'imp');
-  answerRealTurn(s, [byChar(s, 'mayor').id]);
-  assert.equal(byChar(s, 'ravenkeeper').alive, false);
-  assert.equal(s.pendingRealTurn?.charId, 'ravenkeeper');
+  // Whether the kill bounces at all is the Storyteller's choice: play until a night where it does.
+  for (let i = 0; i < 50; i++) {
+    const s = atNight2(['imp', 'mayor', 'soldier', 'ravenkeeper']);
+    s.secret = `bounce-${i}`;
+    startNight(s);
+    advanceUntil(s, 'imp');
+    answerRealTurn(s, [byChar(s, 'mayor').id]);
+    if (byChar(s, 'ravenkeeper').alive) continue; // that night the Mayor died instead
+    assert.equal(s.pendingRealTurn?.charId, 'ravenkeeper', 'the bounced victim is woken');
+    return;
+  }
+  assert.fail('no night bounced the kill onto the Ravenkeeper');
 });
 
 test('Imp attack — a dead target: nothing happens, nobody is reported dead', () => {

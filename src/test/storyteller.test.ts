@@ -133,13 +133,16 @@ test('legal: the Mayor\'s bounce is not always the same player (the Storyteller 
   assert.ok(victims.size > 1, `always ${[...victims]}`);
 });
 
-test('illegal: the Mayor\'s death never bounces onto the Imp, or stays on the Mayor, when someone else can die instead', () => {
+test('illegal: the Mayor\'s death never bounces onto the Imp — and both outcomes (spared or not) happen', () => {
+  let spared = 0;
   for (const secret of SECRETS) {
     const dead = mayorBounce(secret);
     assert.equal(dead.length, 1, `${secret}: exactly one death`);
-    assert.ok(!dead.includes('P0'), `${secret}: the Mayor should have been spared`);
     assert.ok(!dead.includes('P1'), `${secret}: the Imp cannot die of their own kill`);
+    if (!dead.includes('P0')) spared++;
   }
+  // "You choose if the Mayor actually dies, or if another player dies instead": the Storyteller's call.
+  assert.ok(spared > 0 && spared < SECRETS.length, `the Mayor is spared on some nights, not all (${spared}/${SECRETS.length})`);
 });
 
 function starPass(secret: string): string {
