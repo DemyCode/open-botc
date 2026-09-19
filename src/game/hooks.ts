@@ -135,8 +135,14 @@ export interface DayAbility {
   private?: boolean;
   /** How many players it points at (0 for a bare statement). */
   targets: number;
-  /** A statement is part of the action (Gossip, Savant...). */
-  statement?: boolean;
+  /** Only living players may be pointed at (the Moonchild, the Klutz: "choose 1 alive player"). */
+  targetsAlive?: boolean;
+  /** What else the screen asks for: a public statement (Gossip), a yes/no question (Artist), or up to 5 guesses (Juggler). */
+  form?: 'statement' | 'question' | 'guesses';
+  /** Usable once each day (Gossip, Savant) rather than once per game. */
+  perDay?: boolean;
+  /** The character the player publicly claims to be, if not this one (the Cerenovus' madness: the character they are mad about). */
+  claimAs?(state: GameState, self: PlayerState): string;
   /** Days on which it is offered (Juggler: only day 1). Default: any. */
   onlyDay?: number;
   /** Extra limits (Moonchild: only right after dying). Return false to hide the action. */

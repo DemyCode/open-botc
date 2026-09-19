@@ -13,7 +13,7 @@ import {
 
 const VIEW_KEYS = [
   'amIAlive', 'code', 'dawnMessage', 'day', 'duskMessage', 'endDayAliveCount', 'endDayReadyCount', 'endDayReadyNames', 'hostId',
-  'leftNeighborName', 'slayerShotAvailable', 'canNominate', 'nominatableIds', 'myDayActions', 'myCharacter', 'myEndDayReady', 'myGhostVoteUsed', 'myLog', 'mySeatRightId', 'night',
+  'leftNeighborName', 'slayerShotAvailable', 'slayerShotIsMine', 'canNominate', 'nominatableIds', 'myDayActions', 'myCharacter', 'myEndDayReady', 'myGhostVoteUsed', 'myLog', 'mySeatRightId', 'night',
   'nightTurn', 'nomination', 'protocol', 'onBlockId', 'phase', 'publicLog', 'players', 'rightNeighborName', 'seatingConfirmed',
   'selfId', 'waitingForOthers', 'winner', 'replay', 'script',
 ];

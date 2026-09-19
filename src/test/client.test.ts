@@ -16,7 +16,7 @@ import {
   advanceUntil, answerRealTurn, breakDawn, byChar, endDayByConsensus, fastForwardToVote, markAllReady, mk, mkDay, playRounds, runFullNight, skipRound, startNight,
 } from './helpers.js';
 
-const KNOWN_MESSAGES = new Set(['join', 'auth', 'leave', 'start', 'declareNeighbor', 'nightReal', 'nominate', 'skipSpeech', 'readySpeech', 'vote', 'endDay', 'slayer']);
+const KNOWN_MESSAGES = new Set(['join', 'auth', 'leave', 'start', 'declareNeighbor', 'nightReal', 'nominate', 'skipSpeech', 'readySpeech', 'vote', 'endDay', 'slayer', 'dayAbility']);
 const clickable = (root: FakeNode) => root.find((n) => (n.listeners.click?.length ?? 0) > 0);
 const buttonLabels = (app: FakeClient) => app.root.buttons().map((b) => b.text());
 
@@ -197,42 +197,56 @@ test('rows are not tappable once you have nominated today, nor for someone alrea
   assert.equal(rows(app).filter((r) => r.listeners.click).length, 0, 'the dead cannot nominate');
 });
 
+/** The Slayer card's title: the real Slayer's, or the bluff one everybody else gets. */
+const SLAYER_CARD = /Use your Slayer shot|Bluff to be the Slayer/;
+
 test('the Slayer-shot card is shown to every living player who has not fired — not only to the Slayer', async () => {
   const s = mkDay(['imp', 'slayer', 'empath', 'washerwoman', 'soldier']);
-  for (const i of [0, 1, 2, 3, 4]) assert.ok((await dayApp(s, i)).text().includes('Slayer shot'), `player ${i}`);
+  for (const i of [0, 1, 2, 3, 4]) assert.match((await dayApp(s, i)).text(), SLAYER_CARD, `player ${i}`);
+});
+
+test('the Slayer card says what it is: "Use your Slayer shot" for the Slayer, "Bluff to be the Slayer" (with a warning) for everyone else', async () => {
+  const s = mkDay(['imp', 'slayer', 'empath', 'washerwoman', 'soldier']);
+  const mine = (await dayApp(s, 1)).text();
+  assert.ok(mine.includes('Use your Slayer shot') && !mine.includes('Bluff to be the Slayer') && !mine.includes('🎭'));
+  const bluff = (await dayApp(s, 2)).text();
+  assert.ok(bluff.includes('Bluff to be the Slayer') && !bluff.includes('Use your Slayer shot'));
+  assert.ok(bluff.includes('You are not the Slayer'), 'the bluff is explained on the card');
+  const fr = (await dayApp(s, 2, 'fr')).text();
+  assert.ok(fr.includes('Bluffer : se faire passer pour'), fr.slice(0, 300));
 });
 
 test('regression: no Slayer-shot card on a script without the Slayer (e.g. Bad Moon Rising)', async () => {
   const s = mkDay(['po', 'grandmother', 'sailor', 'chambermaid', 'exorcist']);
   s.scriptChars = s.scriptChars.filter((c) => CHARACTERS[c].edition === 'bmr');
   assert.ok(!s.scriptChars.includes('slayer'));
-  for (const i of [0, 1, 2, 3, 4]) assert.ok(!(await dayApp(s, i)).text().includes('Slayer shot'), `player ${i}`);
+  for (const i of [0, 1, 2, 3, 4]) assert.doesNotMatch((await dayApp(s, i)).text(), SLAYER_CARD, `player ${i}`);
   assert.throws(() => useSlayer(s, s.players[1].id, s.players[0].id), /not in this script/);
 });
 
 test('the Slayer-shot card is gone once your shot is spent, when you are dead, and at night', async () => {
   const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
   useSlayer(s, s.players[2].id, s.players[0].id);
-  assert.ok(!(await dayApp(s, 2)).text().includes('Slayer shot'), 'spent');
-  assert.ok((await dayApp(s, 3)).text().includes('Slayer shot'), 'others still have theirs');
+  assert.doesNotMatch((await dayApp(s, 2)).text(), SLAYER_CARD, 'spent');
+  assert.match((await dayApp(s, 3)).text(), SLAYER_CARD, 'others still have theirs');
   const dead = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
   dead.players[2].alive = false;
-  assert.ok(!(await dayApp(dead, 2)).text().includes('Slayer shot'), 'dead');
+  assert.doesNotMatch((await dayApp(dead, 2)).text(), SLAYER_CARD, 'dead');
   const night = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
   startNight(night);
   const app = await loadApp('en');
   app.show(viewFor(night, night.players[2].id), { seen: true });
-  assert.ok(!app.text().includes('Slayer shot'), 'night');
+  assert.doesNotMatch(app.text(), SLAYER_CARD, 'night');
 });
 
-test('firing the Slayer shot asks to confirm and sends {slayer, target}; a bluffer sends the very same message', async () => {
-  const s = mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
-  for (const i of [1, 2]) {
+test('firing the Slayer shot asks to confirm and sends {slayer, target}; a bluffer is warned first, then sends the very same message', async () => {
+  const s = mkDay(['imp', 'slayer', 'empath', 'washerwoman', 'soldier']);
+  for (const [i, confirms] of [[1, 1], [2, 2]] as const) {
     const app = await dayApp(s, i);
-    const card = app.root.find((n) => n.hasClass('card') && n.text().startsWith('Slayer shot'))[0];
-    const choice = card.find((n) => n.hasClass('choice'))[0];
-    choice.click();
-    assert.equal(app.confirms.length, 1);
+    const card = app.root.find((n) => n.hasClass('card') && SLAYER_CARD.test(n.text()))[0];
+    card.find((n) => n.hasClass('choice'))[0].click();
+    assert.equal(app.confirms.length, confirms, i === 1 ? 'the Slayer: "publicly accuse?" only' : 'a bluffer: the bluff warning, then "publicly accuse?"');
+    if (i === 2) assert.match(String(app.confirms[0]), /You will tell the village that you are the Slayer/);
     assert.deepEqual(app.sent.at(-1), { t: 'slayer', targetId: s.players[0].id });
   }
 });

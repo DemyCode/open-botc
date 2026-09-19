@@ -83,7 +83,7 @@ export interface NominationView {
  * way round — the app says so instead of drawing screens it can't understand. Bump both together
  * whenever the view changes in a way an older app or server would misread.
  */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 export interface GameView {
   /** See PROTOCOL_VERSION. */
@@ -102,6 +102,8 @@ export interface GameView {
   myLog: { night: number; msg: Msg }[];
   /** The Slayer shot is on offer to this player (the same for everyone, so it proves nothing about who the Slayer is). */
   slayerShotAvailable: boolean;
+  /** The player believes they are the Slayer: the shot is theirs, not a bluff. */
+  slayerShotIsMine: boolean;
   /** This player may nominate right now, and whom (the client just renders these). */
   canNominate: boolean;
   nominatableIds: string[];
@@ -264,6 +266,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     myCharacter: self ? { id: self.perceived, name: CHARACTERS[self.perceived].name, ability: CHARACTERS[self.perceived].ability, alignment: believedAlignment(self, revealAll) } : null,
     myLog: self ? self.log : [],
     slayerShotAvailable: !!self && slayerShotRefusal(state, self) === null,
+    slayerShotIsMine: self?.perceived === 'slayer',
     canNominate: !!self && nominationRefusal(state, self) === null,
     nominatableIds: self && nominationRefusal(state, self) === null ? state.players.filter((p) => nominationRefusal(state, self, p) === null).map((p) => p.id) : [],
     myDayActions: self ? offeredActions(state, self) : [],

@@ -309,6 +309,34 @@ const STRINGS = {
     deadOneVoteLeft: "You're dead, but you still have one vote left to use before the game ends.",
     slayerShot: 'Slayer shot',
     slayerDesc: "Once per game, anyone may publicly claim to be the Slayer and shoot a player. If you really are the Slayer and they are the Demon, they die — otherwise nothing happens. Everyone sees this same card, so a shot proves nothing about who fired it.",
+    slayerMine: 'Use your Slayer shot',
+    slayerBluff: 'Bluff to be the Slayer',
+    dayUseMine: (id, role) => ({ juggler: 'Make your prediction as the Juggler', gossip: 'Make a public statement as the Gossip', savant: 'Visit the Storyteller (Savant)', artist: 'Ask the Storyteller a question (Artist)', moonchild: 'Choose a player as the Moonchild', klutz: 'Choose a player as the Klutz', mutant: 'Say out loud that you are the Mutant' })[id] || `Use your ability as the ${role}`,
+    dayBluff: (role) => `Bluff to be the ${role}`,
+    dayBluffNote: (role) => `You are not the ${role}: this does nothing — but everyone will see you do it, as if you were.`,
+    dayBluffConfirm: (role) => `Are you sure? You will tell the village that you are the ${role} — which is not your character.`,
+    madClaimTitle: (role) => `Claim to be the ${role} (you are "mad" about it)`,
+    mutantConfirm: 'You are the Mutant: saying so out loud may get you executed. Say it anyway?',
+    publiclyChoose: (name) => `Publicly choose ${name}? Everyone will see it.`,
+    claimOutLoud: 'Say it out loud',
+    visitStoryteller: 'Visit the Storyteller',
+    jugglerHowTo: 'Tap a player, then the character you think they are. Up to 5 guesses, all announced at once.',
+    jugglerWhich: (name) => `Which character is ${name}?`,
+    jugglerAnnounce: (n) => `Announce my ${n} guess${n === 1 ? '' : 'es'}`,
+    stmtWhat: 'What do you want to say?',
+    stmtAsk: 'What do you want to ask? (a yes/no question)',
+    stmtKinds: (k) => ({ alignment: '… is good / evil', team: '… is a Townsfolk / Outsider / Minion / the Demon', character: '… is a given character', alive: '… is alive / dead', neighbours: '… sits next to someone' })[k] || k,
+    stmtWho: 'About which player?',
+    stmtWhich: 'Which one?',
+    stmtNextTo: 'Next to which player?',
+    stmtPreview: (x) => `Your statement: “${x}”`,
+    stmtQuestion: (x) => `Your question: is it true that ${x}?`,
+    stmtAnnounce: 'Announce it publicly',
+    stmtSendQuestion: 'Ask the Storyteller',
+    startOver: 'Start over',
+    theDemon: 'the Demon',
+    aliveWord: 'alive',
+    deadWord: 'dead',
     publiclyAccuse: (name) => `Publicly shoot ${name} as the Slayer? You only get one shot per game.`,
     nominateSelfConfirm: 'Nominate yourself for execution?',
     nominateDeadConfirm: (name) => `${name} is already dead. Nominate them anyway? (It still uses up your nomination for today.)`,
@@ -418,6 +446,34 @@ const STRINGS = {
     deadOneVoteLeft: "Vous êtes mort, mais il vous reste un vote à utiliser avant la fin de la partie.",
     slayerShot: 'Tir de la Pourfendeuse',
     slayerDesc: "Une fois par partie, n'importe qui peut prétendre publiquement être la Pourfendeuse et tirer sur un joueur. Si vous êtes vraiment la Pourfendeuse et que c'est le Démon, il meurt — sinon il ne se passe rien. Tout le monde voit cette même carte : un tir ne prouve rien sur le tireur.",
+    slayerMine: 'Utiliser votre tir de Pourfendeuse',
+    slayerBluff: 'Bluffer : se faire passer pour la Pourfendeuse',
+    dayUseMine: (id, role) => ({ juggler: 'Faire votre prédiction en tant que Jongleur', gossip: 'Faire une déclaration publique en tant que Commère', savant: 'Rendre visite au Conteur (Savant)', artist: 'Poser une question au Conteur (Artiste)', moonchild: 'Choisir un joueur en tant qu’Enfant de la Lune', klutz: 'Choisir un joueur en tant que Maladroit', mutant: 'Dire à voix haute que vous êtes le Mutant' })[id] || `Utiliser votre capacité : ${role}`,
+    dayBluff: (role) => `Bluffer : se faire passer pour ${role}`,
+    dayBluffNote: (role) => `Vous n’êtes pas ${role} : cela ne fait rien — mais tout le monde vous verra le faire, comme si vous l’étiez.`,
+    dayBluffConfirm: (role) => `Êtes-vous sûr ? Vous allez annoncer au village que vous êtes ${role} — ce qui n’est pas votre personnage.`,
+    madClaimTitle: (role) => `Prétendre être ${role} (vous en êtes « fou »)`,
+    mutantConfirm: 'Vous êtes le Mutant : le dire à voix haute peut vous faire exécuter. Le dire quand même ?',
+    publiclyChoose: (name) => `Choisir publiquement ${name} ? Tout le monde le verra.`,
+    claimOutLoud: 'Le dire à voix haute',
+    visitStoryteller: 'Rendre visite au Conteur',
+    jugglerHowTo: 'Touchez un joueur, puis le personnage que vous pensez qu’il est. Jusqu’à 5 prédictions, annoncées d’un coup.',
+    jugglerWhich: (name) => `Quel personnage est ${name} ?`,
+    jugglerAnnounce: (n) => `Annoncer ma prédiction (${n})`,
+    stmtWhat: 'Que voulez-vous dire ?',
+    stmtAsk: 'Que voulez-vous demander ? (une question fermée)',
+    stmtKinds: (k) => ({ alignment: '… est bon / maléfique', team: '… est Villageois / Marginal / Sbire / le Démon', character: '… est un personnage donné', alive: '… est en vie / mort', neighbours: '… est assis à côté de quelqu’un' })[k] || k,
+    stmtWho: 'À propos de quel joueur ?',
+    stmtWhich: 'Lequel ?',
+    stmtNextTo: 'À côté de quel joueur ?',
+    stmtPreview: (x) => `Votre déclaration : « ${x} »`,
+    stmtQuestion: (x) => `Votre question : est-il vrai que ${x} ?`,
+    stmtAnnounce: 'L’annoncer publiquement',
+    stmtSendQuestion: 'Demander au Conteur',
+    startOver: 'Recommencer',
+    theDemon: 'le Démon',
+    aliveWord: 'en vie',
+    deadWord: 'mort(e)',
     publiclyAccuse: (name) => `Tirer publiquement sur ${name} en tant que Pourfendeuse ? Vous n'avez qu'un seul tir par partie.`,
     nominateSelfConfirm: 'Vous nominer vous-même pour être exécuté ?',
     nominateDeadConfirm: (name) => `${name} est déjà mort(e). Le nominer quand même ? (Cela utilise votre nomination du jour.)`,
@@ -614,7 +670,7 @@ const MESSAGES = {
     exorcisedInfo: (v) => `You were chosen by the Exorcist ${v.name}: you do not wake tonight.`,
     innkeeperChoose: () => "Choose 2 players: they can't die tonight, but 1 is drunk until dusk.",
     gamblerChoose: () => 'Choose a player and guess their character.',
-    gossipSays: (v) => `${v.name} makes a public statement: ${v.stmt}`,
+    gossipSays: (v) => `${v.name} makes a public statement: “${sayStatement(v.stmt)}”.`,
     courtierChoose: () => 'Choose a character (or no one): they are drunk for 3 nights and 3 days.',
     professorChoose: () => 'Choose a dead player: if they are a Townsfolk, they are resurrected.',
     goonEvil: () => 'You are now evil.',
@@ -643,12 +699,12 @@ const MESSAGES = {
     flowergirlInfo: (v) => (v.yes ? 'A Demon voted today.' : 'No Demon voted today.'),
     towncrierInfo: (v) => (v.yes ? 'A Minion nominated today.' : 'No Minion nominated today.'),
     oracleInfo: (v) => `${v.count} dead player${v.count === 1 ? ' is' : 's are'} evil.`,
-    savantInfo: (v) => `Two statements, one true and one false: (1) ${v.a} (2) ${v.b}`,
+    savantInfo: (v) => `Two statements, one true and one false: (1) ${sayStatement(v.a)}. (2) ${sayStatement(v.b)}.`,
     seamstressChoose: () => 'Choose 2 players (not yourself) to learn if they are the same alignment — or choose no-one to keep your ability for another night.',
     seamstressInfo: (v) => (v.same ? 'They are the same alignment.' : 'They are not the same alignment.'),
     philosopherChoose: () => 'Choose a good character: you gain that ability. If that character is in play, they become drunk.',
     philosopherGained: (v) => `You have gained the ${roleNameFor(v.role)} ability.`,
-    artistAnswer: (v) => `You asked: ${v.question} — ${v.truth ? 'Yes.' : 'No.'}`,
+    artistAnswer: (v) => `You asked: is it true that ${sayStatement(v.question)}? — ${v.truth ? 'Yes.' : 'No.'}`,
     jugglerGuesses: (v) => `${v.name} guesses: ${v.names.map((n, i) => `${n} is the ${roleNameFor(v.roles[i])}`).join(', ')}.`,
     jugglerInfo: (v) => `You guessed ${v.count} character${v.count === 1 ? '' : 's'} correctly.`,
     sageInfo: (v) => `The Demon is one of ${v.a} or ${v.b}.`,
@@ -721,7 +777,7 @@ const MESSAGES = {
     exorcisedInfo: (v) => `Vous avez été choisi par l’Exorciste ${v.name} : vous ne vous réveillez pas cette nuit.`,
     innkeeperChoose: () => 'Choisissez 2 joueurs : ils ne peuvent pas mourir cette nuit, mais l’un d’eux est ivre jusqu’au crépuscule.',
     gamblerChoose: () => 'Choisissez un joueur et devinez son personnage.',
-    gossipSays: (v) => `${v.name} fait une déclaration publique : ${v.stmt}`,
+    gossipSays: (v) => `${v.name} fait une déclaration publique : « ${sayStatement(v.stmt)} ».`,
     courtierChoose: () => 'Choisissez un personnage (ou personne) : il est ivre pendant 3 nuits et 3 jours.',
     professorChoose: () => 'Choisissez un joueur mort : si c’est un Villageois, il est ressuscité.',
     goonEvil: () => 'Vous êtes maintenant maléfique.',
@@ -750,12 +806,12 @@ const MESSAGES = {
     flowergirlInfo: (v) => (v.yes ? 'Un Démon a voté aujourd’hui.' : 'Aucun Démon n’a voté aujourd’hui.'),
     towncrierInfo: (v) => (v.yes ? 'Un Sbire a nominé aujourd’hui.' : 'Aucun Sbire n’a nominé aujourd’hui.'),
     oracleInfo: (v) => `${v.count} joueur${v.count === 1 ? ' mort est maléfique' : 's morts sont maléfiques'}.`,
-    savantInfo: (v) => `Deux affirmations, une vraie et une fausse : (1) ${v.a} (2) ${v.b}`,
+    savantInfo: (v) => `Deux affirmations, une vraie et une fausse : (1) ${sayStatement(v.a)}. (2) ${sayStatement(v.b)}.`,
     seamstressChoose: () => 'Choisissez 2 joueurs (pas vous) pour savoir s’ils ont le même alignement — ou personne, pour garder votre capacité pour une autre nuit.',
     seamstressInfo: (v) => (v.same ? 'Ils ont le même alignement.' : 'Ils n’ont pas le même alignement.'),
     philosopherChoose: () => 'Choisissez un personnage bon : vous gagnez cette capacité. Si ce personnage est en jeu, il devient ivre.',
     philosopherGained: (v) => `Vous avez gagné la capacité ${roleNameFor(v.role)}.`,
-    artistAnswer: (v) => `Vous avez demandé : ${v.question} — ${v.truth ? 'Oui.' : 'Non.'}`,
+    artistAnswer: (v) => `Vous avez demandé : est-il vrai que ${sayStatement(v.question)} ? — ${v.truth ? 'Oui.' : 'Non.'}`,
     jugglerGuesses: (v) => `${v.name} devine : ${v.names.map((n, i) => `${n} est ${roleNameFor(v.roles[i])}`).join(', ')}.`,
     jugglerInfo: (v) => `Vous avez deviné ${v.count} personnage${v.count === 1 ? '' : 's'} correctement.`,
     sageInfo: (v) => `Le Démon est l’un de ${v.a} ou ${v.b}.`,
@@ -776,6 +832,43 @@ const MESSAGES = {
     evilWinsVortox: () => 'Personne n’a été exécuté aujourd’hui avec le Vortox en vie — le Mal gagne !',
   },
 };
+
+// Statements (the Gossip's, the Savant's, the Artist's question) arrive as JSON with player NAMES
+// (`{"t":"team","p":"Alice","v":"demon"}`); this turns one into a plain sentence.
+const COUNT_OPS = { en: { '>=': 'at least', '<=': 'at most', '=': 'exactly' }, fr: { '>=': 'au moins', '<=': 'au plus', '=': 'exactement' } };
+const STATEMENT_WORDS = {
+  en: {
+    alignment: (x) => `${x.p} is ${x.v === 'evil' ? 'evil' : 'good'}`,
+    team: (x) => `${x.p} is ${x.v === 'demon' ? 'the Demon' : (x.v === 'outsider' ? 'an ' : 'a ') + (TEAM_SINGULAR.en[x.v] || x.v)}`,
+    character: (x) => `${x.p} is the ${roleNameFor(x.v)}`,
+    alive: (x) => `${x.p} is ${x.v ? 'alive' : 'dead'}`,
+    neighbours: (x) => `${x.a} and ${x.b} sit next to each other`,
+    count: (x) => `${COUNT_OPS.en[x.op] || x.op} ${x.n} ${x.what === 'evilAlive' ? (x.n === 1 ? 'living player is evil' : 'living players are evil') : (x.n === 1 ? 'player is ' : 'players are ') + (x.what === 'alive' ? 'alive' : 'dead')}`,
+    both: (x, say) => `${say(x.a)} and ${say(x.b)}`,
+    not: (x, say) => `it is not true that ${say(x.s)}`,
+  },
+  fr: {
+    alignment: (x) => `${x.p} est ${x.v === 'evil' ? 'maléfique' : 'bon(ne)'}`,
+    team: (x) => `${x.p} est ${x.v === 'demon' ? 'le Démon' : 'un ' + (TEAM_SINGULAR.fr[x.v] || x.v)}`,
+    character: (x) => `${x.p} est ${roleNameFor(x.v)}`,
+    alive: (x) => `${x.p} est ${x.v ? 'en vie' : 'mort(e)'}`,
+    neighbours: (x) => `${x.a} et ${x.b} sont assis côte à côte`,
+    count: (x) => `${COUNT_OPS.fr[x.op] || x.op} ${x.n} joueur${x.n === 1 ? '' : 's'} ${x.what === 'evilAlive' ? (x.n === 1 ? 'en vie est maléfique' : 'en vie sont maléfiques') : (x.n === 1 ? 'est ' : 'sont ') + (x.what === 'alive' ? 'en vie' : x.n === 1 ? 'mort' : 'morts')}`,
+    both: (x, say) => `${say(x.a)} et ${say(x.b)}`,
+    not: (x, say) => `il est faux que ${say(x.s)}`,
+  },
+};
+
+/** A statement (JSON text or object) as a sentence; anything unreadable is shown as it came. */
+function sayStatement(raw, lang = LANG) {
+  let st = raw;
+  if (typeof raw === 'string') {
+    try { st = JSON.parse(raw); } catch { return raw; }
+  }
+  const words = STATEMENT_WORDS[lang] || STATEMENT_WORDS.en;
+  const say = (x) => (x && words[x.t] ? words[x.t](x, say) : String(raw));
+  return say(st);
+}
 
 /** Renders a server-sent {key, vars} message descriptor into localized text. This is the single
  * point where game narration turns into an actual sentence — the server never sends prose. */
@@ -1453,7 +1546,7 @@ function renderDuskScreen(v) {
 }
 
 /** The view shape this app understands — must equal PROTOCOL_VERSION in src/game/view.ts. */
-const PROTOCOL_VERSION = 6;
+const PROTOCOL_VERSION = 7;
 
 const NIGHT_HEADINGS = { pick: 'yourTurn', character: 'yourTurn', info: 'yourInformation', result: 'yourResult', tip: 'yourTurn' };
 
@@ -1606,6 +1699,124 @@ function renderEndDayConsensus(v) {
   ]);
 }
 
+/** Localized ability text for a character id ('' until the characters have loaded). */
+function roleAbilityFor(id) {
+  const c = charactersCache && charactersCache.find((x) => x.id === id);
+  return c ? localizeChar(c).ability : '';
+}
+
+// ---------------------------------------------------------------------------
+// Day abilities (Juggler, Gossip, Moonchild, Klutz, Mutant, Savant, Artist, a Cerenovus' madness):
+// the server says which ones this player is offered, and whether each is their own character
+// ("mine") or a bluff. A bluff is labelled as one and confirmed before it goes out.
+// ---------------------------------------------------------------------------
+
+/** The in-progress form of one offer (the Juggler's guesses, a statement being built), per day. */
+function dayForm(v, offer) {
+  const key = `${v.day}-${offer.character}`;
+  if (!state.dayForm || state.dayForm.key !== key) state.dayForm = { key, guesses: [], pending: null, kind: null, p: null, v: undefined };
+  return state.dayForm;
+}
+
+function dayOfferTitle(offer) {
+  const role = roleNameFor(offer.claimAs);
+  if (offer.claimAs !== offer.character) return t('madClaimTitle', role);
+  if (!offer.mine) return t('dayBluff', role);
+  return t('dayUseMine', offer.character, role);
+}
+
+/** Sends the use, after the bluff warning (or the Mutant's own warning) where one applies. */
+function sendDayAbility(offer, targetIds, payload) {
+  const role = roleNameFor(offer.claimAs);
+  if (offer.public && !offer.mine && !confirm(t('dayBluffConfirm', role))) return;
+  if (offer.mine && offer.character === 'mutant' && !confirm(t('mutantConfirm'))) return;
+  send({ t: 'dayAbility', character: offer.character, targetIds, payload });
+  state.dayForm = null;
+}
+
+function playerButtons(players, onPick, cls = 'choice') {
+  return el('div', { class: 'choice-grid' }, players.map((p) => el('button', { class: cls + (p.alive ? '' : ' dead'), onclick: () => onPick(p) }, `${p.seat + 1}. ${p.name}` + (p.alive ? '' : t('deadSuffix')))));
+}
+
+function characterButtons(ids, onPick) {
+  return el('div', { class: 'choice-grid char-grid' }, ids.map((id) => el('button', { class: 'char-choice', onclick: () => onPick(id) }, [characterIcon(id, 'inline'), ' ' + roleNameFor(id)])));
+}
+
+/** The Juggler: tap a player, then a character — up to 5 — then announce them all at once. */
+function renderGuessesForm(v, offer) {
+  const f = dayForm(v, offer);
+  const nameOf = (id) => (v.players.find((p) => p.id === id) || {}).name || '?';
+  const parts = [el('p', { class: 'muted' }, t('jugglerHowTo'))];
+  if (f.guesses.length) {
+    parts.push(el('div', { class: 'guesses' }, f.guesses.map((g, i) => el('div', { class: 'guess' }, [
+      `${nameOf(g.p)} = ${roleNameFor(g.v)} `,
+      el('button', { class: 'secondary small remove-guess', onclick: () => { f.guesses.splice(i, 1); render(); } }, '✕'),
+    ]))));
+  }
+  if (f.pending) {
+    parts.push(el('p', {}, t('jugglerWhich', nameOf(f.pending))));
+    parts.push(characterButtons(v.script.characters, (id) => { f.guesses.push({ p: f.pending, v: id }); f.pending = null; render(); }));
+  } else if (f.guesses.length < 5) {
+    parts.push(playerButtons(v.players.filter((p) => !f.guesses.some((g) => g.p === p.id)), (p) => { f.pending = p.id; render(); }));
+  }
+  parts.push(el('button', { class: 'block', disabled: f.guesses.length ? null : 'true', onclick: () => f.guesses.length && sendDayAbility(offer, [], { guesses: f.guesses.slice() }) }, t('jugglerAnnounce', f.guesses.length)));
+  return parts;
+}
+
+/** The Gossip's statement / the Artist's question, built from buttons: what, about whom, which. */
+function renderStatementForm(v, offer) {
+  const f = dayForm(v, offer);
+  const nameOf = (id) => (v.players.find((p) => p.id === id) || {}).name || '?';
+  const parts = [];
+  const restart = () => el('button', { class: 'secondary small', onclick: () => { state.dayForm = null; render(); } }, t('startOver'));
+  if (!f.kind) {
+    parts.push(el('p', { class: 'muted' }, offer.form === 'question' ? t('stmtAsk') : t('stmtWhat')));
+    parts.push(el('div', { class: 'choice-grid' }, ['alignment', 'team', 'character', 'alive', 'neighbours'].map((k) =>
+      el('button', { class: 'choice stmt-kind', onclick: () => { f.kind = k; render(); } }, t('stmtKinds', k)))));
+    return parts;
+  }
+  if (!f.p) {
+    parts.push(el('p', { class: 'muted' }, t('stmtWho')), playerButtons(v.players, (p) => { f.p = p.id; render(); }), restart());
+    return parts;
+  }
+  if (f.v === undefined) {
+    const pick = (val) => () => { f.v = val; render(); };
+    const opt = (label, val) => el('button', { class: 'choice stmt-value', onclick: pick(val) }, label);
+    if (f.kind === 'alignment') parts.push(el('p', { class: 'muted' }, t('stmtWhich')), el('div', { class: 'choice-grid' }, [opt(alignmentLabel('good'), 'good'), opt(alignmentLabel('evil'), 'evil')]));
+    if (f.kind === 'team') parts.push(el('p', { class: 'muted' }, t('stmtWhich')), el('div', { class: 'choice-grid' }, ['townsfolk', 'outsider', 'minion', 'demon'].map((k) => opt(k === 'demon' ? t('theDemon') : (TEAM_SINGULAR[LANG] || TEAM_SINGULAR.en)[k], k))));
+    if (f.kind === 'character') parts.push(el('p', { class: 'muted' }, t('stmtWhich')), characterButtons(v.script.characters, (id) => { f.v = id; render(); }));
+    if (f.kind === 'alive') parts.push(el('p', { class: 'muted' }, t('stmtWhich')), el('div', { class: 'choice-grid' }, [opt(t('aliveWord'), true), opt(t('deadWord'), false)]));
+    if (f.kind === 'neighbours') parts.push(el('p', { class: 'muted' }, t('stmtNextTo')), playerButtons(v.players.filter((p) => p.id !== f.p), (p) => { f.v = p.id; render(); }));
+    parts.push(restart());
+    return parts;
+  }
+  const statement = f.kind === 'neighbours' ? { t: 'neighbours', a: f.p, b: f.v } : { t: f.kind, p: f.p, v: f.v };
+  const named = f.kind === 'neighbours' ? { t: 'neighbours', a: nameOf(f.p), b: nameOf(f.v) } : { ...statement, p: nameOf(f.p) };
+  const sentence = sayStatement(named);
+  parts.push(el('p', { class: 'stmt-preview' }, offer.form === 'question' ? t('stmtQuestion', sentence) : t('stmtPreview', sentence)));
+  parts.push(el('button', { class: 'block', onclick: () => sendDayAbility(offer, [], { statement }) }, offer.form === 'question' ? t('stmtSendQuestion') : t('stmtAnnounce')));
+  parts.push(restart());
+  return parts;
+}
+
+function renderDayAbility(v, offer) {
+  const role = roleNameFor(offer.claimAs);
+  const bluff = offer.public && !offer.mine;
+  const parts = [el('h2', {}, dayOfferTitle(offer)), el('p', { class: 'muted' }, glossify(roleAbilityFor(offer.claimAs)))];
+  if (bluff) parts.push(el('p', { class: 'bluff-note' }, '🎭 ' + t('dayBluffNote', role)));
+  if (offer.targets > 0) {
+    const pool = v.players.filter((p) => !offer.targetsAlive || p.alive);
+    parts.push(playerButtons(pool, (p) => { if (confirm(t('publiclyChoose', p.name))) sendDayAbility(offer, [p.id], {}); }));
+  } else if (offer.form === 'guesses') {
+    parts.push(...renderGuessesForm(v, offer));
+  } else if (offer.form === 'statement' || offer.form === 'question') {
+    parts.push(...renderStatementForm(v, offer));
+  } else {
+    parts.push(el('button', { class: 'block', onclick: () => sendDayAbility(offer, [], {}) }, offer.public ? t('claimOutLoud') : t('visitStoryteller')));
+  }
+  return el('div', { class: 'card day-ability' + (bluff ? ' bluff' : '') }, parts);
+}
+
 function renderDay(v) {
   const self = v.players.find((p) => p.id === v.selfId);
   const children = [el('h1', {}, t('day', v.day)), roleBanner(v)];
@@ -1652,10 +1863,12 @@ function renderDay(v) {
   // Shown to every living player who hasn't fired yet — not just the Slayer — so anyone can bluff
   // a shot and nobody can tell the real Slayer from their screen.
   if (v.slayerShotAvailable) {
+    const slayerRole = roleNameFor('slayer');
     children.push(
-      el('div', { class: 'card' }, [
-        el('h2', {}, t('slayerShot')),
+      el('div', { class: 'card day-ability' + (v.slayerShotIsMine ? '' : ' bluff') }, [
+        el('h2', {}, v.slayerShotIsMine ? t('slayerMine') : t('slayerBluff')),
         el('p', { class: 'muted' }, glossify(t('slayerDesc'))),
+        v.slayerShotIsMine ? null : el('p', { class: 'bluff-note' }, '🎭 ' + t('dayBluffNote', slayerRole)),
         el(
           'div',
           { class: 'choice-grid' },
@@ -1666,6 +1879,7 @@ function renderDay(v) {
                 {
                   class: 'choice',
                   onclick: () => {
+                    if (!v.slayerShotIsMine && !confirm(t('dayBluffConfirm', slayerRole))) return;
                     if (confirm(t('publiclyAccuse', p.name))) send({ t: 'slayer', targetId: p.id });
                   },
                 },
@@ -1676,6 +1890,9 @@ function renderDay(v) {
       ])
     );
   }
+
+  // Every other day ability this player is offered — their own, or one they may bluff.
+  for (const offer of v.myDayActions || []) children.push(renderDayAbility(v, offer));
 
   if (v.myLog && v.myLog.length) {
     children.push(
@@ -1801,10 +2018,10 @@ const REPLAY = {
     madnessSpared: (e, c) => c.P(e.player) + ' was not mad about being the ' + c.R(e.character) + ', but the Storyteller spares them: executing them would hand evil the win',
     statement: (e, c) => {
       const who = c.P(e.by) + (e.character ? ' (' + c.R(e.character) + ')' : '');
-      if (e.a !== undefined || e.b !== undefined) return who + ' learns two things: ' + e.a + ' / ' + e.b;
-      if (e.question !== undefined) return who + ' asks the Storyteller: ' + e.question + ' → ' + (e.truth ? 'yes' : 'no');
+      if (e.a !== undefined || e.b !== undefined) return who + ' learns two things: ' + sayStatement(e.a, 'en') + ' / ' + sayStatement(e.b, 'en');
+      if (e.question !== undefined) return who + ' asks the Storyteller: is it true that ' + sayStatement(e.question, 'en') + '? → ' + (e.truth ? 'yes' : 'no');
       if (e.guesses) return who + ' publicly guesses: ' + e.guesses.map((g) => c.P(g.p) + ' = ' + c.R(g.v)).join(', ');
-      if (e.stmt !== undefined) return who + ' makes a public statement: ' + e.stmt + (e.real !== undefined ? ' — ' + (e.truth ? 'true' : 'false') : '');
+      if (e.stmt !== undefined) return who + ' makes a public statement: ' + sayStatement(e.stmt, 'en') + (e.real !== undefined ? ' — ' + (e.truth ? 'true' : 'false') : '');
       return who + ' makes a statement';
     },
     claim: (e, c) => c.P(e.by) + ' claims to be the ' + c.R(e.character) + (e.targets ? ' and chooses ' + e.targets.map((t) => c.P(t)).join(', ') : '') + (e.real ? '' : ' (a bluff)'),
@@ -1906,10 +2123,10 @@ const REPLAY = {
     madnessSpared: (e, c) => c.P(e.player) + ' n’était pas fou d’être le ' + c.R(e.character) + ', mais le Conteur l’épargne : l’exécuter donnerait la victoire au Mal',
     statement: (e, c) => {
       const who = c.P(e.by) + (e.character ? ' (' + c.R(e.character) + ')' : '');
-      if (e.a !== undefined || e.b !== undefined) return who + ' apprend deux choses : ' + e.a + ' / ' + e.b;
-      if (e.question !== undefined) return who + ' pose une question au Conteur : ' + e.question + ' → ' + (e.truth ? 'oui' : 'non');
+      if (e.a !== undefined || e.b !== undefined) return who + ' apprend deux choses : ' + sayStatement(e.a, 'fr') + ' / ' + sayStatement(e.b, 'fr');
+      if (e.question !== undefined) return who + ' pose une question au Conteur : est-il vrai que ' + sayStatement(e.question, 'fr') + ' ? → ' + (e.truth ? 'oui' : 'non');
       if (e.guesses) return who + ' devine publiquement : ' + e.guesses.map((g) => c.P(g.p) + ' = ' + c.R(g.v)).join(', ');
-      if (e.stmt !== undefined) return who + ' fait une déclaration publique : ' + e.stmt + (e.real !== undefined ? ' — ' + (e.truth ? 'vraie' : 'fausse') : '');
+      if (e.stmt !== undefined) return who + ' fait une déclaration publique : ' + sayStatement(e.stmt, 'fr') + (e.real !== undefined ? ' — ' + (e.truth ? 'vraie' : 'fausse') : '');
       return who + ' fait une déclaration';
     },
     claim: (e, c) => c.P(e.by) + ' prétend être le ' + c.R(e.character) + (e.targets ? ' et choisit ' + e.targets.map((t) => c.P(t)).join(', ') : '') + (e.real ? '' : ' (un bluff)'),

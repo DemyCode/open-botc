@@ -52,9 +52,10 @@ function stepsToNearestMinion(s: GameState, demon: PlayerState): number {
   return a && b ? Math.min(a, b) : a || b;
 }
 
-/** Validates the Juggler's public guesses: up to five distinct players, each with a real character. */
+/** Validates the Juggler's public guesses: one to five distinct players, each with a character of the script. */
 function parseGuesses(s: GameState, raw: unknown): { p: string; v: string }[] {
   if (!Array.isArray(raw)) throw new GameError('Invalid guesses');
+  if (raw.length === 0) throw new GameError('Guess at least one player');
   if (raw.length > 5) throw new GameError('At most 5 guesses');
   const out: { p: string; v: string }[] = [];
   const seen = new Set<string>();
@@ -62,7 +63,7 @@ function parseGuesses(s: GameState, raw: unknown): { p: string; v: string }[] {
     const o = g as { p?: unknown; v?: unknown };
     if (typeof o?.p !== 'string' || typeof o?.v !== 'string') throw new GameError('Invalid guess');
     if (!s.players.some((p) => p.id === o.p)) throw new GameError('Invalid guess: unknown player');
-    if (!CHARACTERS[o.v]) throw new GameError('Invalid guess: unknown character');
+    if (!CHARACTERS[o.v] || !s.scriptChars.includes(o.v)) throw new GameError('Invalid guess: unknown character');
     if (seen.has(o.p)) throw new GameError('Cannot guess the same player twice');
     seen.add(o.p);
     out.push({ p: o.p, v: o.v });
@@ -158,7 +159,7 @@ export const SV: CharacterDef[] = [
   { id: 'savant', name: 'Savant', team: 'townsfolk', shape: 'info', edition: 'sv', firstNight: 0, otherNight: 0,
     ability: 'Each day, you may visit the Storyteller to learn 2 things in private: 1 is true & 1 is false.',
     hooks: { day: {
-      offeredTo: 'alive', private: true, targets: 0, statement: true,
+      offeredTo: 'alive', private: true, targets: 0, perDay: true,
       use: (s, self) => {
         const ctx = { asker: self.id, slot: `savant-d${s.day}` };
         // 1 true and 1 false — under a Vortox both are false; drunk or poisoned, either may be anything.
@@ -209,7 +210,7 @@ export const SV: CharacterDef[] = [
   { id: 'artist', name: 'Artist', team: 'townsfolk', shape: 'info', edition: 'sv', firstNight: 0, otherNight: 0,
     ability: 'Once per game, during the day, privately ask the Storyteller any yes/no question.',
     hooks: { day: {
-      offeredTo: 'alive', private: true, targets: 0, statement: true,
+      offeredTo: 'alive', private: true, targets: 0, form: 'question',
       use: (s, self, _targets, payload) => {
         const stmt = parseStatement(s, payload.statement);
         const ctx = { asker: self.id, slot: `artist-d${s.day}` };
@@ -225,7 +226,7 @@ export const SV: CharacterDef[] = [
     ability: "On your 1st day, publicly guess up to 5 players' characters. That night, you learn how many you got correct.",
     hooks: {
       day: {
-        offeredTo: 'alive', targets: 0, statement: true, onlyDay: 1,
+        offeredTo: 'alive', targets: 0, form: 'guesses', onlyDay: 1,
         use: (s, self, _targets, payload) => {
           const guesses = parseGuesses(s, payload.guesses);
           self.flags.jugglerGuesses = guesses;
@@ -315,7 +316,7 @@ export const SV: CharacterDef[] = [
     hooks: {
       onDeath: (_s, owner) => { owner.flags.klutzPending = true; },
       day: {
-        offeredTo: 'dead', targets: 1,
+        offeredTo: 'dead', targets: 1, targetsAlive: true,
         use: (s, self, targets) => {
           const target = byId(s, targets[0]);
           if (!target.alive) throw new GameError('Choose a living player');
@@ -387,8 +388,10 @@ export const SV: CharacterDef[] = [
         },
       },
       day: {
-        offeredTo: 'alive', targets: 0,
+        // Offered only to the mad player, who claims the character they are mad about (never "the Cerenovus").
+        offeredTo: 'alive', targets: 0, perDay: true,
         available: (s, self) => s.data.mad?.player === self.id,
+        claimAs: (s) => s.data.mad?.character ?? 'cerenovus',
         use: (s, self) => {
           const mad = s.data.mad;
           if (!mad || mad.player !== self.id) return;

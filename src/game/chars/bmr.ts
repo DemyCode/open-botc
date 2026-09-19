@@ -137,7 +137,7 @@ export const BMR: CharacterDef[] = [
     ability: 'Each day, you may make a public statement. Tonight, if it was true, a player dies.',
     hooks: {
       day: {
-        offeredTo: 'alive', targets: 0, statement: true,
+        offeredTo: 'alive', targets: 0, form: 'statement', perDay: true,
         use: (s, self, _targets, payload) => {
           const stmt = parseStatement(s, payload.statement);
           const ctx = { asker: self.id, slot: `gossip-d${s.day}` };
@@ -274,7 +274,7 @@ export const BMR: CharacterDef[] = [
     hooks: {
       onDeath: (_s, owner) => { owner.flags.moonchildPending = true; },
       day: {
-        offeredTo: 'dead', targets: 1,
+        offeredTo: 'dead', targets: 1, targetsAlive: true,
         use: (s, self, targets) => {
           const target = byId(s, targets[0]);
           if (!target.alive) throw new GameError('Choose a living player');
