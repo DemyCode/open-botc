@@ -259,18 +259,24 @@ test('"If a character dies at night before they would wake up, that character wo
 });
 
 test('a Ravenkeeper killed by a Mayor\'s redirected kill still wakes', () => {
-  // Two Soldiers leave the Ravenkeeper as the only possible redirect target.
-  const s = mk(['imp', 'mayor', 'ravenkeeper', 'soldier', 'soldier']);
-  startNight(s);
-  runFullNight(s);
-  startNight(s);
-  const mayor = byChar(s, 'mayor');
-  const rk = byChar(s, 'ravenkeeper');
-  advanceUntil(s, 'imp');
-  answerRealTurn(s, [mayor.id]);
-  assert.equal(mayor.alive, true);
-  assert.equal(rk.alive, false);
-  assert.equal(s.pendingRealTurn?.charId, 'ravenkeeper');
+  // Two Soldiers leave the Ravenkeeper as the only possible redirect target — and whether the kill
+  // bounces at all is the Storyteller's choice, so play nights until one does.
+  for (let i = 0; i < 60; i++) {
+    const s = mk(['imp', 'mayor', 'ravenkeeper', 'soldier', 'soldier']);
+    s.secret = `bounce-${i}`;
+    startNight(s);
+    runFullNight(s);
+    startNight(s);
+    const mayor = byChar(s, 'mayor');
+    const rk = byChar(s, 'ravenkeeper');
+    advanceUntil(s, 'imp');
+    answerRealTurn(s, [mayor.id]);
+    if (!mayor.alive) continue; // that night the Storyteller let the Mayor die
+    assert.equal(rk.alive, false, 'the Ravenkeeper died instead');
+    assert.equal(s.pendingRealTurn?.charId, 'ravenkeeper', 'and is woken');
+    return;
+  }
+  assert.fail('no night bounced the kill onto the Ravenkeeper');
 });
 
 test('"A poisoned Demon still wakes to attack a player, but nobody dies" — including a star-pass', () => {

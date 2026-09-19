@@ -1264,3 +1264,54 @@ test('the Spy\'s grimoire screen names the reminder tokens (poisoned, red herrin
     assert.ok(text.includes(herring), `${lang}: the red herring is marked`);
   }
 });
+
+// ---------------------------------------------------------------- the roles sheet: tips and bluffing
+
+/** Opens the All Roles sheet and returns the card of one character. */
+async function rolesSheet(lang: 'en' | 'fr' = 'en') {
+  const app = await loadApp(lang);
+  app.show(viewFor(mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']), 'x'), { seen: true, lang });
+  app.run('showRolesModal()');
+  await new Promise((r) => setImmediate(r));
+  const overlay = app.body.find((n) => n.hasClass('modal-overlay'))[0];
+  const cardOf = (name: string) => overlay.find((n) => n.hasClass('roles-card') && n.text().includes(name))[0];
+  return { app, overlay, cardOf };
+}
+
+test('every role on the sheet has a Tips button, and the good ones a Bluffing button too (the wiki has no bluffing section for evil roles)', async () => {
+  const { cardOf } = await rolesSheet();
+  const buttons = (name: string) => cardOf(name).find((n) => n.hasClass('advice-btn')).map((b) => b.text());
+  assert.deepEqual(buttons('Washerwoman'), ['💡 Tips (16)', '🎭 Bluffing (6)']);
+  assert.deepEqual(buttons('Saint'), ['💡 Tips (5)', '🎭 Bluffing (10)']);
+  assert.deepEqual(buttons('Imp'), ['💡 Tips (12)'], 'nobody bluffs being the Imp');
+  assert.deepEqual(buttons('Poisoner'), ['💡 Tips (10)']);
+  assert.deepEqual(cardOf('Drunk').find((n) => n.hasClass('advice-btn')).map((b) => b.text()), ['🎭 Bluffing (9)'], 'the Drunk has no tips of their own, only bluffing advice');
+});
+
+test('tapping Tips or Bluffing opens that list under the role; tapping again closes it; the other button replaces it', async () => {
+  const { cardOf } = await rolesSheet();
+  const card = cardOf('Washerwoman');
+  const btn = (label: RegExp) => card.find((n) => n.hasClass('advice-btn') && label.test(n.text()))[0];
+  const list = () => card.find((n) => n.hasClass('advice-list'))[0];
+  assert.equal(list(), undefined, 'closed to start with');
+
+  btn(/Bluffing/).click();
+  assert.ok(list().hasClass('bluff'));
+  assert.match(list().text(), /Claim to be the Washerwoman and point to at least one evil player/, 'the wiki\'s bluffing bullets');
+  assert.equal(list().find((n) => n.hasClass('advice-entry')).length, 6);
+
+  btn(/Tips/).click();
+  assert.ok(list().hasClass('tip'), 'the other button replaces the open list');
+  assert.equal(card.find((n) => n.hasClass('advice-list')).length, 1, 'only ever one list open');
+
+  btn(/Tips/).click();
+  assert.equal(list(), undefined, 'tapping the open one closes it');
+});
+
+test('the sheet\'s tips and bluffing are in French too', async () => {
+  const { cardOf } = await rolesSheet('fr');
+  const card = cardOf('Lavandière');
+  assert.deepEqual(card.find((n) => n.hasClass('advice-btn')).map((b) => b.text()), ['💡 Astuces (16)', '🎭 Bluffer (6)']);
+  card.find((n) => n.hasClass('advice-btn') && /Bluffer/.test(n.text()))[0].click();
+  assert.match(card.find((n) => n.hasClass('advice-list'))[0].text(), /Prétendez être la Lavandière/);
+});

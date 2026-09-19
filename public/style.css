@@ -527,3 +527,12 @@ button.block { width: 100%; }
 .script-btn { flex: 1 1 45%; }
 .script-chars { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin-bottom: 8px; }
 .script-char { font-size: 0.9rem; }
+
+/* The All Roles sheet: the wiki's tips and bluffing advice, opened per role. */
+.roles-card { flex-wrap: wrap; }
+.roles-advice { display: flex; gap: 6px; flex-basis: 100%; margin-top: 8px; }
+button.small { padding: 5px 10px; font-size: 0.8rem; border-radius: 10px; }
+.advice-list { flex-basis: 100%; margin-top: 8px; border-top: 1px solid var(--border); }
+.advice-entry { font-size: 0.85rem; color: var(--muted); line-height: 1.4; margin: 8px 0 0; }
+.advice-list.bluff .advice-entry::before { content: '🎭 '; }
+.advice-list.tip .advice-entry::before { content: '💡 '; }

@@ -14,14 +14,16 @@ import { brokenText, loadApp } from './fakedom.js';
 import { advanceUntil, byChar, mk, playRounds, runFullNight, startNight } from './helpers.js';
 
 type Lang = 'en' | 'fr';
-type Entry = { kind: 'tip'; en: string; fr: string };
+type Entry = { kind: 'tip' | 'bluff'; en: string; fr: string };
 type Term = { en: { title: string; def: string }; fr: { title: string; def: string } };
 
 const sandbox: Record<string, unknown> = {};
-for (const [file, name] of [['tips.js', 'TIPS'], ['terms.js', 'WIKI_TERMS'], ['glossary.js', 'GLOSSARY']]) {
-  vm.runInNewContext(fs.readFileSync(path.resolve('public', file), 'utf8') + `\nthis.${name} = ${name};`, sandbox);
+for (const [file, names] of [['tips.js', ['TIPS', 'BLUFFS']], ['terms.js', ['WIKI_TERMS']], ['glossary.js', ['GLOSSARY']]] as [string, string[]][]) {
+  const exports = names.map((n) => `this.${n} = ${n};`).join('\n');
+  vm.runInNewContext(fs.readFileSync(path.resolve('public', file), 'utf8') + '\n' + exports, sandbox);
 }
 const TIPS = sandbox.TIPS as Record<string, Entry[]>;
+const BLUFFS = sandbox.BLUFFS as Record<string, Entry[]>;
 const WIKI_TERMS = sandbox.WIKI_TERMS as Term[];
 const GLOSSARY = sandbox.GLOSSARY as Term[];
 const LANGS: Lang[] = ['en', 'fr'];
@@ -34,7 +36,14 @@ const termText = (t: { title: string; def: string }) => t.def;
 
 // ---------------------------------------------------------------- the data
 
-/** How many bullets each wiki page has under "Tips & Tricks" — [tips, (dropped) bluffs]. */
+/** How many bullets of the wiki's "Bluffing as the ..." section each character has (the roles sheet shows them).
+ *  Only good Trouble Brewing characters have such a section: nobody bluffs being a Minion or the Demon. */
+const BLUFF_COUNTS: Record<string, number> = {
+  washerwoman: 6, librarian: 7, investigator: 8, chef: 9, empath: 7, fortuneteller: 9, undertaker: 6, monk: 6,
+  ravenkeeper: 8, virgin: 8, slayer: 6, soldier: 6, mayor: 8, butler: 8, recluse: 7, saint: 10, drunk: 9,
+};
+
+/** How many bullets each wiki page has under "Tips & Tricks" — [tips, bluffs of the old scrape]. */
 const WIKI_COUNTS: Record<string, [number, number]> = {
   washerwoman: [16, 6], librarian: [10, 7], investigator: [9, 8], chef: [9, 6], empath: [9, 7], fortuneteller: [10, 9],
   undertaker: [12, 6], monk: [10, 6], ravenkeeper: [11, 7], virgin: [13, 8], slayer: [13, 5], soldier: [11, 6],
@@ -141,7 +150,7 @@ type Shown = { kind: 'tip' | 'term'; index: number; character?: string };
 function shown(text: string, lang: Lang): Shown | null {
   for (const c of withTips) {
     const i = TIPS[c].findIndex((e) => text.includes(e[lang]));
-    if (i >= 0) return { kind: TIPS[c][i].kind, index: i, character: c };
+    if (i >= 0) return { kind: 'tip', index: i, character: c };
   }
   const j = allTerms(lang).findIndex((t) => text.includes(termText(t)));
   return j >= 0 ? { kind: 'term', index: j } : null;
@@ -363,4 +372,47 @@ test('the app loads terms.js: it is served, and the page includes it before app.
   const html = fs.readFileSync(path.resolve('public/index.html'), 'utf8');
   assert.ok(html.indexOf('/terms.js') > 0 && html.indexOf('/terms.js') < html.indexOf('/app.js'));
   assert.ok(html.indexOf('/tips.js') < html.indexOf('/app.js'));
+});
+
+// ---------------------------------------------------------------- bluffing advice (the roles sheet)
+
+test('every good Trouble Brewing character has the wiki\'s "Bluffing as the ..." bullets; the evil ones have none', () => {
+  assert.deepEqual(Object.keys(BLUFFS).sort(), Object.keys(BLUFF_COUNTS).sort());
+  for (const [c, n] of Object.entries(BLUFF_COUNTS)) assert.equal(BLUFFS[c].length, n, `${c}: bluffing bullets`);
+  for (const c of ['poisoner', 'spy', 'scarletwoman', 'baron', 'imp']) {
+    assert.ok(!(c in BLUFFS), `${c} is evil: the wiki has no bluffing section for it`);
+  }
+  // The Drunk has no night tips (they must never read "you are the Drunk"), but the sheet does carry
+  // the wiki's advice on bluffing as the Drunk — public knowledge, the same for everyone.
+  assert.ok(!('drunk' in TIPS) && BLUFFS.drunk.length > 0);
+});
+
+test('every bluffing entry is real: marked as a bluff, both languages, no markup or debris, no duplicates', () => {
+  const problems: string[] = [];
+  const seen = new Map<string, string>();
+  for (const [c, entries] of Object.entries(BLUFFS)) {
+    for (const e of entries) {
+      if (e.kind !== 'bluff') problems.push(`${c}: not marked as a bluff`);
+      for (const lang of LANGS) {
+        const text = e[lang];
+        const why = !text ? 'missing' : brokenText(text) ?? (/\[\[|\]\]|https?:|\]\(/.test(text) ? 'wiki markup' : null);
+        if (why) problems.push(`${c}.${lang}: ${why}`);
+        // (The wiki repeats one Spy sentence word for word on two pages, so duplicates are per character.)
+        if (text && seen.get(text) === c) problems.push(`${c}.${lang}: the same bullet twice`);
+        if (text) seen.set(text, c);
+      }
+      if (e.en && e.fr && e.en === e.fr) problems.push(`${c}: the French text was never translated`);
+    }
+  }
+  assert.deepEqual(problems, []);
+});
+
+test('bluffing advice never appears on a night screen — the reading pool is tips and glossary only', async () => {
+  const bluffText = new Set(Object.values(BLUFFS).flat().map((e) => e.en));
+  const app = await loadApp('en');
+  seedApp(app, 3);
+  for (let i = 0; i < 150; i++) {
+    const text = app.show(decoyView('empath', `2-${i}`), { seen: true });
+    for (const b of bluffText) assert.ok(!text.includes(b.slice(0, 60)), `a bluffing bullet was shown at night: ${b.slice(0, 60)}`);
+  }
 });

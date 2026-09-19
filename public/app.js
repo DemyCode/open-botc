@@ -361,7 +361,9 @@ const STRINGS = {
     voteUsedBadge: 'vote used',
     nominatedBadge: 'nominated ✗',
     accusedBadge: 'accused ✗',
-    searchRoles: 'Search roles…',
+    searchRoles: 'Search for a role…',
+    tipsBtn: (n) => `💡 Tips (${n})`,
+    bluffsBtn: (n) => `🎭 Bluffing (${n})`,
     noRolesMatch: 'No roles match your search.',
   },
   fr: {
@@ -499,6 +501,8 @@ const STRINGS = {
     nominatedBadge: 'a nominé ✗',
     accusedBadge: 'accusé(e) ✗',
     searchRoles: 'Rechercher un rôle…',
+    tipsBtn: (n) => `💡 Astuces (${n})`,
+    bluffsBtn: (n) => `🎭 Bluffer (${n})`,
     noRolesMatch: 'Aucun rôle ne correspond à votre recherche.',
   },
 };
@@ -927,6 +931,45 @@ function langButton() {
   );
 }
 
+/** The wiki's advice for a character: its "Tips & Tricks" bullets, or its "Bluffing as the ..." ones. */
+function roleAdvice(id, kind) {
+  const table = kind === 'bluff' ? (typeof BLUFFS !== 'undefined' ? BLUFFS : {}) : (typeof TIPS !== 'undefined' ? TIPS : {});
+  return (table[id] || []).filter((e) => e.kind === kind);
+}
+
+/**
+ * One role on the All Roles sheet: name, ability, and a button per kind of advice the wiki has for it
+ * — "Tips" (how to play it) and "Bluffing" (how to pretend to be it). Tapping one opens the list below;
+ * tapping it again closes it. Evil characters have no bluffing section, so they only get the first button.
+ */
+function roleCard(c, team) {
+  const card = el('div', { class: 'roles-card ' + team }, [
+    characterIcon(c.id, 'roles-card-icon'),
+    el('div', { class: 'roles-card-text' }, [
+      el('div', { class: 'roles-name' }, c.name),
+      el('div', { class: 'roles-ability' }, glossify(c.ability)),
+    ]),
+  ]);
+  const kinds = [['tip', 'tipsBtn'], ['bluff', 'bluffsBtn']].filter(([kind]) => roleAdvice(c.id, kind).length);
+  if (!kinds.length) return card;
+  let open = null;
+  let list = null;
+  const buttons = kinds.map(([kind, label]) =>
+    el('button', {
+      class: 'secondary small advice-btn advice-' + kind,
+      onclick: () => {
+        if (list) { list.remove(); list = null; }
+        if (open === kind) { open = null; return; }
+        open = kind;
+        list = el('div', { class: 'advice-list ' + kind }, roleAdvice(c.id, kind).map((e) => el('p', { class: 'advice-entry' }, glossify(e[LANG] || e.en))));
+        card.appendChild(list);
+      },
+    }, t(label, roleAdvice(c.id, kind).length))
+  );
+  card.appendChild(el('div', { class: 'roles-advice' }, buttons));
+  return card;
+}
+
 function showRolesModal() {
   loadCharacters().then((chars) => {
     const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
@@ -948,15 +991,7 @@ function showRolesModal() {
         body.appendChild(
           el('div', { class: 'roles-section' }, [
             el('h3', { class: 'roles-team ' + team }, [svgIcon(team, 'roles-team-icon'), teamLabel(team)]),
-            ...teamChars.map((c) =>
-              el('div', { class: 'roles-card ' + team }, [
-                characterIcon(c.id, 'roles-card-icon'),
-                el('div', { class: 'roles-card-text' }, [
-                  el('div', { class: 'roles-name' }, c.name),
-                  el('div', { class: 'roles-ability' }, glossify(c.ability)),
-                ]),
-              ])
-            ),
+            ...teamChars.map((c) => roleCard(c, team)),
           ])
         );
       }
@@ -1000,7 +1035,7 @@ function readingPool() {
   const pool = [];
   // Only the characters of this game's script have tips shown (a full sheet is public knowledge; who is in play is not).
   const sheet = state.view && state.view.script && state.view.script.characters.length ? state.view.script.characters : null;
-  if (typeof TIPS !== 'undefined') for (const id of Object.keys(TIPS)) if (!sheet || sheet.includes(id)) TIPS[id].forEach((e, i) => pool.push({ character: id, index: i }));
+  if (typeof TIPS !== 'undefined') for (const id of Object.keys(TIPS)) if (!sheet || sheet.includes(id)) TIPS[id].forEach((e, i) => { if (e.kind === 'tip') pool.push({ character: id, index: i }); });
   const own = typeof GLOSSARY !== 'undefined' ? GLOSSARY.length : 0;
   const wiki = typeof WIKI_TERMS !== 'undefined' ? WIKI_TERMS.length : 0;
   for (let i = 0; i < own + wiki; i++) pool.push({ term: i });
