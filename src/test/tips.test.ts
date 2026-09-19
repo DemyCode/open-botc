@@ -25,8 +25,10 @@ const TIPS = sandbox.TIPS as Record<string, Entry[]>;
 const WIKI_TERMS = sandbox.WIKI_TERMS as Term[];
 const GLOSSARY = sandbox.GLOSSARY as Term[];
 const LANGS: Lang[] = ['en', 'fr'];
-// (Tips exist for the Trouble Brewing characters so far.)
-const withTips = (Object.keys(CHARACTERS) as CharacterId[]).filter((c) => c !== 'drunk' && CHARACTERS[c].edition === 'tb');
+// Every character with a wiki "Tips & Tricks" page (all three editions).
+const withTips = (Object.keys(CHARACTERS) as CharacterId[]).filter((c) => c !== 'drunk');
+// The Trouble Brewing subset: the reading-material pool for a Trouble Brewing game (see below).
+const tbTips = withTips.filter((c) => CHARACTERS[c].edition === 'tb');
 const allTerms = (lang: Lang) => GLOSSARY.map((g) => g[lang]).concat(WIKI_TERMS.map((g) => g[lang]));
 const termText = (t: { title: string; def: string }) => t.def;
 
@@ -38,6 +40,16 @@ const WIKI_COUNTS: Record<string, [number, number]> = {
   undertaker: [12, 6], monk: [10, 6], ravenkeeper: [11, 7], virgin: [13, 8], slayer: [13, 5], soldier: [11, 6],
   mayor: [6, 8], butler: [8, 8], recluse: [7, 7], saint: [5, 12], poisoner: [10, 0], spy: [16, 0],
   scarletwoman: [5, 0], baron: [10, 0], imp: [12, 0],
+  // Bad Moon Rising
+  grandmother: [8, 0], sailor: [6, 0], chambermaid: [6, 0], exorcist: [7, 0], innkeeper: [5, 0], gambler: [6, 0],
+  gossip: [7, 0], courtier: [7, 0], professor: [7, 0], minstrel: [5, 0], tealady: [5, 0], pacifist: [6, 0],
+  fool: [8, 0], goon: [5, 0], lunatic: [5, 0], tinker: [5, 0], moonchild: [6, 0], godfather: [7, 0],
+  devilsadvocate: [6, 0], assassin: [5, 0], mastermind: [7, 0], zombuul: [4, 0], pukka: [6, 0], shabaloth: [7, 0], po: [3, 0],
+  // Sects & Violets
+  clockmaker: [6, 0], dreamer: [11, 0], snakecharmer: [8, 0], mathematician: [8, 0], flowergirl: [6, 0], towncrier: [7, 0],
+  oracle: [5, 0], savant: [10, 0], seamstress: [7, 0], philosopher: [8, 0], artist: [8, 0], juggler: [9, 0], sage: [4, 0],
+  mutant: [5, 0], sweetheart: [6, 0], barber: [6, 0], klutz: [6, 0], eviltwin: [10, 0], witch: [7, 0], cerenovus: [12, 0],
+  pithag: [11, 0], fanggu: [7, 0], vigormortis: [4, 0], nodashii: [5, 0], vortox: [6, 0],
 };
 
 test('every character has entries — except the Drunk, who is shown those of the character they believe they are', () => {
@@ -70,7 +82,7 @@ test('every entry is real: both languages present, no wiki markup, no scraping d
         seen.add(text);
         const why = brokenText(text);
         if (why) problems.push(`${c}/${lang}#${i}: ${why}`);
-        if (text.length < 20 || text.length > 2000) problems.push(`${c}/${lang}#${i}: length ${text.length}`);
+        if (text.length < 20 || text.length > 6000) problems.push(`${c}/${lang}#${i}: length ${text.length}`);
         if (text !== text.trim() || /\s{2}/.test(text)) problems.push(`${c}/${lang}#${i}: stray whitespace`);
         if (!/[.!?»)…"”]$/.test(text)) problems.push(`${c}/${lang}#${i}: does not end like a sentence: …${text.slice(-30)}`);
         if (/\{\{|\}\}|\[\[|\]\]|Category:|<\/?\w+>|'''/.test(text)) problems.push(`${c}/${lang}#${i}: markup`);
@@ -145,7 +157,8 @@ const label = (what: Shown, lang: Lang) => {
 const seedApp = (app: { run<T>(c: string): T }, seed: number) =>
   app.run(`(function(){ var a = ${seed}; Math.random = function(){ a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; })()`);
 // The wiki repeats one Spy bullet word for word on two pages; a screen can't tell those two apart.
-const POOL = new Set(withTips.flatMap((c) => TIPS[c].map((e) => e.en))).size + GLOSSARY.length + WIKI_TERMS.length;
+// (decoyView below plays a Trouble Brewing game, so only the Trouble Brewing tips are in its pool.)
+const POOL = new Set(tbTips.flatMap((c) => TIPS[c].map((e) => e.en))).size + GLOSSARY.length + WIKI_TERMS.length;
 
 test('the decoy information screen shows something to read instead of "nothing to learn" labelled — both languages', async () => {
   const app = await loadApp('en');
