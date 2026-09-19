@@ -25,7 +25,8 @@ const TIPS = sandbox.TIPS as Record<string, Entry[]>;
 const WIKI_TERMS = sandbox.WIKI_TERMS as Term[];
 const GLOSSARY = sandbox.GLOSSARY as Term[];
 const LANGS: Lang[] = ['en', 'fr'];
-const withTips = (Object.keys(CHARACTERS) as CharacterId[]).filter((c) => c !== 'drunk');
+// (Tips exist for the Trouble Brewing characters so far.)
+const withTips = (Object.keys(CHARACTERS) as CharacterId[]).filter((c) => c !== 'drunk' && CHARACTERS[c].edition === 'tb');
 const allTerms = (lang: Lang) => GLOSSARY.map((g) => g[lang]).concat(WIKI_TERMS.map((g) => g[lang]));
 const termText = (t: { title: string; def: string }) => t.def;
 

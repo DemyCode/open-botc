@@ -31,12 +31,13 @@ test('the app loads with no errors and shows the landing page, in English and in
 
 test('the roles reference lists all 22 characters, grouped by team', async () => {
   const app = await loadApp('en');
+  app.show(viewFor(mkDay(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']), 'x'), { seen: true });
   app.run('showRolesModal()');
   await new Promise((r) => setImmediate(r));
   const overlay = app.body.find((n) => n.hasClass('modal-overlay'))[0];
   assert.ok(overlay, 'the modal opened');
   const cards = overlay.find((n) => n.hasClass('roles-card'));
-  assert.equal(cards.length, 22);
+  assert.equal(cards.length, 22, "the game's script (Trouble Brewing): 22 characters");
   for (const name of ['Washerwoman', 'Imp', 'Scarlet Woman', 'Recluse', 'Saint']) assert.ok(overlay.text().includes(name), name);
   assert.equal(brokenText(overlay.text()), null);
 });

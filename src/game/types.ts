@@ -85,6 +85,7 @@ export interface PendingRealTurn {
   openedAt: number;
   /** The real actor also picks a character (Gambler, Cerenovus, Pit-Hag...). */
   pickCharacter?: boolean;
+  optionalCharacter?: boolean;
   /** The step gives a result right after answering: decoys show a stand-in result screen. */
   result?: boolean;
 }
@@ -125,6 +126,8 @@ export interface Effect {
   untilNight: number | null;
   /** Ends the moment the source stops being alive. */
   needsSourceAlive?: boolean;
+  /** Suspended while the source's own ability doesn't work (a drunk Courtier's target sobers up). */
+  needsSourceWorking?: boolean;
 }
 
 export interface GameState {
@@ -134,6 +137,8 @@ export interface GameState {
   scriptChars: string[];
   /** Drunk / poisoned effects beyond the Poisoner's own (see registration.ts). */
   effects: Effect[];
+  /** Scratch space for characters' hooks: who is safe tonight, who the Exorcist chose, ... Reset by them. */
+  data: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   code: string;
   hostId: string;
   phase: Phase;

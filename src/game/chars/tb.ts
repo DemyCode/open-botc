@@ -48,7 +48,7 @@ export const TB: CharacterDef[] = [
     ability: 'Each night*, you learn which character died by execution today.',
     hooks: { night: {
       // "Each night except the first, if any player died by execution today, wake the Undertaker."
-      actors: (s) => (s.lastExecutedId ? s.players.filter((p) => p.alive && p.perceived === 'undertaker') : []),
+      actors: (s) => (s.lastExecutedId && !s.players.find((p) => p.id === s.lastExecutedId)?.alive ? s.players.filter((p) => p.alive && p.perceived === 'undertaker') : []),
       info: (s, self, slot) => undertakerInfo(s, self, s.lastExecutedId ? s.players.find((p) => p.id === s.lastExecutedId) ?? null : null, slot),
     } } },
   { id: 'monk', name: 'Monk', team: 'townsfolk', shape: 'choose', edition: 'tb', firstNight: 0, otherNight: 90,
@@ -120,7 +120,7 @@ export const TB: CharacterDef[] = [
     } },
   { id: 'drunk', name: 'Drunk', team: 'outsider', shape: 'info', edition: 'tb', firstNight: 0, otherNight: 0,
     ability: 'You do not know you are the Drunk. You think you are a Townsfolk, but your ability malfunctions.',
-    hooks: { noAbility: true, setup: { thinksTheyAre: 'townsfolk' } } },
+    hooks: { noAbility: 'drunk', setup: { thinksTheyAre: 'townsfolk' } } },
   { id: 'recluse', name: 'Recluse', team: 'outsider', shape: 'info', edition: 'tb', firstNight: 0, otherNight: 0,
     ability: 'You might register as evil and as a Minion or Demon, even if dead.',
     hooks: { misregister: { from: 'good', kinds: ['evil', 'minion', 'demon'] } } },
@@ -167,9 +167,11 @@ export const TB: CharacterDef[] = [
     ability: 'Each night*, choose a player: they die. If you kill yourself this way, a Minion becomes the Imp.',
     hooks: {
       night: {
+        ownDemonInfo: true,
         // The Imp only "acts" on the first night to receive the Demon info — nothing to do without it.
         actors: (s, step) => (s.night === 1 && s.players.length < EVIL_INTRO_MIN_PLAYERS ? [] : s.players.filter((p) => p.alive && p.perceived === step)),
         shape: (s) => (s.night === 1 ? 'info' : 'choose'),
+        abilityWake: (s) => s.night > 1,
         info: (s, self) => demonInfo(s, self),
         prompt: () => ({ min: 1, max: 1, body: msg('impChoose') }),
         apply: (s, self, targets) => demonAttack(s, self, targets[0], { starPass: true }),

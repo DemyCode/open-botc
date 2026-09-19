@@ -1,5 +1,6 @@
 import { CHARACTERS } from './characters.js';
-import { MIN_ANSWER_MS } from './night.js';
+import { offeredActions, type OfferedAction } from './dayactions.js';
+import { MIN_ANSWER_MS, specOf } from './night.js';
 import type { GameState, HistoryEvent, Msg, Nomination, NominationState, Phase, PlayerState } from './types.js';
 
 function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
@@ -31,6 +32,8 @@ export interface NightTurnChoice {
   name: string;
   seat: number;
   alive: boolean;
+  /** The ability cannot pick this player (only ever set on a real actor's screen). */
+  disabled?: boolean;
 }
 
 export interface NightTurnView {
@@ -46,6 +49,10 @@ export interface NightTurnView {
   /** For a decoy at a step whose real actor gets a result right after answering (Fortune Teller,
    * Ravenkeeper): show a result screen after it too, so the two look alike. */
   decoyResult: boolean;
+  /** The step also asks for a character, chosen among these (the script's). */
+  pickCharacter: boolean;
+  optionalCharacter: boolean;
+  characters: { id: string; name: string; team: string }[];
   /** Identifies this night step — changes at every step, even when two steps look the same. */
   stepKey: string;
   /** How long (ms) until this screen may be answered (see MIN_ANSWER_MS). */
@@ -83,6 +90,8 @@ export interface GameView {
   myCharacter: { id: string; name: string; ability: string; alignment: string } | null;
   myLog: { night: number; msg: Msg }[];
   mySlayerUsed: boolean;
+  /** Day abilities this player may claim right now (see dayactions.ts). */
+  myDayActions: OfferedAction[];
   myGhostVoteUsed: boolean;
   amIAlive: boolean;
   leftNeighborName: string | null;
@@ -123,17 +132,25 @@ function buildNightTurn(state: GameState, viewerId: string): NightTurnView | nul
   const t = state.pendingRealTurn;
   if (!t || !t.participantIds.includes(viewerId) || viewerId in t.responses) return null;
   const decoy = !t.playerIds.includes(viewerId);
+  const self = state.players.find((p) => p.id === viewerId);
+  const eligible = !decoy && self ? specOf(t.charId)?.prompt?.(state, self).eligible : undefined;
   const choices: NightTurnChoice[] =
     t.shape === 'choose'
       ? state.players // any player, dead or alive, yourself included — the rules allow it
-          .map((p) => ({ id: p.id, name: p.name, seat: p.seat, alive: publiclyAlive(p) }))
+          .map((p) => ({ id: p.id, name: p.name, seat: p.seat, alive: publiclyAlive(p), ...(eligible && self && !eligible(state, self, p) ? { disabled: true } : {}) }))
       : [];
+  // A decoy asks a simple question; its picker never takes more than the question needs.
+  const min = decoy && t.shape === 'choose' ? (t.max === 2 ? 2 : 1) : t.min;
+  const max = decoy && t.shape === 'choose' ? (t.max === 2 ? 2 : 1) : t.max;
   return {
     shape: t.shape, title: 'Your turn',
     body: decoy ? msg(t.decoys[viewerId]) : t.bodyByPlayer[viewerId] ?? msg('empty'),
-    min: t.min, max: t.max, choices,
+    min, max, choices,
     decoy,
     decoyResult: decoy && !!t.result,
+    pickCharacter: !decoy && !!t.pickCharacter,
+    optionalCharacter: !decoy && !!t.optionalCharacter,
+    characters: !decoy && t.pickCharacter ? state.scriptChars.map((id) => ({ id, name: CHARACTERS[id].name, team: CHARACTERS[id].team })) : [],
     stepKey: `${state.night}-${state.nightStepNumber ?? 0}`,
     waitMs: Math.max(0, t.openedAt + MIN_ANSWER_MS - Date.now()),
   };
@@ -234,6 +251,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     myCharacter: self ? { id: self.perceived, name: CHARACTERS[self.perceived].name, ability: CHARACTERS[self.perceived].ability, alignment: self.alignment } : null,
     myLog: self ? self.log : [],
     mySlayerUsed: self?.slayerUsed ?? false,
+    myDayActions: self ? offeredActions(state, self) : [],
     myGhostVoteUsed: self?.ghostVoteUsed ?? false,
     amIAlive,
     leftNeighborName: neighbors.left,

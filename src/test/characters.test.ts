@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { SCRIPTS } from '../game/scripts.js';
 import { test } from 'node:test';
 import { allCharactersSummary, CHARACTERS, TEAM_DISPLAY_ORDER } from '../game/characters.js';
 import { useSlayer } from '../game/engine.js';
@@ -236,7 +237,7 @@ test('Recluse: can be legitimately killed by the Slayer when misregistering as t
 });
 
 test('allCharactersSummary lists all 22 Trouble Brewing characters, grouped by team, each with a real ability', () => {
-  const summary = allCharactersSummary();
+  const summary = allCharactersSummary(SCRIPTS.tb.characters);
   assert.equal(summary.length, 22);
   assert.equal(new Set(summary.map((c) => c.id)).size, 22, 'no duplicate characters');
 

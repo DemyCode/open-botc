@@ -1,10 +1,14 @@
-import { alignmentOfCharacter } from '../game/characters.js';
+import { ALL_CHARACTER_IDS, CHARACTERS, alignmentOfCharacter } from '../game/characters.js';
 import { addPlayer, castVote, createGame, markReadyForSpeech, skipSpeech, toggleEndDayRequest } from '../game/engine.js';
 import { beginNight, submitRealResponse, tick as nightTick } from '../game/night.js';
+import { viewFor } from '../game/view.js';
 import type { CharacterId, GameState } from '../game/types.js';
 
 export function mk(charIds: CharacterId[], opts: { drunkFakeChar?: CharacterId } = {}): GameState {
   const state = createGame('TEST');
+  // The script is Trouble Brewing plus the whole edition of any character from another one.
+  const editions = new Set(['tb', ...charIds.map((c) => CHARACTERS[c].edition)]);
+  state.scriptChars = ALL_CHARACTER_IDS.filter((c) => editions.has(CHARACTERS[c].edition));
   for (let i = 0; i < charIds.length; i++) addPlayer(state, `P${i}`);
   state.players.forEach((p, i) => {
     const cid = charIds[i];
@@ -50,11 +54,11 @@ export function answerDecoys(state: GameState): void {
 }
 
 /** Answers the current night step: every real actor with `targetIds`, everyone else's decoy with anything. */
-export function answerRealTurn(state: GameState, targetIds: string[] = []): void {
+export function answerRealTurn(state: GameState, targetIds: string[] = [], character?: string): void {
   const t = state.pendingRealTurn;
   if (!t) throw new Error('No pending real turn');
   for (const id of t.playerIds) {
-    if (!(id in t.responses)) submitRealResponse(state, id, targetIds);
+    if (!(id in t.responses)) submitRealResponse(state, id, targetIds, undefined, character);
   }
   answerDecoys(state);
 }
@@ -62,6 +66,13 @@ export function answerRealTurn(state: GameState, targetIds: string[] = []): void
 /** Skips the wait between the last night action and dawn (see DAWN_WAIT_* in night.ts). */
 export function breakDawn(state: GameState): void {
   if (state.phase === 'night' && state.dawnAt != null) nightTick(state, state.dawnAt);
+}
+
+/** Some players the ability may choose, other than the actor themself (preferring the living). */
+function pickable(state: GameState, actor: string, count: number): string[] {
+  const choices = viewFor(state, actor).nightTurn?.choices ?? [];
+  const ok = choices.filter((c) => !c.disabled && c.id !== actor);
+  return [...ok.filter((c) => c.alive), ...ok.filter((c) => !c.alive)].slice(0, count).map((c) => c.id);
 }
 
 /** Resolves the current round with arbitrary-but-valid answers, for rounds the test doesn't care
@@ -76,13 +87,17 @@ export function skipRound(state: GameState): void {
     if (id in t.responses || state.pendingRealTurn !== t) continue;
     // A skipped Poisoner poisons themselves (legal, and harmless): poisoning anyone else would
     // quietly switch off whichever ability the test is actually about.
+    // A step that asks for a character (the Gambler) is skipped harmlessly with a correct guess about oneself.
+    const me = state.players.find((p) => p.id === id)!;
     const targets =
       t.charId === 'poisoner'
         ? [id]
-        : t.shape === 'choose'
-          ? state.players.filter((p) => p.alive && p.id !== id).slice(0, t.min).map((p) => p.id)
-          : [];
-    submitRealResponse(state, id, targets);
+        : t.pickCharacter && t.min > 0
+          ? [id]
+          : t.shape === 'choose'
+            ? pickable(state, id, t.min)
+            : [];
+    submitRealResponse(state, id, targets, undefined, t.pickCharacter && t.min > 0 ? me.character : undefined);
   }
   answerDecoys(state);
 }

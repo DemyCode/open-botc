@@ -14,12 +14,17 @@ function poisonerAlive(state: GameState): boolean {
 }
 
 /** Why a player's ability is not working right now, if it isn't (used to explain false information in the replay). */
-export function abilityLostReason(state: GameState, p: PlayerState): 'drunk' | 'poisoned' | null {
-  if (hooksOf(p.character).noAbility) return 'drunk';
+export function abilityLostReason(state: GameState, p: PlayerState, depth = 0): 'drunk' | 'poisoned' | 'lunatic' | null {
+  const noAbility = hooksOf(p.character).noAbility;
+  if (noAbility) return noAbility;
   if (state.poisonedId === p.id && poisonerAlive(state)) return 'poisoned';
   for (const e of state.effects) {
     if (e.target !== p.id) continue;
     if (e.needsSourceAlive && !state.players.some((q) => q.id === e.source && q.alive)) continue;
+    if (e.needsSourceWorking) {
+      const src = state.players.find((q) => q.id === e.source);
+      if (!src || depth > 3 || abilityLostReason(state, src, depth + 1) !== null) continue;
+    }
     return e.kind;
   }
   return null;
@@ -41,7 +46,8 @@ export function registersAs(
   ctx: { asker: string; slot: string }
 ): boolean {
   const team = CHARACTERS[target.character].team;
-  const trueEvil = isEvilTeam(team);
+  // Alignment, not team: a Goon may have turned evil.
+  const trueEvil = target.alignment === 'evil';
   const trueKind = kind === 'evil' ? trueEvil
     : kind === 'good' ? !trueEvil
     : team === kind;

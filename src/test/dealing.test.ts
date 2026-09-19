@@ -174,7 +174,7 @@ test('the distribution table matches the official one for every player count', (
 });
 
 test('the character list is the official Trouble Brewing 22: 13 Townsfolk, 4 Outsiders, 4 Minions, 1 Demon', () => {
-  const by = (t: string) => Object.values(CHARACTERS).filter((c) => c.team === t).length;
+  const by = (t: string) => Object.values(CHARACTERS).filter((c) => c.edition === 'tb' && c.team === t).length;
   assert.equal(by('townsfolk'), 13);
   assert.equal(by('outsider'), 4);
   assert.equal(by('minion'), 4);

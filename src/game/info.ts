@@ -133,8 +133,28 @@ export function minionInfo(state: GameState, self: PlayerState): Msg {
 }
 
 export function demonInfo(state: GameState, self: PlayerState): Msg {
+  if (self.character === 'lunatic') {
+    // The Lunatic is shown made-up Minions (any players) and three good characters (even ones in play).
+    const minionCount = state.players.filter((p) => CHARACTERS[p.character].team === 'minion').length;
+    const pool = state.players.filter((p) => p.id !== self.id);
+    const fakeMinions: PlayerState[] = [];
+    for (let i = 0; i < minionCount && pool.length; i++) {
+      const pick = stablePick(state.secret, pool, 'lunatic-minion', self.id, i);
+      pool.splice(pool.indexOf(pick), 1);
+      fakeMinions.push(pick);
+    }
+    const good = state.scriptChars.filter((c) => CHARACTERS[c].team === 'townsfolk' || CHARACTERS[c].team === 'outsider');
+    const bluffs: string[] = [];
+    for (let i = 0; i < 3 && good.length; i++) {
+      const pick = stablePick(state.secret, good, 'lunatic-bluff', self.id, i);
+      good.splice(good.indexOf(pick), 1);
+      bluffs.push(pick);
+    }
+    return msg('demonInfo', { names: fakeMinions.map((p) => p.name), bluffs });
+  }
   const minions = state.players.filter((p) => CHARACTERS[p.character].team === 'minion');
-  return msg('demonInfo', { names: minions.map((p) => p.name), bluffs: state.bluffs });
+  const lunatic = state.players.find((p) => p.character === 'lunatic');
+  return msg('demonInfo', { names: minions.map((p) => p.name), bluffs: state.bluffs, ...(lunatic ? { lunatic: lunatic.name } : {}) });
 }
 
 export function spyInfo(state: GameState, self: PlayerState, slot: string): Msg {

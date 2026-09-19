@@ -191,9 +191,9 @@ test('POST /api/rooms creates a room with a 4-letter code; each one is different
   assert.equal(codes.size, 20);
 });
 
-test('GET /api/characters lists the 22 Trouble Brewing characters', async () => {
+test('GET /api/characters lists every character of every edition (22 Trouble Brewing among them)', async () => {
   const chars = JSON.parse((await request(server.port, 'GET', '/api/characters')).body);
-  assert.equal(chars.length, 22);
+  assert.equal(chars.filter((c: { edition: string }) => c.edition === 'tb').length, 22);
   for (const c of chars) assert.ok(c.id && c.name && c.team && c.ability);
 });
 

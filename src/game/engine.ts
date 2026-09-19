@@ -28,7 +28,7 @@ function findPlayer(state: GameState, id: string): PlayerState {
 
 export function createGame(code: string): GameState {
   return {
-    code, scriptId: 'tb', scriptChars: SCRIPTS.tb.characters, effects: [], hostId: '', phase: 'lobby', night: 0, day: 0, players: [],
+    code, scriptId: 'tb', scriptChars: SCRIPTS.tb.characters, effects: [], data: {}, hostId: '', phase: 'lobby', night: 0, day: 0, players: [],
     secret: randomId() + randomId(), rngState: 0, bluffs: [],
     poisonedId: null, monkProtectedId: null, butlerMasterId: null,
     deathsTonight: [], nightSlotIndex: -1, pendingRealTurn: null,
@@ -200,6 +200,8 @@ export function useSlayer(state: GameState, slayerId: string, targetId: string):
     state.publicLog.push(msg('slayerMiss', { slayer: self.name, target: target.name }));
   }
 }
+
+export { useDayAbility } from './dayactions.js';
 
 export function nominate(state: GameState, nominatorId: string, nomineeId: string): void {
   if (state.phase !== 'day') throw new GameError('Not day phase');

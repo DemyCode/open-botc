@@ -180,6 +180,9 @@ wss.on('connection', (ws: WebSocket) => {
         case 'endDay':
           engine.toggleEndDayRequest(state, playerId);
           break;
+        case 'dayAbility':
+          engine.useDayAbility(state, playerId, String(msg.character), Array.isArray(msg.targetIds) ? (msg.targetIds as string[]).map(String) : [], typeof msg.payload === 'object' && msg.payload !== null ? (msg.payload as Record<string, unknown>) : {});
+          break;
         case 'slayer':
           engine.useSlayer(state, playerId, String(msg.targetId));
           break;

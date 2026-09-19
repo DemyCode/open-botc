@@ -1,4 +1,5 @@
 import { CHARACTERS } from './characters.js';
+import { hooksOf } from './deaths.js';
 import { demonInfo, minionInfo } from './info.js';
 import { record } from './history.js';
 import { appendLog } from './log.js';
@@ -47,12 +48,23 @@ export { appendLog };
 
 /** Steps that aren't a character: the first night's Minion info. */
 const PSEUDO_STEPS: Record<string, { firstNight: number; otherNight: number; night: NightSpec }> = {
+  // Demons whose own step already carries the Demon info (the Imp) don't take part here.
+  'demon-info': {
+    firstNight: 20, otherNight: 0,
+    night: {
+      actors: (s) => (s.players.length < EVIL_INTRO_MIN_PLAYERS ? [] : s.players.filter((p) => p.alive && CHARACTERS[p.perceived]?.team === 'demon' && !CHARACTERS[p.perceived].hooks?.night?.ownDemonInfo)),
+      shape: () => 'info',
+      info: (s, self) => demonInfo(s, self),
+      abilityWake: () => false,
+    },
+  },
   'minion-info': {
     firstNight: 10, otherNight: 0,
     night: {
       actors: (s) => (s.players.length < EVIL_INTRO_MIN_PLAYERS ? [] : s.players.filter((p) => p.alive && CHARACTERS[p.character].team === 'minion')),
       shape: () => 'info',
       info: (s, self) => minionInfo(s, self),
+      abilityWake: () => false,
     },
   },
 };
@@ -91,8 +103,10 @@ function findPlayer(state: GameState, id: string): PlayerState {
 function actorsFor(state: GameState, step: string): PlayerState[] {
   const spec = specOf(step);
   if (!spec) return [];
-  if (spec.actors) return spec.actors(state, step);
-  return state.players.filter((p) => p.alive && p.perceived === step);
+  const actors = spec.actors ? spec.actors(state, step) : state.players.filter((p) => p.alive && p.perceived === step);
+  // A Demon the Exorcist chose does not wake to use their Demon ability tonight.
+  const exorcised: string[] = state.data.exorcised ?? [];
+  return actors.filter((p) => !(exorcised.includes(p.id) && CHARACTERS[p.character]?.team === 'demon' && !PSEUDO_STEPS[step]));
 }
 
 function shapeFor(state: GameState, step: string): NightTurnShape {
@@ -115,6 +129,7 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
   let min = 0;
   let max = 0;
   let pickCharacter = false;
+  let optionalCharacter = false;
 
   if (shape === 'info') {
     for (const p of actors) {
@@ -129,11 +144,16 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
       min = cfg.min;
       max = cfg.max;
       pickCharacter = !!cfg.pickCharacter;
+      optionalCharacter = !!cfg.optionalCharacter;
       bodyByPlayer[p.id] = cfg.body;
     }
   }
 
   const actorIds = actors.map((p) => p.id);
+  if (spec?.abilityWake ? spec.abilityWake(state) : true) {
+    const woke: string[] = (state.data.woke ??= []);
+    for (const id of actorIds) if (!woke.includes(id)) woke.push(id);
+  }
   const participantIds = [...new Set([...actorIds, ...nightParticipants(state).map((p) => p.id)])];
   const decoys: Record<string, string> = {};
   for (const id of participantIds) {
@@ -149,7 +169,7 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
 
   state.pendingRealTurn = {
     charId: step, playerIds: actorIds, participantIds, decoys, shape, min, max, bodyByPlayer,
-    responses: {}, openedAt: Date.now(), pickCharacter, result: !!spec?.result,
+    responses: {}, openedAt: Date.now(), pickCharacter, optionalCharacter, result: !!spec?.result,
   };
 }
 
@@ -165,6 +185,13 @@ export function beginNight(state: GameState): void {
   state.nightStepNumber = 0;
   state.dawnAt = null;
   state.effects = state.effects.filter((e) => e.untilNight === null || e.untilNight >= state.night);
+  // Per-night notes for the hooks (who is safe, who the Exorcist chose, who woke...).
+  state.data.safe = [];
+  state.data.exorcised = [];
+  state.data.woke = [];
+  state.data.goonUsed = false;
+  state.data.daProtected = null;
+  state.data.resurrected = [];
   for (const p of state.players) {
     p.nightResult = null;
     // Reset here (not just on death) so it accurately reflects *this* night by dawn — otherwise
@@ -207,10 +234,16 @@ function finishNight(state: GameState): void {
   state.usedNomineeIds = [];
   state.currentNomination = null;
   state.endDayRequestedBy = [];
+  state.data.safe = [];
+  state.data.diedToday = [];
   record(state, 'dawn', { deaths: [...state.deathsTonight] });
   for (const id of state.deathsTonight) {
     const p = state.players.find((pl) => pl.id === id);
     if (p) state.publicLog.push(msg('foundDead', { name: p.name }));
+  }
+  for (const id of (state.data.resurrected ?? []) as string[]) {
+    const p = state.players.find((pl) => pl.id === id);
+    if (p) state.publicLog.push(msg('resurrected', { name: p.name }));
   }
   if (state.deathsTonight.length === 0 && state.night > 1) {
     state.publicLog.push(msg('nobodyDiedLastNight'));
@@ -225,7 +258,13 @@ function applyRealChoice(state: GameState, step: string, playerId: string, targe
   // A choice is only a "choice" when the player really picked someone (an info step's "Got it"
   // is not one). The Imp's pick is told as the attack itself, with its outcome.
   if (spec?.recordsChoice) record(state, 'choice', { actor: playerId, character: self.perceived, ability: step, targets, lost: abilityLostReason(state, self), ...(character ? { picked: character } : {}) });
+  // The Goon (and anyone like them) reacts the moment they are chosen, before the ability resolves.
+  for (const id of targets) {
+    const chosen = state.players.find((p) => p.id === id);
+    if (chosen) hooksOf(chosen.character).onChosen?.(state, chosen, self, step);
+  }
   spec?.apply?.(state, self, targets, slot, character);
+  hooksOf(self.character).onOwnNightAction?.(state, self, step, targets);
 }
 
 function maybeAdvance(state: GameState): void {
@@ -271,7 +310,12 @@ export function submitRealResponse(state: GameState, playerId: string, targetIds
     if (!isDecoy && spec?.notSelf && targetIds.includes(playerId)) {
       throw new GameError('Cannot choose yourself');
     }
-    if (t.pickCharacter && !isDecoy && (!character || !CHARACTERS[character])) throw new GameError('Choose a character');
+    if (!isDecoy && t.pickCharacter && !(character ? CHARACTERS[character] : specOf(t.charId)?.prompt?.(state, findPlayer(state, playerId)).optionalCharacter)) throw new GameError('Choose a character');
+    if (!isDecoy) {
+      const eligible = specOf(t.charId)?.prompt?.(state, findPlayer(state, playerId)).eligible;
+      const self = findPlayer(state, playerId);
+      if (eligible) for (const id of targetIds) if (!eligible(state, self, findPlayer(state, id))) throw new GameError('You cannot choose that player');
+    }
   }
   t.responses[playerId] = t.shape === 'choose' ? targetIds : [];
   if (!isDecoy) applyRealChoice(state, t.charId, playerId, targetIds, character); // a decoy answer is never used
