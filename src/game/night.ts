@@ -1,9 +1,9 @@
 import { CHARACTERS } from './characters.js';
-import { hooksOf } from './deaths.js';
+import { hooksOf, notifyChosen } from './deaths.js';
 import { demonInfo, minionInfo } from './info.js';
 import { record } from './history.js';
 import { appendLog } from './log.js';
-import { abilityLostReason } from './registration.js';
+import { abilityLostReason, noteMalfunction } from './registration.js';
 import { evaluateWin } from './win.js';
 import type { NightSpec } from './hooks.js';
 import type { CharacterId, GameState, Msg, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
@@ -50,7 +50,7 @@ export { appendLog };
 const PSEUDO_STEPS: Record<string, { firstNight: number; otherNight: number; night: NightSpec }> = {
   // Demons whose own step already carries the Demon info (the Imp) don't take part here.
   'demon-info': {
-    firstNight: 20, otherNight: 0,
+    firstNight: 10, otherNight: 0,
     night: {
       actors: (s) => (s.players.length < EVIL_INTRO_MIN_PLAYERS ? [] : s.players.filter((p) => p.alive && CHARACTERS[p.perceived]?.team === 'demon' && !CHARACTERS[p.perceived].hooks?.night?.ownDemonInfo)),
       shape: () => 'info',
@@ -59,7 +59,7 @@ const PSEUDO_STEPS: Record<string, { firstNight: number; otherNight: number; nig
     },
   },
   'minion-info': {
-    firstNight: 10, otherNight: 0,
+    firstNight: 5, otherNight: 0,
     night: {
       actors: (s) => (s.players.length < EVIL_INTRO_MIN_PLAYERS ? [] : s.players.filter((p) => p.alive && CHARACTERS[p.character].team === 'minion')),
       shape: () => 'info',
@@ -103,7 +103,7 @@ function findPlayer(state: GameState, id: string): PlayerState {
 function actorsFor(state: GameState, step: string): PlayerState[] {
   const spec = specOf(step);
   if (!spec) return [];
-  const actors = spec.actors ? spec.actors(state, step) : state.players.filter((p) => p.alive && p.perceived === step);
+  const actors = spec.actors ? spec.actors(state, step) : state.players.filter((p) => (p.alive || p.flags.keepsAbility) && p.perceived === step);
   // A Demon the Exorcist chose does not wake to use their Demon ability tonight.
   const exorcised: string[] = state.data.exorcised ?? [];
   return actors.filter((p) => !(exorcised.includes(p.id) && CHARACTERS[p.character]?.team === 'demon' && !PSEUDO_STEPS[step]));
@@ -130,12 +130,14 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
   let max = 0;
   let pickCharacter = false;
   let optionalCharacter = false;
+  let characterPool: CharacterId[] | undefined;
 
   if (shape === 'info') {
     for (const p of actors) {
       const text = spec?.info ? spec.info(state, p, slot) : msg('empty');
       appendLog(state, p.id, text);
       bodyByPlayer[p.id] = text;
+      noteMalfunction(state, p);
       record(state, 'info', { actor: p.id, character: p.perceived, step, msg: text, lost: abilityLostReason(state, p) });
     }
   } else {
@@ -145,6 +147,7 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
       max = cfg.max;
       pickCharacter = !!cfg.pickCharacter;
       optionalCharacter = !!cfg.optionalCharacter;
+      characterPool = cfg.characterPool;
       bodyByPlayer[p.id] = cfg.body;
     }
   }
@@ -169,7 +172,7 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
 
   state.pendingRealTurn = {
     charId: step, playerIds: actorIds, participantIds, decoys, shape, min, max, bodyByPlayer,
-    responses: {}, openedAt: Date.now(), pickCharacter, optionalCharacter, result: !!spec?.result,
+    responses: {}, openedAt: Date.now(), pickCharacter, optionalCharacter, characterPool, result: !!spec?.result,
   };
 }
 
@@ -192,6 +195,10 @@ export function beginNight(state: GameState): void {
   state.data.goonUsed = false;
   state.data.daProtected = null;
   state.data.resurrected = [];
+  state.data.witchTarget = null;
+  state.data.mad = null;
+  state.data.madClaimed = false;
+  state.data.arbitraryDeaths = false;
   for (const p of state.players) {
     p.nightResult = null;
     // Reset here (not just on death) so it accurately reflects *this* night by dawn — otherwise
@@ -236,6 +243,10 @@ function finishNight(state: GameState): void {
   state.endDayRequestedBy = [];
   state.data.safe = [];
   state.data.diedToday = [];
+  // "Since dawn" bookkeeping for the Mathematician and the day's public events (Flowergirl/Town Crier).
+  state.data.malfunctions = {};
+  state.data.demonVotedToday = false;
+  state.data.minionNominatedToday = false;
   record(state, 'dawn', { deaths: [...state.deathsTonight] });
   for (const id of state.deathsTonight) {
     const p = state.players.find((pl) => pl.id === id);
@@ -258,11 +269,9 @@ function applyRealChoice(state: GameState, step: string, playerId: string, targe
   // A choice is only a "choice" when the player really picked someone (an info step's "Got it"
   // is not one). The Imp's pick is told as the attack itself, with its outcome.
   if (spec?.recordsChoice) record(state, 'choice', { actor: playerId, character: self.perceived, ability: step, targets, lost: abilityLostReason(state, self), ...(character ? { picked: character } : {}) });
+  noteMalfunction(state, self);
   // The Goon (and anyone like them) reacts the moment they are chosen, before the ability resolves.
-  for (const id of targets) {
-    const chosen = state.players.find((p) => p.id === id);
-    if (chosen) hooksOf(chosen.character).onChosen?.(state, chosen, self, step);
-  }
+  if (!spec?.sequentialTargets) for (const id of targets) notifyChosen(state, self, id, step);
   spec?.apply?.(state, self, targets, slot, character);
   hooksOf(self.character).onOwnNightAction?.(state, self, step, targets);
 }
@@ -311,6 +320,7 @@ export function submitRealResponse(state: GameState, playerId: string, targetIds
       throw new GameError('Cannot choose yourself');
     }
     if (!isDecoy && t.pickCharacter && !(character ? CHARACTERS[character] : specOf(t.charId)?.prompt?.(state, findPlayer(state, playerId)).optionalCharacter)) throw new GameError('Choose a character');
+    if (!isDecoy && character && t.characterPool && !t.characterPool.includes(character)) throw new GameError('Choose a valid character');
     if (!isDecoy) {
       const eligible = specOf(t.charId)?.prompt?.(state, findPlayer(state, playerId)).eligible;
       const self = findPlayer(state, playerId);
@@ -318,7 +328,7 @@ export function submitRealResponse(state: GameState, playerId: string, targetIds
     }
   }
   t.responses[playerId] = t.shape === 'choose' ? targetIds : [];
-  if (!isDecoy) applyRealChoice(state, t.charId, playerId, targetIds, character); // a decoy answer is never used
+  if (!isDecoy && t.shape === 'choose') applyRealChoice(state, t.charId, playerId, targetIds, character); // a decoy answer is never used
   maybeAdvance(state);
 }
 

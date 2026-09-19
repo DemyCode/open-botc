@@ -21,6 +21,7 @@ export function abilityLostReason(state: GameState, p: PlayerState, depth = 0): 
   for (const e of state.effects) {
     if (e.target !== p.id) continue;
     if (e.needsSourceAlive && !state.players.some((q) => q.id === e.source && q.alive)) continue;
+    if (e.needsTargetChar && p.character !== e.needsTargetChar) continue;
     if (e.needsSourceWorking) {
       const src = state.players.find((q) => q.id === e.source);
       if (!src || depth > 3 || abilityLostReason(state, src, depth + 1) !== null) continue;
@@ -28,6 +29,23 @@ export function abilityLostReason(state: GameState, p: PlayerState, depth = 0): 
     return e.kind;
   }
   return null;
+}
+
+/**
+ * Records that `p`'s ability failed to work this day/night because ANOTHER ability made them drunk
+ * or poisoned — what the Mathematician counts. A character with `noAbility` (the Drunk, the Lunatic)
+ * is skipped: their ability never worked in the first place, so nothing "went abnormally".
+ */
+export function noteMalfunction(state: GameState, p: PlayerState): void {
+  if (hooksOf(p.character).noAbility) return;
+  const reason = abilityLostReason(state, p);
+  if (reason !== 'drunk' && reason !== 'poisoned') return;
+  ((state.data.malfunctions ??= {}) as Record<string, true>)[p.id] = true;
+}
+
+/** How many players' abilities worked abnormally since the last dawn (the Mathematician's number). */
+export function malfunctionCount(state: GameState): number {
+  return Object.keys((state.data.malfunctions as Record<string, true> | undefined) ?? {}).length;
 }
 
 export type RegisterKind = 'demon' | 'minion' | 'outsider' | 'townsfolk' | 'evil' | 'good';

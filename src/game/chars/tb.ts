@@ -22,36 +22,36 @@ export function giveResult(state: GameState, self: PlayerState, text: Msg, step:
 const slotOf = (state: GameState, step: string) => `${step}-n${state.night}`;
 
 export const TB: CharacterDef[] = [
-  { id: 'washerwoman', name: 'Washerwoman', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 110, otherNight: 0,
+  { id: 'washerwoman', name: 'Washerwoman', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 330, otherNight: 0,
     ability: 'You start knowing that 1 of 2 players is a particular Townsfolk.',
     hooks: { night: { info: (s, self, slot) => investigativeInfo(s, self, 'townsfolk', slot) } } },
-  { id: 'librarian', name: 'Librarian', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 120, otherNight: 0,
+  { id: 'librarian', name: 'Librarian', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 340, otherNight: 0,
     ability: 'You start knowing that 1 of 2 players is a particular Outsider (or that there are no Outsiders).',
     hooks: { night: { info: (s, self, slot) => investigativeInfo(s, self, 'outsider', slot) } } },
-  { id: 'investigator', name: 'Investigator', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 130, otherNight: 0,
+  { id: 'investigator', name: 'Investigator', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 350, otherNight: 0,
     ability: 'You start knowing that 1 of 2 players is a particular Minion.',
     hooks: { night: { info: (s, self, slot) => investigativeInfo(s, self, 'minion', slot) } } },
-  { id: 'chef', name: 'Chef', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 140, otherNight: 0,
+  { id: 'chef', name: 'Chef', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 360, otherNight: 0,
     ability: 'You start knowing how many pairs of evil players are sitting next to each other.',
     hooks: { night: { info: (s, self, slot) => chefInfo(s, self, slot) } } },
-  { id: 'empath', name: 'Empath', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 160, otherNight: 160,
+  { id: 'empath', name: 'Empath', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 370, otherNight: 530,
     ability: 'Each night, you learn how many of your 2 alive neighbours are evil.',
     hooks: { night: { info: (s, self, slot) => empathInfo(s, self, slot) } } },
-  { id: 'fortuneteller', name: 'Fortune Teller', team: 'townsfolk', shape: 'choose', edition: 'tb', firstNight: 170, otherNight: 170,
+  { id: 'fortuneteller', name: 'Fortune Teller', team: 'townsfolk', shape: 'choose', edition: 'tb', firstNight: 380, otherNight: 540,
     ability: 'Each night, choose 2 players: you learn if either is the Demon. There is a good player that registers as a Demon to you.',
     hooks: { night: {
       recordsChoice: true, result: true,
       prompt: () => ({ min: 2, max: 2, body: msg('fortuneTellerChoose') }),
       apply: (s, self, targets, slot) => giveResult(s, self, fortuneTellerInfo(s, self, targets, slot), 'fortuneteller'),
     } } },
-  { id: 'undertaker', name: 'Undertaker', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 0, otherNight: 180,
+  { id: 'undertaker', name: 'Undertaker', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 0, otherNight: 550,
     ability: 'Each night*, you learn which character died by execution today.',
     hooks: { night: {
       // "Each night except the first, if any player died by execution today, wake the Undertaker."
       actors: (s) => (s.lastExecutedId && !s.players.find((p) => p.id === s.lastExecutedId)?.alive ? s.players.filter((p) => p.alive && p.perceived === 'undertaker') : []),
       info: (s, self, slot) => undertakerInfo(s, self, s.lastExecutedId ? s.players.find((p) => p.id === s.lastExecutedId) ?? null : null, slot),
     } } },
-  { id: 'monk', name: 'Monk', team: 'townsfolk', shape: 'choose', edition: 'tb', firstNight: 0, otherNight: 90,
+  { id: 'monk', name: 'Monk', team: 'townsfolk', shape: 'choose', edition: 'tb', firstNight: 0, otherNight: 120,
     ability: 'Each night*, choose a player (not yourself): they are safe from the Demon tonight.',
     hooks: {
       night: {
@@ -61,7 +61,7 @@ export const TB: CharacterDef[] = [
       },
       protects: (s, _owner, victim, cause) => (cause === 'demon' && s.monkProtectedId === victim.id ? 'monk' : null),
     } },
-  { id: 'ravenkeeper', name: 'Ravenkeeper', team: 'townsfolk', shape: 'choose', edition: 'tb', firstNight: 0, otherNight: 120,
+  { id: 'ravenkeeper', name: 'Ravenkeeper', team: 'townsfolk', shape: 'choose', edition: 'tb', firstNight: 0, otherNight: 520,
     ability: 'If you die at night, you are woken to choose a player: you learn their character.',
     hooks: { night: {
       recordsChoice: true, result: true, wakesWhenDead: true,
@@ -103,7 +103,7 @@ export const TB: CharacterDef[] = [
         return true;
       },
     } },
-  { id: 'butler', name: 'Butler', team: 'outsider', shape: 'choose', edition: 'tb', firstNight: 220, otherNight: 150,
+  { id: 'butler', name: 'Butler', team: 'outsider', shape: 'choose', edition: 'tb', firstNight: 390, otherNight: 670,
     ability: 'Each night, choose a player (not yourself): you may only vote when they do, tomorrow.',
     hooks: {
       night: {
@@ -129,7 +129,7 @@ export const TB: CharacterDef[] = [
     hooks: { onDeath: (s, owner, cause) => {
       if ((cause === 'execution' || cause === 'virgin') && abilityWorks(s, owner)) setWinner(s, 'evil', msg('saintWins', { name: owner.name }));
     } } },
-  { id: 'poisoner', name: 'Poisoner', team: 'minion', shape: 'choose', edition: 'tb', firstNight: 40, otherNight: 40,
+  { id: 'poisoner', name: 'Poisoner', team: 'minion', shape: 'choose', edition: 'tb', firstNight: 170, otherNight: 70,
     ability: 'Each night, choose a player: they are poisoned tonight and tomorrow day.',
     hooks: {
       night: {
@@ -141,13 +141,13 @@ export const TB: CharacterDef[] = [
       // Poison lasts only while the Poisoner lives: the replay notes when it ends.
       onDeath: (s, owner) => { if (s.poisonedId) record(s, 'poisonEnded', { poisoner: owner.id, target: s.poisonedId }); },
     } },
-  { id: 'spy', name: 'Spy', team: 'minion', shape: 'info', edition: 'tb', firstNight: 230, otherNight: 230,
+  { id: 'spy', name: 'Spy', team: 'minion', shape: 'info', edition: 'tb', firstNight: 490, otherNight: 680,
     ability: 'Each night, you see the whole grimoire. You might register as good and as a Townsfolk or Outsider.',
     hooks: {
       night: { info: (s, self, slot) => spyInfo(s, self, slot) },
       misregister: { from: 'evil', kinds: ['good', 'townsfolk', 'outsider'], invertedKinds: ['evil'] },
     } },
-  { id: 'scarletwoman', name: 'Scarlet Woman', team: 'minion', shape: 'info', edition: 'tb', firstNight: 0, otherNight: 0,
+  { id: 'scarletwoman', name: 'Scarlet Woman', team: 'minion', shape: 'info', edition: 'tb', firstNight: 0, otherNight: 190,
     ability: 'If there are 5 or more players alive and the Demon dies, you become the Demon.',
     hooks: { onAnyDeath: (s, owner, dead) => {
       if (dead.alive || !isDemon(dead) || s.players.some((p) => p.alive && isDemon(p))) return;
@@ -163,7 +163,7 @@ export const TB: CharacterDef[] = [
   { id: 'baron', name: 'Baron', team: 'minion', shape: 'info', edition: 'tb', firstNight: 0, otherNight: 0,
     ability: 'There are extra Outsiders in play. [+2 Outsiders]',
     hooks: { setup: { outsiderDelta: 2 } } },
-  { id: 'imp', name: 'Imp', team: 'demon', shape: 'choose', edition: 'tb', firstNight: 20, otherNight: 100,
+  { id: 'imp', name: 'Imp', team: 'demon', shape: 'choose', edition: 'tb', firstNight: 12, otherNight: 240,
     ability: 'Each night*, choose a player: they die. If you kill yourself this way, a Minion becomes the Imp.',
     hooks: {
       night: {

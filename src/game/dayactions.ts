@@ -2,6 +2,7 @@
 // guesses...). Like the Slayer's shot, any player of the right kind may CLAIM one — a bluffer pressing the
 // same button looks exactly like the real character — but only the real, working character has an effect.
 import { hooksOf } from './deaths.js';
+import { noteMalfunction } from './registration.js';
 import type { GameState, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
@@ -40,7 +41,8 @@ export function useDayAbility(state: GameState, playerId: string, charId: string
   if (targets.length !== offer.targets) throw new GameError('Invalid selection count');
   if (new Set(targets).size !== targets.length) throw new GameError('Cannot choose the same player twice');
   for (const id of targets) if (!state.players.some((p) => p.id === id)) throw new GameError('Invalid target');
-  (self.flags.dayUsed ??= []) as string[];
-  (self.flags.dayUsed as string[]).push(charId);
+  noteMalfunction(state, self);
   hooksOf(charId).day!.use(state, self, targets, payload);
+  // (Only once it worked: a refused statement can be corrected and sent again.)
+  ((self.flags.dayUsed ??= []) as string[]).push(charId);
 }

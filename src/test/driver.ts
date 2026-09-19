@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { CHARACTERS } from '../game/characters.js';
 import {
-  addPlayer, castVote, createGame, declareNeighbor, markReadyForSpeech, nominate, skipSpeech, startGame, tick,
+  addPlayer, castVote, createGame, declareNeighbor, markReadyForSpeech, nominate, setScript, skipSpeech, startGame, tick,
   toggleEndDayRequest, useSlayer,
 } from '../game/engine.js';
 import { submitRealResponse } from '../game/night.js';
@@ -34,30 +34,41 @@ export function attempt(fn: () => void): boolean {
 export function checkInvariants(s: GameState, where: string): void {
   extraCheck?.(s, where);
   const alive = s.players.filter((p) => p.alive);
-  const livingDemons = alive.filter(isDemon);
+  // A Zombuul who "registers as dead" still counts as the living Demon for the game's purposes.
+  const livingDemons = s.players.filter((p) => (p.alive || p.flags.hiddenAlive) && isDemon(p));
+  // The Mastermind's extra day, the Evil Twin, and a "dead" Zombuul all let the game run on.
+  const special = s.data.finalDay !== undefined
+    || s.players.some((p) => p.alive && CHARACTERS[p.character].hooks?.blocksGoodWin?.(s, p))
+    || s.players.some((p) => p.flags.hiddenAlive && isDemon(p));
   if (s.phase === 'ended') {
     assert.ok(s.winner === 'good' || s.winner === 'evil', `${where}: an ended game has a winner`);
   } else {
     assert.equal(s.winner, null, `${where}: no winner while the game is running`);
-    assert.equal(livingDemons.length, 1, `${where}: exactly one living Demon while the game runs`);
-    assert.ok(alive.length >= 3, `${where}: the game would have ended at 2 alive`);
+    // A script with the Pit-Hag may legally have several Demons in play at once.
+    if (!special) assert.ok(livingDemons.length >= 1, `${where}: at least one living Demon while the game runs`);
+    assert.ok(alive.length >= 3 || special, `${where}: the game would have ended at 2 alive`);
   }
-  assert.ok(livingDemons.length <= 1, `${where}: never two living Demons in Trouble Brewing`);
+  if (s.scriptId === 'tb') assert.ok(livingDemons.length <= 1, `${where}: never two living Demons in Trouble Brewing`);
   if (s.winner === 'good' && livingDemons.length === 1) {
     assert.ok(s.publicLog.some((m) => m.key === 'goodWinsMayor'), `${where}: good only wins with a living Demon via the Mayor`);
   }
   if (s.phase === 'night' && s.pendingRealTurn) {
     const t = s.pendingRealTurn;
     assert.ok(t.playerIds.length > 0, `${where}: a step ran with nobody really acting (everyone would get a decoy)`);
-    // Still waiting to act: only the living, or a Ravenkeeper killed tonight. (An Imp who just
-    // killed themselves stays listed as this step's actor until everyone's decoy is answered.)
+    // A dead player may still act only if their ability wakes the dead (the Ravenkeeper, the Sage)
+    // or they keep their ability after being killed (a Vigormortis' Minion).
+    const wakesWhileDead = (p: PlayerState): boolean => p.flags.keepsAbility === true || p.flags.hiddenAlive === true || CHARACTERS[p.perceived]?.hooks?.night?.wakesWhenDead === true;
     for (const id of t.playerIds.filter((id) => !(id in t.responses))) {
       const p = s.players.find((q) => q.id === id)!;
-      assert.ok(p.alive || p.perceived === 'ravenkeeper', `${where}: only the living (or a just-killed Ravenkeeper) wake`);
+      assert.ok(p.alive || wakesWhileDead(p), `${where}: only the living (or an ability that wakes the dead) wake`);
     }
-    // Everyone the table still sees as alive is woken at every step — and nobody else.
-    const seenAlive = s.players.filter((p) => p.alive || p.diedTonight).map((p) => p.id).sort();
-    assert.deepEqual([...t.participantIds].sort(), seenAlive, `${where}: everyone seen as alive is woken, nobody else`);
+    // Everyone the table still sees as alive is woken at every step — and nobody else, bar the real
+    // actors (a dead actor may legitimately have been woken, checked just above).
+    const seenAlive = s.players.filter((p) => p.alive || p.diedTonight).map((p) => p.id);
+    for (const id of seenAlive) assert.ok(t.participantIds.includes(id), `${where}: a player seen as alive was not woken`);
+    for (const id of t.participantIds.filter((id) => !seenAlive.includes(id))) {
+      assert.ok(t.playerIds.includes(id), `${where}: a non-actor who is not seen as alive was woken`);
+    }
   }
   if (s.phase === 'day') {
     assert.equal(s.pendingRealTurn, null, `${where}: no night turn during the day`);
@@ -100,23 +111,29 @@ function playNight(s: GameState, rand: Rand, where: string): void {
     const actorId = t.participantIds.find((id) => !(id in t.responses))!;
     if (rand() < 0.2 && t.shape === 'choose') {
       // A bad answer (wrong count, duplicates, nonsense id) must be refused, not applied.
-      const bad = pick(rand, [[], ['nobody'], [actorId, actorId, actorId]]);
-      attempt(() => submitRealResponse(s, actorId, bad));
+      const bad = pick(rand, t.min === 0 ? [['nobody'], [actorId, actorId, actorId]] : [[], ['nobody'], [actorId, actorId, actorId]]);
+      assert.equal(attempt(() => submitRealResponse(s, actorId, bad)), false, `${where}: a bad answer was accepted`);
     }
     if (t.shape === 'choose') {
-      const isReal = t.playerIds.includes(actorId);
+      // The screen's own choices already mark who is ineligible, so follow them.
+      const turn = viewFor(s, actorId).nightTurn;
+      const choices = (turn?.choices ?? []).filter((c) => !c.disabled);
       // Real players mostly aim at the living (the dead are legal targets, but pointless).
       const livingOnly = rand() < 0.85;
-      const pool = s.players
-        .filter((p) => !(isReal && (t.charId === 'monk' || t.charId === 'butler') && p.id === actorId))
-        .filter((p) => !livingOnly || p.alive || p.diedTonight || s.players.filter((q) => q.alive).length < t.max)
-        .map((p) => p.id);
+      let pool = choices.filter((c) => !livingOnly || c.alive || s.players.filter((q) => q.alive).length < t.max).map((c) => c.id);
+      if (pool.length < t.min) pool = choices.map((c) => c.id);
+      if (pool.length < t.min) pool = s.players.map((p) => p.id);
       const targets: string[] = [];
       while (targets.length < t.min) {
         const id = pick(rand, pool);
         if (!targets.includes(id)) targets.push(id);
       }
-      submitRealResponse(s, actorId, targets, t.openedAt + 5_000);
+      // A step that also asks for a character (Gambler, Cerenovus, Pit-Hag...): pick one from the screen.
+      let character: string | undefined;
+      if (t.pickCharacter && turn && turn.characters.length && !(t.optionalCharacter && t.min === 0 && rand() < 0.3)) {
+        character = pick(rand, turn.characters.map((c) => c.id));
+      }
+      submitRealResponse(s, actorId, targets, t.openedAt + 5_000, character);
     } else {
       submitRealResponse(s, actorId, [], t.openedAt + 5_000);
     }
@@ -144,10 +161,39 @@ function runNomination(s: GameState, rand: Rand, where: string): void {
   }
 }
 
+/**
+ * With the Demon dead but the Evil Twin and their good twin both alive, good cannot win and there
+ * is no night kill left: the only way out is to execute a twin. A random table might never get
+ * there, so the driver forces that one execution rather than looping forever.
+ */
+function resolveTwinStalemate(s: GameState): void {
+  if (s.players.some((p) => p.alive && isDemon(p))) return;
+  const owner = s.players.find((p) => p.alive && CHARACTERS[p.character].hooks?.blocksGoodWin?.(s, p));
+  if (!owner) return;
+  const target = s.players.find((p) => p.alive && p.id !== owner.id && (p.flags.evilTwinId === owner.id || owner.flags.twinId === p.id)) ?? owner;
+  const nominator = s.players.find((p) => p.alive && p.id !== target.id);
+  if (!nominator || !attempt(() => nominate(s, nominator.id, target.id)) || !s.currentNomination) return;
+  let guard = 0;
+  while (s.currentNomination && guard++ < 60) {
+    const nom = s.currentNomination;
+    if (nom.state === 'readyForAccusation') {
+      for (const p of s.players) if (!nom.readyBy.includes(p.id)) markReadyForSpeech(s, p.id);
+    } else if (nom.state === 'accusing') {
+      skipSpeech(s, nom.nominatorId);
+    } else if (nom.state === 'defending') {
+      skipSpeech(s, nom.nomineeId);
+    } else if (nom.state === 'voting' && nom.currentVoterId) {
+      castVote(s, nom.currentVoterId, true);
+    }
+  }
+}
+
 function playDay(s: GameState, rand: Rand, where: string): void {
   let guard = 0;
   while (s.phase === 'day' && guard++ < 60) {
     const alive = s.players.filter((p) => p.alive);
+    resolveTwinStalemate(s);
+    if (s.phase !== 'day') break;
     const r = rand();
     if (r < 0.15) {
       // Anyone may claim a Slayer shot — a real one, a bluff, from the dead, or twice.
@@ -171,10 +217,11 @@ function playDay(s: GameState, rand: Rand, where: string): void {
     }
     checkInvariants(s, where);
   }
+  if (s.phase === 'day' && s.currentNomination) runNomination(s, rand, where);
   if (s.phase === 'day') {
     // Wrap up a long day.
     for (const p of s.players.filter((q) => q.alive)) {
-      if (s.phase === 'day' && !s.endDayRequestedBy.includes(p.id)) toggleEndDayRequest(s, p.id);
+      if (s.phase === 'day' && !s.currentNomination && !s.endDayRequestedBy.includes(p.id)) attempt(() => toggleEndDayRequest(s, p.id));
     }
   }
   assert.notEqual(s.phase, 'day', `${where}: the day finished`);
@@ -186,9 +233,9 @@ export function describe(s: GameState): string {
   return `alive: ${alive.join(', ')}; poisoned: ${s.players.find((p) => p.id === s.poisonedId)?.character ?? 'nobody'}; phase ${s.phase}; last log: ${s.publicLog.slice(-4).map((m) => m.key).join(', ')}`;
 }
 
-export function playGame(seed: number, playerCount: number, onCheck?: (s: GameState, where: string) => void, names?: string[]): GameState {
+export function playGame(seed: number, playerCount: number, onCheck?: (s: GameState, where: string) => void, names?: string[], scriptId = 'tb'): GameState {
   extraCheck = onCheck ?? null;
-  const rand = mulberry32(seedFromString(`sim-${seed}-${playerCount}`));
+  const rand = mulberry32(seedFromString(`sim-${seed}-${playerCount}-${scriptId}`));
   const realRandom = Math.random;
   Math.random = rand; // the engine's own random choices (Mayor redirect, star-pass, dawn) are seeded too
   try {
@@ -196,6 +243,7 @@ export function playGame(seed: number, playerCount: number, onCheck?: (s: GameSt
     s.secret = `sim-secret-${seed}-${playerCount}`;
     const players = Array.from({ length: playerCount }, (_, i) => addPlayer(s, names?.[i] ?? `P${i}`));
     players.forEach((p, i) => declareNeighbor(s, p.id, players[(i + 1) % playerCount].id));
+    if (scriptId !== 'tb') setScript(s, scriptId);
     startGame(s);
     const where = () => `seed ${seed}, ${playerCount}p, night ${s.night}, day ${s.day}`;
     checkInvariants(s, where());

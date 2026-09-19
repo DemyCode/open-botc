@@ -7,7 +7,7 @@
 // hook. Hooks decide for themselves whether the owner's ability currently works (abilityWorks):
 // the engine never checks that on their behalf, because some effects (a Recluse registering,
 // a Saint dying) apply whether or not it does.
-import type { GameState, Msg, NightTurnShape, PlayerState, Team } from './types.js';
+import type { CharacterId, GameState, Msg, NightTurnShape, PlayerState, Team } from './types.js';
 import type { RegisterKind } from './registration.js';
 
 /** What a "choose" night step asks. */
@@ -19,6 +19,8 @@ export interface NightPrompt {
   pickCharacter?: boolean;
   /** The character may be left out (the Courtier may shake their head). */
   optionalCharacter?: boolean;
+  /** Restrict which characters may be picked (the Pit-Hag may only pick one not in play). */
+  characterPool?: CharacterId[];
   /** Which players may be picked; default: everyone (living or dead, yourself included). */
   eligible?: (state: GameState, self: PlayerState, target: PlayerState) => boolean;
 }
@@ -38,6 +40,9 @@ export interface NightSpec {
   apply?(state: GameState, self: PlayerState, targets: string[], slot: string, character?: string): void;
   /** Runs when the step's turn comes, even if nobody is woken (a poison that wears off...). */
   before?(state: GameState): void;
+  /** The apply hook announces each chosen player itself, one at a time (a Po who picks the Goon turns drunk
+   * before the NEXT attack, not before the first). See notifyChosen. */
+  sequentialTargets?: boolean;
   /** Record the answer in the replay as a "choice" (only abilities that really pick someone). */
   recordsChoice?: boolean;
   /** Whether this step is a wake "due to their ability" tonight (the Chambermaid counts those). Default: yes. */
@@ -77,13 +82,21 @@ export interface Hooks {
   // ---- Day
   /** The owner was nominated (`nominee`). Return 'endsDay' if it ended the day (Virgin's execution). */
   onNominated?(state: GameState, owner: PlayerState, nominator: PlayerState): 'endsDay' | void;
+  /** Anyone nominated anyone: the owner's ability may react (the Witch's curse kills the nominator). */
+  onNominate?(state: GameState, owner: PlayerState, nominator: PlayerState): void;
   /** After a day ends with (or without) an execution: extra win conditions (Mayor). */
   endOfDayWin?(state: GameState, owner: PlayerState, executedId: string | null): boolean;
+  /** Just before the day's execution: return a player id to execute INSTEAD (the Cerenovus' madness). */
+  beforeDayEnd?(state: GameState, owner: PlayerState): string | void;
   /** Does this player's vote count (Butler)? Called for the voter's own character. */
   voteCounts?(state: GameState, voter: PlayerState, votes: Record<string, boolean>): boolean;
 
   /** The owner would let the good team win by killing the Demon — but play goes on (the Mastermind). */
   delaysGoodWin?(state: GameState, owner: PlayerState): boolean;
+  /** While this returns true, good cannot win at all (the Evil Twin, as long as both twins live). */
+  blocksGoodWin?(state: GameState, owner: PlayerState): boolean;
+  /** The owner's presence makes every Townsfolk ability yield false information (the Vortox). */
+  falsifiesTownsfolkInfo?: boolean;
 
   // ---- Day: a public ability anyone may CLAIM by using it (so bluffing is possible); only the real,
   // working character has an effect. Once-per-player limits are tracked by the engine.
@@ -104,6 +117,8 @@ export interface Hooks {
     outsiderDelta?: number | 'randomPlusMinusOne';
     /** The player is told they are this team's character but isn't (Drunk: townsfolk, Lunatic: demon). */
     thinksTheyAre?: Team;
+    /** Paired at setup with a random player of the opposing alignment (the Evil Twin). */
+    twinWith?: 'good';
   };
 }
 

@@ -1,9 +1,9 @@
-import { alignmentOfCharacter } from './characters.js';
+import { CHARACTERS, alignmentOfCharacter } from './characters.js';
 import { executePlayer, hooksOf, markDead } from './deaths.js';
 import { record } from './history.js';
 import { EVIL_INTRO_MIN_PLAYERS, beginNight, tick as nightTick } from './night.js';
-import { evaluateWin } from './win.js';
-import { abilityLostReason, abilityWorks, registersAs } from './registration.js';
+import { evaluateWin, setWinner } from './win.js';
+import { abilityLostReason, abilityWorks, noteMalfunction, registersAs } from './registration.js';
 import { randomId } from './rng.js';
 import { dealCharacters } from './setup.js';
 import { CUSTOM_SCRIPT_ID, SCRIPTS, resolveScript } from './scripts.js';
@@ -160,6 +160,13 @@ export function startGame(state: GameState): void {
     p.alignment = alignmentOfCharacter(p.character);
     p.isRedHerring = deal.redHerringId === p.id;
   }
+  // Pairings made at setup (the Evil Twin and their opposing player know each other).
+  for (const [a, b] of Object.entries(deal.twins)) {
+    const pa = state.players.find((p) => p.id === a);
+    const pb = state.players.find((p) => p.id === b);
+    if (pa) pa.flags.twinId = b;
+    if (pb) pb.flags.evilTwinId = a;
+  }
   state.bluffs = deal.bluffs;
   record(state, 'roles', {
     players: state.players.map((p) => ({ id: p.id, character: p.character, perceived: p.perceived })),
@@ -186,6 +193,7 @@ export function useSlayer(state: GameState, slayerId: string, targetId: string):
   self.slayerUsed = true;
   // The true character decides it (a Drunk who thinks they're the Slayer never hits either).
   const isRealSlayer = self.character === 'slayer';
+  if (isRealSlayer) noteMalfunction(state, self);
   const ctx = { asker: slayerId, slot: `slayer-d${state.day}` };
   const hit = isRealSlayer && target.alive && abilityWorks(state, self) && registersAs(state, target, 'demon', ctx);
   record(state, 'slayer', {
@@ -217,6 +225,10 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
   state.usedNomineeIds.push(nomineeId);
   state.endDayRequestedBy = []; // a fresh nomination is new information — prior agreement to end the day is stale
   record(state, 'nominate', { nominator: nominatorId, nominee: nomineeId });
+  // Public facts the night can ask about: the Town Crier (a Minion nominated) and the Witch's curse.
+  if (CHARACTERS[nominator.character].team === 'minion') state.data.minionNominatedToday = true;
+  for (const p of state.players.filter((q) => q.alive)) hooksOf(p.character).onNominate?.(state, p, nominator);
+  if (state.winner) return;
 
   // A nominee's own ability may react (the Virgin's execution ends the day right here, so nobody on
   // the block is also executed and nothing — Mayor, Undertaker — can mistake it for a day without one).
@@ -338,6 +350,7 @@ export function castVote(state: GameState, voterId: string, yes: boolean): void 
     if (voter.ghostVoteUsed) throw new GameError('Ghost vote already used');
     voter.ghostVoteUsed = true;
   }
+  if (yes && CHARACTERS[voter.character].team === 'demon') state.data.demonVotedToday = true;
   nom.votes[voterId] = yes;
   advanceVoter(state, nom);
 }
@@ -446,7 +459,13 @@ function maybeEndDayByConsensus(state: GameState): void {
 
 function endDay(state: GameState): void {
   if (state.phase !== 'day' || state.winner) return;
-  const executedId = state.onBlockId;
+  // An ability may name someone else to execute today instead (the Cerenovus' madness).
+  let executedId = state.onBlockId;
+  for (const p of state.players.filter((q) => q.alive)) {
+    const byAbility = hooksOf(p.character).beforeDayEnd?.(state, p);
+    if (byAbility) { executedId = byAbility; break; }
+  }
+  if (state.winner) return;
   if (executedId) {
     executePlayer(state, executedId);
   } else {
@@ -455,6 +474,14 @@ function endDay(state: GameState): void {
     record(state, 'dayEnd', { executed: null });
   }
   if (state.winner) return;
+
+  // The Mastermind's extra day: whoever is executed on it (dying or not) decides the game.
+  if (state.data.finalDay !== undefined && state.day > state.data.finalDay) {
+    const executed = executedId ? state.players.find((p) => p.id === executedId) : null;
+    if (executed && executed.alignment === 'good') setWinner(state, 'evil', msg('evilWinsMastermind'));
+    else setWinner(state, 'good', msg('goodWinsMastermind'));
+    return;
+  }
 
   for (const p of state.players.filter((q) => q.alive)) {
     hooksOf(p.character).endOfDayWin?.(state, p, executedId);

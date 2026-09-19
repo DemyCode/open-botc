@@ -133,11 +133,13 @@ function buildNightTurn(state: GameState, viewerId: string): NightTurnView | nul
   if (!t || !t.participantIds.includes(viewerId) || viewerId in t.responses) return null;
   const decoy = !t.playerIds.includes(viewerId);
   const self = state.players.find((p) => p.id === viewerId);
-  const eligible = !decoy && self ? specOf(t.charId)?.prompt?.(state, self).eligible : undefined;
+  const spec = specOf(t.charId);
+  const eligible = !decoy && self ? spec?.prompt?.(state, self).eligible : undefined;
+  const notSelf = !decoy && !!spec?.notSelf;
   const choices: NightTurnChoice[] =
     t.shape === 'choose'
       ? state.players // any player, dead or alive, yourself included — the rules allow it
-          .map((p) => ({ id: p.id, name: p.name, seat: p.seat, alive: publiclyAlive(p), ...(eligible && self && !eligible(state, self, p) ? { disabled: true } : {}) }))
+          .map((p) => ({ id: p.id, name: p.name, seat: p.seat, alive: publiclyAlive(p), ...((eligible && self && !eligible(state, self, p)) || (notSelf && p.id === viewerId) ? { disabled: true } : {}) }))
       : [];
   // A decoy asks a simple question; its picker never takes more than the question needs.
   const min = decoy && t.shape === 'choose' ? (t.max === 2 ? 2 : 1) : t.min;
@@ -150,7 +152,7 @@ function buildNightTurn(state: GameState, viewerId: string): NightTurnView | nul
     decoyResult: decoy && !!t.result,
     pickCharacter: !decoy && !!t.pickCharacter,
     optionalCharacter: !decoy && !!t.optionalCharacter,
-    characters: !decoy && t.pickCharacter ? state.scriptChars.map((id) => ({ id, name: CHARACTERS[id].name, team: CHARACTERS[id].team })) : [],
+    characters: !decoy && t.pickCharacter ? (t.characterPool ?? state.scriptChars).map((id) => ({ id, name: CHARACTERS[id].name, team: CHARACTERS[id].team })) : [],
     stepKey: `${state.night}-${state.nightStepNumber ?? 0}`,
     waitMs: Math.max(0, t.openedAt + MIN_ANSWER_MS - Date.now()),
   };

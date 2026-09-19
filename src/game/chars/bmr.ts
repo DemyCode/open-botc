@@ -1,21 +1,22 @@
 // Bad Moon Rising.
 import { CHARACTERS } from '../characters.js';
-import { abilityKill, demonAttack, hooksOf, msg, tryKill } from '../deaths.js';
+import { abilityKill, demonAttack, hooksOf, msg, notifyChosen, tryKill } from '../deaths.js';
 import { addDrunk, addPoison, removeEffects } from '../effects.js';
 import { record } from '../history.js';
 import { demonInfo, livingNeighbors } from '../info.js';
 import { appendLog } from '../log.js';
 import { abilityWorks } from '../registration.js';
+import { evaluateWin } from '../win.js';
 import { statementForMessage, evalStatement, parseStatement } from '../statements.js';
 import type { CharacterDef } from '../hooks.js';
-import type { GameState, PlayerState } from '../types.js';
+import type { GameState, Msg, PlayerState } from '../types.js';
 import { GameError } from '../types.js';
 import { giveResult } from './tb.js';
 import { alivePlayers, choose, isDemon, isGood, resurrect, roll, setAlignment, teamOf } from './util.js';
 
 const byId = (s: GameState, id: string): PlayerState => s.players.find((p) => p.id === id)!;
 const never = () => [] as PlayerState[];
-const prompt1 = (key: string) => () => ({ min: 1, max: 1, body: msg(key) });
+const prompt1 = (body: Msg) => () => ({ min: 1, max: 1, body });
 
 /** Resolves what the Pukka poisoned last night: they die now (unless something protects them). */
 function pukkaResolvePrevious(s: GameState, pukka: PlayerState): void {
@@ -28,7 +29,7 @@ function pukkaResolvePrevious(s: GameState, pukka: PlayerState): void {
 
 export const BMR: CharacterDef[] = [
   // ------------------------------------------------------------------------------------ Townsfolk
-  { id: 'grandmother', name: 'Grandmother', team: 'townsfolk', shape: 'info', edition: 'bmr', firstNight: 100, otherNight: 0,
+  { id: 'grandmother', name: 'Grandmother', team: 'townsfolk', shape: 'info', edition: 'bmr', firstNight: 400, otherNight: 510,
     ability: 'You start knowing a good player & their character. If the Demon kills them, you die too.',
     hooks: {
       night: { info: (s, self, slot) => {
@@ -45,10 +46,11 @@ export const BMR: CharacterDef[] = [
         if (cause === 'demon' && owner.flags.grandchildId === dead.id && abilityWorks(s, owner)) {
           record(s, 'grief', { grandmother: owner.id, grandchild: dead.id });
           tryKill(s, owner, 'grandmother');
+          evaluateWin(s);
         }
       },
     } },
-  { id: 'sailor', name: 'Sailor', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 45, otherNight: 45,
+  { id: 'sailor', name: 'Sailor', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 110, otherNight: 40,
     ability: "Each night, choose an alive player: either you or they are drunk until dusk. You can't die.",
     hooks: {
       night: {
@@ -64,7 +66,7 @@ export const BMR: CharacterDef[] = [
       },
       protects: (s, owner, victim) => (owner.id === victim.id && abilityWorks(s, owner) ? 'sailor' : null),
     } },
-  { id: 'chambermaid', name: 'Chambermaid', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 190, otherNight: 175,
+  { id: 'chambermaid', name: 'Chambermaid', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 510, otherNight: 700,
     ability: 'Each night, choose 2 alive players (not yourself): you learn how many woke tonight due to their ability.',
     hooks: { night: {
       recordsChoice: true, result: true, notSelf: true,
@@ -77,7 +79,7 @@ export const BMR: CharacterDef[] = [
         giveResult(s, self, msg('chambermaidInfo', { count }), 'chambermaid');
       },
     } } },
-  { id: 'exorcist', name: 'Exorcist', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 82,
+  { id: 'exorcist', name: 'Exorcist', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 210,
     ability: "Each night*, choose a player (different to last night): the Demon, if chosen, learns who you are then doesn't wake tonight.",
     hooks: { night: {
       recordsChoice: true,
@@ -92,7 +94,7 @@ export const BMR: CharacterDef[] = [
         record(s, 'exorcised', { exorcist: self.id, demon: target.id });
       },
     } } },
-  { id: 'innkeeper', name: 'Innkeeper', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 47,
+  { id: 'innkeeper', name: 'Innkeeper', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 90,
     ability: "Each night*, choose 2 players: they can't die tonight, but 1 is drunk until dusk.",
     hooks: {
       night: {
@@ -109,17 +111,17 @@ export const BMR: CharacterDef[] = [
       },
       protects: (s, owner, victim) => (s.phase === 'night' && (s.data.safe ?? []).includes(victim.id) && abilityWorks(s, owner) ? 'innkeeper' : null),
     } },
-  { id: 'gambler', name: 'Gambler', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 60,
+  { id: 'gambler', name: 'Gambler', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 100,
     ability: 'Each night*, choose a player & guess their character: if you guess wrong, you die.',
     hooks: { night: {
       recordsChoice: true,
       prompt: () => ({ min: 1, max: 1, body: msg('gamblerChoose'), pickCharacter: true }),
       apply: (s, self, targets, _slot, character) => {
         if (!abilityWorks(s, self)) return;
-        if (byId(s, targets[0]).character !== character) tryKill(s, self, 'gambler');
+        if (byId(s, targets[0]).character !== character) { tryKill(s, self, 'gambler'); evaluateWin(s); }
       },
     } } },
-  { id: 'gossip', name: 'Gossip', team: 'townsfolk', shape: 'info', edition: 'bmr', firstNight: 0, otherNight: 107,
+  { id: 'gossip', name: 'Gossip', team: 'townsfolk', shape: 'info', edition: 'bmr', firstNight: 0, otherNight: 380,
     ability: 'Each day, you may make a public statement. Tonight, if it was true, a player dies.',
     hooks: {
       day: {
@@ -152,7 +154,7 @@ export const BMR: CharacterDef[] = [
         },
       },
     } },
-  { id: 'courtier', name: 'Courtier', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 50, otherNight: 50,
+  { id: 'courtier', name: 'Courtier', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 190, otherNight: 80,
     ability: 'Once per game, at night, choose a character: they are drunk for 3 nights & 3 days.',
     hooks: { night: {
       recordsChoice: true,
@@ -164,10 +166,10 @@ export const BMR: CharacterDef[] = [
         if (!abilityWorks(s, self)) return;
         const inPlay = s.players.filter((p) => p.character === character);
         const target = inPlay.find((p) => p.alive) ?? inPlay[0];
-        if (target) addDrunk(s, target, self, 'courtier', s.night + 2, { needsSourceWorking: true });
+        if (target) addDrunk(s, target, self, 'courtier', s.night + 2, { needsSourceWorking: true, needsTargetChar: character });
       },
     } } },
-  { id: 'professor', name: 'Professor', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 110,
+  { id: 'professor', name: 'Professor', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 430,
     ability: 'Once per game, at night*, choose a dead player: if they are a Townsfolk, they are resurrected.',
     hooks: { night: {
       recordsChoice: true,
@@ -220,7 +222,7 @@ export const BMR: CharacterDef[] = [
       addDrunk(s, chooser, owner, 'goon', s.night);
       const before = owner.alignment;
       setAlignment(s, owner, chooser.alignment, 'goon');
-      if (before !== owner.alignment) appendLog(s, owner.id, msg(owner.alignment === 'evil' ? 'goonEvil' : 'goonGood'));
+      if (before !== owner.alignment) appendLog(s, owner.id, owner.alignment === 'evil' ? msg('goonEvil') : msg('goonGood'));
     } } },
   { id: 'lunatic', name: 'Lunatic', team: 'outsider', shape: 'info', edition: 'bmr', firstNight: 0, otherNight: 0,
     ability: 'You think you are a Demon, but you are not. The Demon knows who you are & who you choose at night.',
@@ -235,7 +237,7 @@ export const BMR: CharacterDef[] = [
         record(s, 'lunaticChoice', { lunatic: owner.id, targets });
       },
     } },
-  { id: 'tinker', name: 'Tinker', team: 'outsider', shape: 'info', edition: 'bmr', firstNight: 0, otherNight: 109,
+  { id: 'tinker', name: 'Tinker', team: 'outsider', shape: 'info', edition: 'bmr', firstNight: 0, otherNight: 490,
     ability: 'You might die at any time.',
     hooks: { night: {
       actors: never,
@@ -246,11 +248,12 @@ export const BMR: CharacterDef[] = [
           if (roll(s, 'tinker', s.night, p.id) < 0.25) {
             record(s, 'tinker', { player: p.id });
             tryKill(s, p, 'tinker');
+            evaluateWin(s);
           }
         }
       },
     } } },
-  { id: 'moonchild', name: 'Moonchild', team: 'outsider', shape: 'info', edition: 'bmr', firstNight: 0, otherNight: 108,
+  { id: 'moonchild', name: 'Moonchild', team: 'outsider', shape: 'info', edition: 'bmr', firstNight: 0, otherNight: 500,
     ability: 'When you learn that you died, publicly choose 1 alive player. Tonight, if it was a good player, they die.',
     hooks: {
       onDeath: (_s, owner) => { owner.flags.moonchildPending = true; },
@@ -282,7 +285,7 @@ export const BMR: CharacterDef[] = [
     } },
 
   // ------------------------------------------------------------------------------------ Minions
-  { id: 'godfather', name: 'Godfather', team: 'minion', shape: 'choose', edition: 'bmr', firstNight: 75, otherNight: 75,
+  { id: 'godfather', name: 'Godfather', team: 'minion', shape: 'choose', edition: 'bmr', firstNight: 210, otherNight: 370,
     ability: 'You start knowing which Outsiders are in play. If 1 died today, choose a player tonight: they die. [-1 or +1 Outsider]',
     hooks: {
       setup: { outsiderDelta: 'randomPlusMinusOne' },
@@ -304,7 +307,7 @@ export const BMR: CharacterDef[] = [
         abilityWake: (s) => s.night > 1,
       },
     } },
-  { id: 'devilsadvocate', name: "Devil's Advocate", team: 'minion', shape: 'choose', edition: 'bmr', firstNight: 80, otherNight: 80,
+  { id: 'devilsadvocate', name: "Devil's Advocate", team: 'minion', shape: 'choose', edition: 'bmr', firstNight: 220, otherNight: 130,
     ability: "Each night, choose a living player (different to last night): if executed tomorrow, they don't die.",
     hooks: {
       night: {
@@ -317,7 +320,7 @@ export const BMR: CharacterDef[] = [
       },
       protects: (s, owner, victim, cause) => ((cause === 'execution' || cause === 'virgin') && s.data.daProtected === victim.id && abilityWorks(s, owner) ? 'devilsadvocate' : null),
     } },
-  { id: 'assassin', name: 'Assassin', team: 'minion', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 105,
+  { id: 'assassin', name: 'Assassin', team: 'minion', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 360,
     ability: 'Once per game, at night*, choose a player: they die, even if for some reason they could not.',
     hooks: { night: {
       recordsChoice: true,
@@ -334,12 +337,12 @@ export const BMR: CharacterDef[] = [
     hooks: { delaysGoodWin: (s, owner) => abilityWorks(s, owner) } },
 
   // ------------------------------------------------------------------------------------ Demons
-  { id: 'zombuul', name: 'Zombuul', team: 'demon', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 100,
+  { id: 'zombuul', name: 'Zombuul', team: 'demon', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 250,
     ability: "Each night*, if no-one died today, choose a player: they die. The 1st time you die, you live but register as dead.",
     hooks: {
       night: {
         actors: (s) => ((s.data.diedToday ?? []).length ? [] : s.players.filter((p) => (p.alive || p.flags.hiddenAlive) && p.perceived === 'zombuul')),
-        prompt: prompt1('demonChoose'),
+        prompt: prompt1(msg('demonChoose')),
         apply: (s, self, targets) => demonAttack(s, self, targets[0]),
       },
       lastResort: (s, owner, victim) => {
@@ -348,7 +351,7 @@ export const BMR: CharacterDef[] = [
         return { by: 'zombuul', appearsDead: true };
       },
     } },
-  { id: 'pukka', name: 'Pukka', team: 'demon', shape: 'choose', edition: 'bmr', firstNight: 85, otherNight: 85,
+  { id: 'pukka', name: 'Pukka', team: 'demon', shape: 'choose', edition: 'bmr', firstNight: 280, otherNight: 260,
     ability: 'Each night, choose a player: they are poisoned. The previously poisoned player dies then becomes healthy.',
     hooks: { night: {
       ownDemonInfo: true,
@@ -356,7 +359,9 @@ export const BMR: CharacterDef[] = [
         // An exorcised Pukka doesn't wake, but last night's victim still dies.
         for (const p of s.players.filter((q) => q.alive && q.character === 'pukka' && (s.data.exorcised ?? []).includes(q.id))) pukkaResolvePrevious(s, p);
       },
-      prompt: prompt1('demonChoose'),
+      // The Pukka never poisons itself: that would switch off its own ability forever (it is its
+      // own poison's source) and the game could never resolve the previous victim.
+      prompt: () => ({ min: 1, max: 1, body: msg('demonChoose'), eligible: (_s, self, t) => t.id !== self.id }),
       apply: (s, self, targets) => {
         pukkaResolvePrevious(s, self);
         if (s.winner || !abilityWorks(s, self)) return;
@@ -364,7 +369,7 @@ export const BMR: CharacterDef[] = [
         addPoison(s, byId(s, targets[0]), self, 'pukka', null, { needsSourceAlive: true });
       },
     } } },
-  { id: 'shabaloth', name: 'Shabaloth', team: 'demon', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 100,
+  { id: 'shabaloth', name: 'Shabaloth', team: 'demon', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 270,
     ability: 'Each night*, choose 2 players: they die. A dead player you chose last night might be regurgitated.',
     hooks: { night: {
       before: (s) => {
@@ -378,19 +383,21 @@ export const BMR: CharacterDef[] = [
         }
       },
       prompt: () => ({ min: 2, max: 2, body: msg('shabalothChoose') }),
+      sequentialTargets: true,
       apply: (s, self, targets) => {
         self.flags.shabAte = targets;
-        for (const id of targets) demonAttack(s, self, id);
+        for (const id of targets) { notifyChosen(s, self, id, 'shabaloth'); demonAttack(s, self, id); }
       },
     } } },
-  { id: 'po', name: 'Po', team: 'demon', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 100,
+  { id: 'po', name: 'Po', team: 'demon', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 280,
     ability: 'Each night*, you may choose a player: they die. If your last choice was no-one, choose 3 players tonight.',
     hooks: { night: {
+      sequentialTargets: true,
       prompt: (_s, self) => (self.flags.poThree ? { min: 3, max: 3, body: msg('poChooseThree') } : { min: 0, max: 1, body: msg('poChoose') }),
       apply: (s, self, targets) => {
         if (!targets.length) { self.flags.poThree = true; return; }
         self.flags.poThree = false;
-        for (const id of targets) demonAttack(s, self, id);
+        for (const id of targets) { notifyChosen(s, self, id, 'po'); demonAttack(s, self, id); }
       },
     } } },
 ];

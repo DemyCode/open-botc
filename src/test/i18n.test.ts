@@ -161,10 +161,10 @@ function collect(into: Map<string, Msg>): (s: GameState) => void {
   };
 }
 
-test('every message produced over 130 whole games renders cleanly in English and in French', () => {
+test('every message produced over whole games of every edition renders cleanly in English and in French', () => {
   const seen = new Map<string, Msg>();
   const gather = collect(seen);
-  for (let n = 5; n <= 15; n++) for (let seed = 0; seed < 12; seed++) playGame(seed, n, (s) => gather(s));
+  for (const script of ['tb', 'bmr', 'sv']) for (let n = 5; n <= 15; n++) for (let seed = 0; seed < 12; seed++) playGame(seed, n, (s) => gather(s), undefined, script);
   assert.ok(seen.size > 100, `only ${seen.size} distinct messages were seen`);
   const problems: string[] = [];
   for (const lang of LANGS) {
@@ -218,7 +218,8 @@ test('every character\'s English text is real, and the two languages agree on "e
 test('the role reference sheet lists every character exactly once', () => {
   const names = Object.values(CHARACTERS).map((c) => c.name);
   assert.equal(new Set(names).size, names.length);
-  assert.equal(names.length, 22);
+  // 22 Trouble Brewing + 25 Bad Moon Rising + 25 Sects & Violets.
+  assert.equal(names.length, 72);
 });
 
 // ---------------------------------------------------------------- the replay wording
@@ -245,15 +246,15 @@ test('every kind of event the engine records has wording (nightStart is only a h
   assert.deepEqual(keysOf(REPLAY.en).filter((t) => !recorded.has(t)), [], 'wording for an event that is never recorded');
 });
 
-test('every event of 130 whole games is worded, in both languages, with nothing left unfilled', () => {
+test('every event of whole games of every edition is worded, in both languages, with nothing left unfilled', () => {
   const context = {
     dealt: {}, P: (id: string) => `<${id}>`, R: (c: string) => roleNameFor(c), M: (m: Msg) => `[${m.key}]`, lost: (w: string) => w,
   };
   const problems: string[] = [];
   let events = 0;
-  for (let n = 5; n <= 15; n++) {
+  for (const script of ['tb', 'bmr', 'sv']) for (let n = 5; n <= 15; n++) {
     for (let seed = 0; seed < 12; seed++) {
-      const s = playGame(seed, n);
+      const s = playGame(seed, n, undefined, undefined, script);
       for (const e of s.history) {
         if (e.type === 'nightStart') continue;
         events++;

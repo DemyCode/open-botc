@@ -86,6 +86,8 @@ export interface PendingRealTurn {
   /** The real actor also picks a character (Gambler, Cerenovus, Pit-Hag...). */
   pickCharacter?: boolean;
   optionalCharacter?: boolean;
+  /** Which characters the actor may pick (default: the whole script). */
+  characterPool?: CharacterId[];
   /** The step gives a result right after answering: decoys show a stand-in result screen. */
   result?: boolean;
 }
@@ -128,6 +130,8 @@ export interface Effect {
   needsSourceAlive?: boolean;
   /** Suspended while the source's own ability doesn't work (a drunk Courtier's target sobers up). */
   needsSourceWorking?: boolean;
+  /** Ends the moment the target stops being this character (the Philosopher's chosen character). */
+  needsTargetChar?: string;
 }
 
 export interface GameState {

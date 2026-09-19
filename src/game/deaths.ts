@@ -72,6 +72,8 @@ function noteDeath(state: GameState, target: PlayerState, cause: DeathCause): vo
     (state.data.diedToday ??= []).push(target.id);
   }
   if (isDemonChar(target)) state.data.demonDeathCause = cause;
+  // Per-player cause, for abilities that care how someone died (the Sage: killed by the Demon).
+  ((state.data.deathCause ??= {}) as Record<string, string>)[target.id] = cause;
 }
 
 export interface KillResult {
@@ -138,6 +140,12 @@ export function abilityKill(state: GameState, actor: PlayerState, target: Player
   return result;
 }
 
+/** Tells a chosen player's own ability that `chooser` just chose them at night (the Goon). */
+export function notifyChosen(state: GameState, chooser: PlayerState, chosenId: string, step: string): void {
+  const chosen = state.players.find((p) => p.id === chosenId);
+  if (chosen) hooksOf(chosen.character).onChosen?.(state, chosen, chooser, step);
+}
+
 export function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
   return vars ? { key, vars } : { key };
 }
@@ -193,7 +201,7 @@ export function demonAttack(state: GameState, demon: PlayerState, targetId: stri
  * "a dead player cannot die again": nothing that triggers on a death happens a second time. An
  * execution can also fail to kill (the Devil's Advocate, the Fool...): then it still counts.
  */
-export function executePlayer(state: GameState, targetId: string, cause: 'execution' | 'virgin' = 'execution'): void {
+export function executePlayer(state: GameState, targetId: string, cause: DeathCause = 'execution'): void {
   const p = state.players.find((pl) => pl.id === targetId);
   if (!p) return;
   state.lastExecutedId = targetId;

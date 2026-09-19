@@ -254,9 +254,9 @@ test('every scripted step of every character in Trouble Brewing: who is real, wh
   playStep(s, 'imp', { [by.imp.name]: [by.ravenkeeper] });
   playStep(s, 'ravenkeeper', { [by.ravenkeeper.name]: [by.imp] });
   assert.equal(by.ravenkeeper.nightResult?.key, 'ravenkeeperInfo');
-  playStep(s, 'butler', { [by.butler.name]: [by.empath] });
   playStep(s, 'empath', { [by.empath.name]: [] });
   playStep(s, 'fortuneteller', { [by.fortuneteller.name]: [by.imp, by.empath] });
+  playStep(s, 'butler', { [by.butler.name]: [by.empath] });
   // (No Undertaker step: nobody was executed on day 1, so they are not woken.)
   playStep(s, 'spy', { [by.spy.name]: [] });
   dawn(s);

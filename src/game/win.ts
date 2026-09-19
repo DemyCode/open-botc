@@ -24,10 +24,14 @@ export function evaluateWin(state: GameState): void {
   // The Mastermind's extra day is being played: only that day's execution decides (see engine.endDay).
   if (state.data.finalDay !== undefined) return;
   const alive = state.players.filter((p) => p.alive);
-  // A Zombuul who "registers as dead" is still a Demon — and the game goes on with only 2 others alive.
+  // A Zombuul who "registers as dead" is still a Demon — and still counts as an alive player for
+  // the "only 2 left" win condition (the town only *thinks* they are dead).
+  const trulyAlive = state.players.filter((p) => p.alive || p.flags.hiddenAlive);
   const hiddenDemon = state.players.some((p) => p.flags.hiddenAlive && CHARACTERS[p.character].team === 'demon');
   const demonAlive = alive.some((p) => CHARACTERS[p.character].team === 'demon') || hiddenDemon;
   if (!demonAlive) {
+    // "Good can't win if you both live" (the Evil Twin): the game goes on even with no Demon.
+    if (alive.some((p) => CHARACTERS[p.character].hooks?.blocksGoodWin?.(state, p))) return;
     const byExecution = state.data.demonDeathCause === 'execution' || state.data.demonDeathCause === 'virgin';
     const delayed = byExecution && alive.some((p) => CHARACTERS[p.character].hooks?.delaysGoodWin?.(state, p));
     if (delayed) {
@@ -38,7 +42,7 @@ export function evaluateWin(state: GameState): void {
     setWinner(state, 'good', msg('goodWinsDemonDead'));
     return;
   }
-  if (alive.length <= 2 && !hiddenDemon) {
+  if (trulyAlive.length <= 2) {
     setWinner(state, 'evil', msg('evilWinsTwoLeft'));
   }
 }

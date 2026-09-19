@@ -10,6 +10,8 @@ export interface DealResult {
   perceived: Record<string, CharacterId>;
   redHerringId: string | null;
   bluffs: CharacterId[];
+  /** Setup pairings (the Evil Twin -> the good player they are twinned with), by player id. */
+  twins: Record<string, string>;
 }
 
 function draw<T>(rand: () => number, pool: T[], count: number): T[] {
@@ -83,6 +85,21 @@ export function dealCharacters(playerIds: string[], secret: string, scriptChars:
     perceived[pid] = fakes[char] ?? char;
   });
 
+  // Pairings declared by setup hooks (the Evil Twin is bound to a random good player).
+  const twins: Record<string, string> = {};
+  const takenTwins = new Set<string>();
+  for (const pid of shuffledPlayers) {
+    if (hooksOf(characters[pid]).setup?.twinWith !== 'good') continue;
+    const goodPool = shuffledPlayers.filter((q) => {
+      const team = CHARACTERS[characters[q]].team;
+      return q !== pid && (team === 'townsfolk' || team === 'outsider') && !takenTwins.has(q);
+    });
+    if (!goodPool.length) continue;
+    const partner = draw(rand, goodPool, 1)[0];
+    twins[pid] = partner;
+    takenTwins.add(partner);
+  }
+
   const goodPlayerIds = shuffledPlayers.filter((pid) => {
     const team = CHARACTERS[characters[pid]].team;
     return team === 'townsfolk' || team === 'outsider';
@@ -93,5 +110,5 @@ export function dealCharacters(playerIds: string[], secret: string, scriptChars:
   const notInPlayGood = [...TOWNSFOLK, ...OUTSIDERS].filter((id) => !inPlaySet.has(id) && !usedFakes.has(id));
   const bluffs = draw(rand, notInPlayGood, 3);
 
-  return { characters, perceived, redHerringId, bluffs };
+  return { characters, perceived, redHerringId, bluffs, twins };
 }

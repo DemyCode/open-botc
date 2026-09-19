@@ -5,7 +5,7 @@ import type { GameState, PlayerState } from './types.js';
 /** Makes `target` drunk. `untilNight`: it wears off when the night after that one begins ("until dusk"). */
 export function addDrunk(
   state: GameState, target: PlayerState, source: PlayerState | null, sourceChar: string, untilNight: number | null,
-  opts: { needsSourceWorking?: boolean } = {},
+  opts: { needsSourceWorking?: boolean; needsTargetChar?: string } = {},
 ): void {
   state.effects.push({ kind: 'drunk', target: target.id, source: source?.id ?? null, sourceChar, untilNight, ...opts });
   record(state, 'effect', { kind: 'drunk', target: target.id, source: source?.id ?? null, sourceChar });

@@ -97,7 +97,14 @@ export function skipRound(state: GameState): void {
           : t.shape === 'choose'
             ? pickable(state, id, t.min)
             : [];
-    submitRealResponse(state, id, targets, undefined, t.pickCharacter && t.min > 0 ? me.character : undefined);
+    // A step that asks for a character: pick a legal one from the screen (a Pit-Hag may only name a
+    // character not in play, a Cerenovus only a good one), falling back to the actor's own.
+    let character: string | undefined;
+    if (t.pickCharacter && t.min > 0) {
+      const pool = viewFor(state, id).nightTurn?.characters.map((c) => c.id) ?? [];
+      character = pool.length ? pool[0] : me.character;
+    }
+    submitRealResponse(state, id, targets, undefined, character);
   }
   answerDecoys(state);
 }

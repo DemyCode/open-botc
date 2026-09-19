@@ -8,6 +8,21 @@ function msg(key: string, vars?: Record<string, string | number | string[]>): Ms
   return vars ? { key, vars } : { key };
 }
 
+/**
+ * True when this player's information is false for a reason other than being drunk/poisoned: a
+ * living Vortox makes every Townsfolk ability yield false info. All information abilities consult
+ * this alongside `abilityWorks`, so the Vortox needs no special-casing per character.
+ */
+export function infoIsFalse(state: GameState, self: PlayerState): boolean {
+  if (CHARACTERS[self.character].team !== 'townsfolk') return false;
+  return state.players.some((p) => p.alive && hooksOf(p.character).falsifiesTownsfolkInfo);
+}
+
+/** Whether an information ability should be treated as malfunctioning (drunk, poisoned, or a Vortox). */
+export function infoUnreliable(state: GameState, self: PlayerState): boolean {
+  return !abilityWorks(state, self) || infoIsFalse(state, self);
+}
+
 function others(state: GameState, self: PlayerState): PlayerState[] {
   return state.players.filter((p) => p.alive && p.id !== self.id);
 }
@@ -23,7 +38,7 @@ function pickPair(state: GameState, pool: PlayerState[], slot: string, self: str
 export function investigativeInfo(state: GameState, self: PlayerState, team: Exclude<Team, 'demon'>, slot: string): Msg {
   const pool = others(state, self);
   const ctx = { asker: self.id, slot };
-  if (abilityWorks(state, self)) {
+  if (!infoUnreliable(state, self)) {
     // Who can be "the" Townsfolk/Outsider/Minion is decided by how each player REGISTERS, not just
     // by what they are: a Spy may register as a Townsfolk or Outsider, and a Recluse as a Minion
     // (wiki: Washerwoman ex. 3, Investigator ex. 3, Spy ex. 1, Recluse ex. 3).
@@ -56,7 +71,7 @@ export function chefInfo(state: GameState, self: PlayerState, slot: string): Msg
     const ctx = { asker: self.id, slot: `${slot}-pair${i}` };
     if (registersAs(state, p1, 'evil', ctx) && registersAs(state, p2, 'evil', ctx)) count++;
   }
-  if (!abilityWorks(state, self)) {
+  if (infoUnreliable(state, self)) {
     count = Math.floor(stableFloat(state.secret, slot, self.id, 'fake') * 3);
   }
   return msg('chefInfo', { count });
@@ -80,7 +95,7 @@ export function empathInfo(state: GameState, self: PlayerState, slot: string): M
   const ctx = { asker: self.id, slot };
   const [left, right] = livingNeighbors(state, self);
   let count = [left, right].filter((p) => registersAs(state, p, 'evil', ctx)).length;
-  if (!abilityWorks(state, self)) {
+  if (infoUnreliable(state, self)) {
     count = Math.floor(stableFloat(state.secret, slot, self.id, 'fake') * 3);
   }
   return msg('empathInfo', { count });
@@ -90,7 +105,7 @@ export function fortuneTellerInfo(state: GameState, self: PlayerState, targetIds
   const ctx = { asker: self.id, slot };
   const targets = state.players.filter((p) => targetIds.includes(p.id));
   const real = targets.some((t) => t.isRedHerring || registersAs(state, t, 'demon', ctx));
-  const answer = abilityWorks(state, self) ? real : stableFloat(state.secret, slot, self.id, 'fake') < 0.5;
+  const answer = infoUnreliable(state, self) ? stableFloat(state.secret, slot, self.id, 'fake') < 0.5 : real;
   return msg(answer ? 'fortuneTellerYes' : 'fortuneTellerNo');
 }
 
@@ -109,18 +124,18 @@ function apparentToObserver(state: GameState, target: PlayerState, ctx: { asker:
 export function undertakerInfo(state: GameState, self: PlayerState, executed: PlayerState | null, slot: string): Msg {
   if (!executed) return msg('empty');
   const ctx = { asker: self.id, slot };
-  const shown = abilityWorks(state, self)
-    ? apparentToObserver(state, executed, ctx)
-    : stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake').id;
+  const shown = infoUnreliable(state, self)
+    ? stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake').id
+    : apparentToObserver(state, executed, ctx);
   return msg('undertakerInfo', { name: executed.name, role: shown });
 }
 
 export function ravenkeeperInfo(state: GameState, self: PlayerState, targetId: string, slot: string): Msg {
   const target = state.players.find((p) => p.id === targetId)!;
   const ctx = { asker: self.id, slot };
-  const shown = abilityWorks(state, self)
-    ? apparentToObserver(state, target, ctx)
-    : stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake').id;
+  const shown = infoUnreliable(state, self)
+    ? stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake').id
+    : apparentToObserver(state, target, ctx);
   return msg('ravenkeeperInfo', { name: target.name, role: shown });
 }
 
