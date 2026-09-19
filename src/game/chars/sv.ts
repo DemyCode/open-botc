@@ -186,7 +186,7 @@ export const SV: CharacterDef[] = [
         if (!def || isEvilTeam(def.team)) throw new GameError('Choose a good character');
         self.flags.philosopherUsed = true;
         if (!abilityWorks(s, self)) return;
-        for (const p of s.players) if (p.character === character) addDrunk(s, p, self, 'philosopher', null, { needsSourceWorking: true, needsTargetChar: character });
+        for (const p of s.players) if (p.character === character) addDrunk(s, p, self, 'philosopher', null, { needsSourceWorking: true, needsSourceAlive: true, needsTargetChar: character });
         self.character = character; self.perceived = character; self.alignment = alignmentOfCharacter(character);
         self.flags = {};
         record(s, 'promotion', { player: self.id, reason: 'philosopher' });
@@ -237,9 +237,10 @@ export const SV: CharacterDef[] = [
       info: (s, self, slot) => {
         const living = s.players.filter((p) => p.alive && p.id !== self.id);
         const demon = living.find(isDemon);
+        const nonDemon = living.filter((p) => p.id !== demon?.id);
         const pair = !infoUnreliable(s, self) && demon
-          ? (choose(s, [0, 1], slot, self.id, 'order') === 0 ? [demon, choose(s, living.filter((p) => p.id !== demon.id), slot, self.id, 'other')] : [choose(s, living.filter((p) => p.id !== demon.id), slot, self.id, 'other'), demon])
-          : living.slice(0, 2);
+          ? (choose(s, [0, 1], slot, self.id, 'order') === 0 ? [demon, choose(s, nonDemon, slot, self.id, 'other')] : [choose(s, nonDemon, slot, self.id, 'other'), demon])
+          : (nonDemon.length >= 2 ? nonDemon : living).slice(0, 2);
         return msg('sageInfo', { a: pair[0]?.name ?? '', b: pair[1]?.name ?? '' });
       },
     } } },
@@ -382,7 +383,8 @@ export const SV: CharacterDef[] = [
       apply: (s, self, targets, _slot, character) => {
         if (!character || !abilityWorks(s, self)) return;
         const target = byId(s, targets[0]);
-        target.character = character; target.perceived = character; target.alignment = alignmentOfCharacter(character);
+        // The Pit-Hag changes the character, not the alignment (a good player can become a good Demon).
+        target.character = character; target.perceived = character;
         target.flags = {};
         record(s, 'promotion', { player: target.id, reason: 'pitHag' });
         appendLog(s, target.id, msg('pithagBecame', { role: character }));

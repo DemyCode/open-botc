@@ -166,7 +166,11 @@ export const BMR: CharacterDef[] = [
         if (!abilityWorks(s, self)) return;
         const inPlay = s.players.filter((p) => p.character === character);
         const target = inPlay.find((p) => p.alive) ?? inPlay[0];
-        if (target) addDrunk(s, target, self, 'courtier', s.night + 2, { needsSourceWorking: true, needsTargetChar: character });
+        if (target) {
+          addDrunk(s, target, self, 'courtier', s.night + 2, { needsSourceWorking: true, needsTargetChar: character });
+          // Choosing a character is choosing its player for "the 1st player to choose you" (the Goon).
+          notifyChosen(s, self, target.id, 'courtier');
+        }
       },
     } } },
   { id: 'professor', name: 'Professor', team: 'townsfolk', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 430,
@@ -395,6 +399,8 @@ export const BMR: CharacterDef[] = [
       sequentialTargets: true,
       prompt: (_s, self) => (self.flags.poThree ? { min: 3, max: 3, body: msg('poChooseThree') } : { min: 0, max: 1, body: msg('poChoose') }),
       apply: (s, self, targets) => {
+        // Choosing no-one charges the next night even while drunk (the wiki example): the kill
+        // itself still needs a working ability, which demonAttack checks.
         if (!targets.length) { self.flags.poThree = true; return; }
         self.flags.poThree = false;
         for (const id of targets) { notifyChosen(s, self, id, 'po'); demonAttack(s, self, id); }
