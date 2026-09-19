@@ -12,6 +12,13 @@ export function abilityWorks(state: GameState, p: PlayerState): boolean {
 export function abilityLostReason(state: GameState, p: PlayerState, depth = 0): 'drunk' | 'poisoned' | 'lunatic' | null {
   const noAbility = hooksOf(p.character).noAbility;
   if (noAbility) return noAbility;
+  // A live poisoner (the No Dashii): its own ability must be working, and it must be alive.
+  if (depth <= 3) {
+    for (const owner of state.players) {
+      if (!owner.alive || owner.id === p.id) continue;
+      if (hooksOf(owner.character).poisons?.(state, owner, p) && abilityLostReason(state, owner, depth + 1) === null) return 'poisoned';
+    }
+  }
   for (const e of state.effects) {
     if (e.target !== p.id) continue;
     if (e.needsSourceAlive && !state.players.some((q) => q.id === e.source && q.alive && (!e.needsSourceChar || q.character === e.needsSourceChar))) continue;

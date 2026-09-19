@@ -1,10 +1,10 @@
 // Sects & Violets.
 import { CHARACTERS, alignmentOfCharacter, isEvilTeam } from '../characters.js';
 import { abilityKill, demonAttack, executePlayer, markDead, protectionFor } from '../deaths.js';
-import { addDrunk, addPoison, removeEffects } from '../effects.js';
+import { addDrunk, addPoison } from '../effects.js';
 import { record } from '../history.js';
 import { msg } from '../messages.js';
-import { infoUnreliable, nearestLiving } from '../info.js';
+import { infoUnreliable } from '../info.js';
 import { appendLog } from '../log.js';
 import { abilityWorks, malfunctionCount } from '../registration.js';
 import { evalStatement, generateStatement, parseStatement, statementForMessage } from '../statements.js';
@@ -18,9 +18,23 @@ import { alivePlayers, byId, choose, demonChoosePrompt, isDemon, isMinion, roll,
 const seated = (s: GameState): PlayerState[] => s.players.slice().sort((a, b) => a.seat - b.seat);
 const goodChars = (s: GameState): CharacterId[] => s.scriptChars.filter((c) => !isEvilTeam(CHARACTERS[c].team));
 
-/** The nearest living Townsfolk on each side of `p` (up to two), skipping the dead and non-Townsfolk. */
-const nearestTownsfolkNeighbors = (s: GameState, p: PlayerState): PlayerState[] =>
-  nearestLiving(s, p, (q) => teamOf(q) === 'townsfolk');
+/**
+ * The closest Townsfolk on each side of `p` (up to two, clockwise first), `p` excluded. Outsiders, Minions and
+ * Demons are skipped but the DEAD are not: "regardless of whether they are alive or dead" (No Dashii, Vigormortis).
+ */
+function townsfolkNeighbors(s: GameState, p: PlayerState): PlayerState[] {
+  const order = seated(s);
+  const idx = order.findIndex((q) => q.id === p.id);
+  const find = (dir: number): PlayerState | undefined => {
+    for (let n = 1; n < order.length; n++) {
+      const q = order[(((idx + dir * n) % order.length) + order.length) % order.length];
+      if (teamOf(q) === 'townsfolk') return q;
+    }
+    return undefined;
+  };
+  const found = [find(1), find(-1)].filter((q): q is PlayerState => q !== undefined);
+  return found.filter((q, i) => found.findIndex((r) => r.id === q.id) === i);
+}
 
 /** How many seats from the Demon to its nearest Minion, going either way. */
 function stepsToNearestMinion(s: GameState, demon: PlayerState): number {
@@ -420,23 +434,22 @@ export const SV: CharacterDef[] = [
           demonAttack(s, self, targets[0]);
           if (!wasMinion || target.alive || !abilityWorks(s, self)) return;
           target.flags.keepsAbility = true;
-          const neighbor = nearestTownsfolkNeighbors(s, target)[0];
+          const neighbor = townsfolkNeighbors(s, target)[0];
           if (neighbor) addPoison(s, neighbor, self, 'vigormortis', null, { needsSourceAlive: true });
         },
       },
     } },
   { id: 'nodashii', name: 'No Dashii', team: 'demon', shape: 'choose', edition: 'sv', firstNight: 0, otherNight: 300,
     ability: 'Each night*, choose a player: they die. Your 2 Townsfolk neighbours are poisoned.',
-    hooks: { night: {
-      before: (s) => {
-        removeEffects(s, { sourceChar: 'nodashii' });
-        for (const d of s.players.filter((p) => p.alive && p.character === 'nodashii' && abilityWorks(s, p))) {
-          for (const t of nearestTownsfolkNeighbors(s, d)) addPoison(s, t, d, 'nodashii', null, { needsSourceAlive: true });
-        }
+    hooks: {
+      // "The closest clockwise and counterclockwise Townsfolk neighbours are poisoned, regardless of whether they are
+      // alive or dead" — from the first night, and following the seating and characters as they change.
+      poisons: (s, owner, target) => townsfolkNeighbors(s, owner).some((q) => q.id === target.id),
+      night: {
+        prompt: demonChoosePrompt,
+        apply: (s, self, targets) => demonAttack(s, self, targets[0]),
       },
-      prompt: demonChoosePrompt,
-      apply: (s, self, targets) => demonAttack(s, self, targets[0]),
-    } } },
+    } },
   { id: 'vortox', name: 'Vortox', team: 'demon', shape: 'choose', edition: 'sv', firstNight: 0, otherNight: 310,
     ability: 'Each night*, choose a player: they die. Townsfolk abilities yield false info. Each day, if no-one is executed, evil wins.',
     hooks: {

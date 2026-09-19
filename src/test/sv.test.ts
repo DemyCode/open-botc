@@ -417,3 +417,57 @@ test('Fang Gu: choosing an already dead Outsider does not jump', () => {
   assert.equal(s.players[0].alive, true);
   assert.equal(s.players[2].character, 'saint');
 });
+
+// ---------------------------------------------------------------- No Dashii / Vigormortis: neighbours regardless of alive or dead (wiki)
+
+// seats: 0 No Dashii, 1 Witch (a Minion: skipped), 2 Empath, 3 Savant, 4 Artist, 5 Juggler, 6 Chef.
+const noDashiiTable = () => mk(['nodashii', 'witch', 'empath', 'savant', 'artist', 'juggler', 'chef']);
+const poisoned = (s: GameState, c: CharacterId) => abilityLostReason(s, byChar(s, c)) === 'poisoned';
+
+test('No Dashii: its two nearest Townsfolk are poisoned from the moment the game is set up — before any night step', () => {
+  const s = noDashiiTable();
+  assert.equal(poisoned(s, 'empath'), true, 'clockwise, skipping the Minion');
+  assert.equal(poisoned(s, 'chef'), true, 'anticlockwise');
+  for (const c of ['savant', 'artist', 'juggler', 'witch'] as const) assert.equal(poisoned(s, c), false, c);
+});
+
+test('No Dashii: a DEAD nearest Townsfolk is still the poisoned one — the next living Townsfolk is not poisoned in their place', () => {
+  const s = noDashiiTable();
+  byChar(s, 'empath').alive = false;
+  assert.equal(poisoned(s, 'empath'), true, 'dead, still poisoned');
+  assert.equal(poisoned(s, 'savant'), false, 'not poisoned instead');
+});
+
+test('No Dashii: the neighbours become healthy when it dies, or when its own ability stops working', () => {
+  const dead = noDashiiTable();
+  byChar(dead, 'nodashii').alive = false;
+  assert.equal(poisoned(dead, 'empath'), false);
+  assert.equal(poisoned(dead, 'chef'), false);
+  const drunk = noDashiiTable();
+  drunk.effects.push({ kind: 'drunk', target: byChar(drunk, 'nodashii').id, source: null, sourceChar: 'test', untilNight: null });
+  assert.equal(poisoned(drunk, 'empath'), false);
+});
+
+test('No Dashii: when a poisoned Townsfolk stops being a Townsfolk, the next Townsfolk becomes the neighbour and the old one is healthy', () => {
+  const s = noDashiiTable();
+  const empath = byChar(s, 'empath');
+  empath.character = 'saint';
+  empath.perceived = 'saint';
+  assert.equal(abilityLostReason(s, empath), null, 'the old neighbour is healthy');
+  assert.equal(poisoned(s, 'savant'), true, 'the next Townsfolk is now the neighbour');
+});
+
+test('No Dashii: two No Dashii poisoning each other does not loop forever', () => {
+  const s = mk(['nodashii', 'empath', 'savant', 'artist', 'nodashii', 'chef', 'juggler']);
+  assert.doesNotThrow(() => abilityLostReason(s, s.players[1]));
+});
+
+test('Vigormortis: the dead Minion\'s nearest Townsfolk is poisoned even if that Townsfolk is dead', () => {
+  const s = afterNight1(['vigormortis', 'witch', 'empath', 'savant', 'artist', 'juggler', 'chef']);
+  byChar(s, 'empath').alive = false; // both of the Witch's nearest Townsfolk (clockwise: Empath, anticlockwise: Chef) are dead
+  byChar(s, 'chef').alive = false;
+  night(s, { vigormortis: { targets: ['witch'] } });
+  const poisonedChars = s.effects.filter((e) => e.sourceChar === 'vigormortis').map((e) => s.players.find((p) => p.id === e.target)!.character);
+  assert.equal(poisonedChars.length, 1);
+  assert.ok(poisonedChars[0] === 'empath' || poisonedChars[0] === 'chef', `the dead nearest Townsfolk is poisoned, not ${poisonedChars[0]}`);
+});

@@ -79,6 +79,10 @@ export interface Hooks {
   /** Someone else died; called for every living owner (Scarlet Woman, Grandmother...). */
   onAnyDeath?(state: GameState, owner: PlayerState, dead: PlayerState, cause: string): void;
 
+  /** While the owner's ability works, this keeps `target` poisoned (the No Dashii's Townsfolk neighbours): a live rule, so it
+   * holds from setup and follows the seating and characters as they change — no bookkeeping to go stale. */
+  poisons?(state: GameState, owner: PlayerState, target: PlayerState): boolean;
+
   // ---- Day
   /** The owner was nominated (`nominee`). Return 'endsDay' if it ended the day (Virgin's execution). */
   onNominated?(state: GameState, owner: PlayerState, nominator: PlayerState): 'endsDay' | void;
