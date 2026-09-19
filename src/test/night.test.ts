@@ -272,8 +272,7 @@ test('a night turn never times out — the night waits for a real answer however
   assert.deepEqual(t.responses, {}, 'nobody may be answered for automatically');
 });
 
-test('dawn waits 5-10 seconds after the last action — and a night lasts at least 30 seconds', () => {
-  // "The small wait at dawn prevents players from knowing for sure whether they were the last to act."
+test('a night lasts at least 30 seconds, even when nobody really acts', () => {
   const s = mk(['imp', 'soldier', 'mayor', 'virgin', 'saint']); // 5 players, nobody acts on night 1
   const before = Date.now();
   startNight(s);
@@ -286,12 +285,12 @@ test('dawn waits 5-10 seconds after the last action — and a night lasts at lea
   assert.equal(s.phase, 'day');
 });
 
-test('dawn after a long night: 5 to 10 seconds after the last answer', () => {
+test('dawn after a long night: the day starts the moment the last answer lands — no extra wait', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
   startNight(s);
   s.nightStartedAt = Date.now() - 10 * 60_000; // the night has already lasted 10 minutes
-  const before = Date.now();
   while (s.pendingRealTurn) skipRound(s);
-  assert.equal(s.phase, 'night');
-  assert.ok(s.dawnAt! >= before + 5_000 && s.dawnAt! <= Date.now() + 10_000, 'dawn is 5-10s after the last answer');
+  assert.equal(s.phase, 'day', 'no pause between the last answer and the day');
+  assert.equal(s.day, 1);
+  assert.equal(s.dawnAt, null);
 });

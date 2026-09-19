@@ -63,7 +63,7 @@ export function answerRealTurn(state: GameState, targetIds: string[] = [], chara
   answerDecoys(state);
 }
 
-/** Skips the wait between the last night action and dawn (see DAWN_WAIT_* in night.ts). */
+/** Skips the rest of a night shorter than MIN_NIGHT_MS once everyone has acted (see night.ts). */
 export function breakDawn(state: GameState): void {
   if (state.phase === 'night' && state.dawnAt != null) nightTick(state, state.dawnAt);
 }

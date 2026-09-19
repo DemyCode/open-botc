@@ -15,7 +15,7 @@ import { WebSocket } from 'ws';
 
 interface Running { port: number; proc: ChildProcess; stop: () => Promise<void>; output: () => string }
 
-const FAST = { BOTC_MIN_ANSWER_MS: '40', BOTC_DAWN_MIN_MS: '60', BOTC_DAWN_MAX_MS: '90', BOTC_MIN_NIGHT_MS: '150' };
+const FAST = { BOTC_MIN_ANSWER_MS: '40', BOTC_MIN_NIGHT_MS: '150' };
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
