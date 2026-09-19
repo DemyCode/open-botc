@@ -51,7 +51,8 @@ export function checkInvariants(s: GameState, where: string): void {
   }
   if (s.scriptId === 'tb') assert.ok(livingDemons.length <= 1, `${where}: never two living Demons in Trouble Brewing`);
   if (s.winner === 'good' && livingDemons.length === 1) {
-    assert.ok(s.publicLog.some((m) => m.key === 'goodWinsMayor'), `${where}: good only wins with a living Demon via the Mayor`);
+    // (The Mastermind's extra day: a Pit-Hag may have made a new Demon meanwhile, and good still wins if nobody good is executed.)
+    assert.ok(s.publicLog.some((m) => m.key === 'goodWinsMayor' || m.key === 'goodWinsMastermind'), `${where}: good only wins with a living Demon via the Mayor or the Mastermind`);
   }
   if (s.phase === 'night' && s.pendingRealTurn) {
     const t = s.pendingRealTurn;
@@ -231,17 +232,18 @@ export function describe(s: GameState): string {
   return `alive: ${alive.join(', ')}; poisoned: ${s.players.find((p) => p.id === poisonedId(s))?.character ?? 'nobody'}; phase ${s.phase}; last log: ${s.publicLog.slice(-4).map((m) => m.key).join(', ')}`;
 }
 
-export function playGame(seed: number, playerCount: number, onCheck?: (s: GameState, where: string) => void, names?: string[], scriptId = 'tb'): GameState {
+export function playGame(seed: number, playerCount: number, onCheck?: (s: GameState, where: string) => void, names?: string[], scriptId = 'tb', customChars?: string[]): GameState {
   extraCheck = onCheck ?? null;
   const rand = mulberry32(seedFromString(`sim-${seed}-${playerCount}-${scriptId}`));
+  // The engine never uses Math.random for a rule (see storyteller.test.ts); this only keeps player ids repeatable.
   const realRandom = Math.random;
-  Math.random = rand; // the engine's own random choices (Mayor redirect, star-pass, dawn) are seeded too
+  Math.random = rand;
   try {
     const s = createGame('SIM');
     s.secret = `sim-secret-${seed}-${playerCount}`;
     const players = Array.from({ length: playerCount }, (_, i) => addPlayer(s, names?.[i] ?? `P${i}`));
     players.forEach((p, i) => declareNeighbor(s, p.id, players[(i + 1) % playerCount].id));
-    if (scriptId !== 'tb') setScript(s, scriptId);
+    if (scriptId !== 'tb') setScript(s, scriptId, customChars);
     startGame(s);
     const where = () => `seed ${seed}, ${playerCount}p, night ${s.night}, day ${s.day}`;
     checkInvariants(s, where());
