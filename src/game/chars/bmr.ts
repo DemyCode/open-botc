@@ -308,8 +308,10 @@ export const BMR: CharacterDef[] = [
         actors: (s) => {
           const gf = s.players.filter((p) => p.alive && p.perceived === 'godfather');
           if (s.night === 1) return gf;
+          // "Whenever an Outsider is executed and dies" — an Outsider who died another way (the Witch's curse) does not count.
+          const executed = (id: string) => ['execution', 'virgin', 'madness'].includes(s.data.deathCause?.[id] ?? '');
           const died: string[] = s.data.diedToday ?? [];
-          return died.some((id) => teamOf(byId(s, id)) === 'outsider') ? gf : [];
+          return died.some((id) => teamOf(byId(s, id)) === 'outsider' && executed(id)) ? gf : [];
         },
         info: (s) => {
           const outs = s.players.filter((p) => teamOf(p) === 'outsider').map((p) => p.character);

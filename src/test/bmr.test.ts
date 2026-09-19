@@ -7,6 +7,7 @@ import { CHARACTERS } from '../game/characters.js';
 import { nominate, toggleEndDayRequest } from '../game/engine.js';
 import { abilityLostReason, abilityWorks } from '../game/registration.js';
 import { SCRIPTS } from '../game/scripts.js';
+import { executePlayer, markDead } from '../game/deaths.js';
 import type { CharacterId, GameState } from '../game/types.js';
 import { advanceUntil, answerRealTurn, breakDawn, byChar, endDayByConsensus, fastForwardToVote, mk, mkDay, runFullNight, skipRound, startNight, voteInOrder } from './helpers.js';
 
@@ -1033,4 +1034,36 @@ test('Pukka: a victim whose death is blocked (Innkeeper) is healthy at once', ()
   runFullNight(s);
   assert.equal(byChar(s, 'chef').alive, true, 'the Innkeeper kept them safe');
   assert.ok(!s.effects.some((e) => e.kind === 'poisoned' && e.target === byChar(s, 'chef').id), 'and they are no longer poisoned by the Pukka');
+});
+
+// ---------------------------------------------------------------- Godfather: only an Outsider EXECUTED (and dying) counts (wiki)
+
+function godfatherWakes(kill: (s: GameState) => void, chars: CharacterId[] = ['godfather', 'imp', 'recluse', 'empath', 'soldier', 'monk', 'chef']): boolean {
+  const s = mkDay(chars);
+  kill(s);
+  s.currentNomination = null;
+  startNight(s);
+  let woke = false;
+  for (let guard = 0; s.phase === 'night' && guard < 40; guard++) {
+    if (s.pendingRealTurn?.charId === 'godfather') woke = true;
+    skipRound(s);
+  }
+  return woke;
+}
+
+test('Godfather: wakes the night after an Outsider was executed and died', () => {
+  assert.equal(godfatherWakes((s) => executePlayer(s, byChar(s, 'recluse').id)), true);
+});
+
+test('Godfather: does not wake when the Outsider died in the day some other way (the Witch\'s curse)', () => {
+  assert.equal(godfatherWakes((s) => markDead(s, byChar(s, 'recluse'), 'witch')), false);
+});
+
+test('Godfather: does not wake when a non-Outsider was executed', () => {
+  assert.equal(godfatherWakes((s) => executePlayer(s, byChar(s, 'chef').id)), false);
+});
+
+test('Godfather: does not wake when the executed Outsider did not die (the Devil\'s Advocate protected them)', () => {
+  const chars: CharacterId[] = ['godfather', 'devilsadvocate', 'recluse', 'imp', 'soldier', 'monk', 'chef'];
+  assert.equal(godfatherWakes((s) => { s.data.daProtected = byChar(s, 'recluse').id; executePlayer(s, byChar(s, 'recluse').id); }, chars), false);
 });
