@@ -503,3 +503,51 @@ test('Cerenovus: an ordinary mad player who says nothing is still executed (unch
   assert.equal(byChar(s, 'empath').alive, false);
   assert.ok(s.history.some((e) => e.type === 'madnessExecuted'));
 });
+
+// ---------------------------------------------------------------- Sweetheart: the Storyteller "almost always" drunks a Townsfolk (wiki)
+
+import { markDead } from '../game/deaths.js';
+
+function sweetheartDrunkChar(secret: string, chars: CharacterId[]): string | null {
+  const s = mk(chars);
+  s.secret = secret;
+  markDead(s, byChar(s, 'sweetheart'), 'execution');
+  const e = s.effects.find((x) => x.kind === 'drunk' && x.sourceChar === 'sweetheart');
+  return e ? s.players.find((p) => p.id === e.target)!.character : null;
+}
+
+test('Sweetheart: the drunk player is always a living Townsfolk while there is one (never the Demon, a Minion or an Outsider)', () => {
+  const chars: CharacterId[] = ['sweetheart', 'fanggu', 'witch', 'empath', 'savant', 'artist', 'saint'];
+  for (let i = 0; i < 60; i++) {
+    const c = sweetheartDrunkChar(`s${i}`, chars)!;
+    assert.equal(CHARACTERS[c].team, 'townsfolk', `secret s${i}: ${c}`);
+  }
+});
+
+test('Sweetheart: the choice varies between Townsfolk (it is the Storyteller\'s, not fixed)', () => {
+  const chars: CharacterId[] = ['sweetheart', 'fanggu', 'witch', 'empath', 'savant', 'artist', 'juggler'];
+  const seen = new Set(Array.from({ length: 60 }, (_, i) => sweetheartDrunkChar(`s${i}`, chars)));
+  assert.ok(seen.size > 1, [...seen].join());
+});
+
+test('Sweetheart: with no living Townsfolk, another good player (an Outsider) is chosen before any evil player', () => {
+  const s = mk(['sweetheart', 'fanggu', 'witch', 'empath', 'saint', 'recluse', 'chef']);
+  for (const c of ['empath', 'chef'] as const) byChar(s, c).alive = false;
+  markDead(s, byChar(s, 'sweetheart'), 'execution');
+  const e = s.effects.find((x) => x.kind === 'drunk' && x.sourceChar === 'sweetheart')!;
+  assert.equal(CHARACTERS[s.players.find((p) => p.id === e.target)!.character].team, 'outsider');
+});
+
+test('Sweetheart: when only evil players are left, one of them is drunk', () => {
+  const s = mk(['sweetheart', 'fanggu', 'witch', 'empath', 'saint', 'recluse', 'chef']);
+  for (const c of ['empath', 'chef', 'saint', 'recluse'] as const) byChar(s, c).alive = false;
+  markDead(s, byChar(s, 'sweetheart'), 'execution');
+  assert.equal(s.effects.filter((x) => x.sourceChar === 'sweetheart').length, 1);
+});
+
+test('Sweetheart: with nobody else alive, nothing is drunk and nothing breaks', () => {
+  const s = mk(['sweetheart', 'fanggu', 'witch', 'empath', 'saint']);
+  for (const p of s.players.slice(1)) p.alive = false;
+  assert.doesNotThrow(() => markDead(s, byChar(s, 'sweetheart'), 'execution'));
+  assert.equal(s.effects.length, 0);
+});

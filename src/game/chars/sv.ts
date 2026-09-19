@@ -264,8 +264,10 @@ export const SV: CharacterDef[] = [
   { id: 'sweetheart', name: 'Sweetheart', team: 'outsider', shape: 'info', edition: 'sv', firstNight: 0, otherNight: 0,
     ability: 'When you die, 1 player is drunk from now on.',
     hooks: { onDeath: (s, owner) => {
-      const pool = s.players.filter((p) => p.alive && p.id !== owner.id);
-      if (pool.length) addDrunk(s, choose(s, pool, 'sweetheart', owner.id), owner, 'sweetheart', null);
+      // The Storyteller "almost always" makes a Townsfolk drunk; failing that an Outsider, then a Minion, and only as a last resort the Demon.
+      const others = s.players.filter((p) => p.alive && p.id !== owner.id);
+      const pool = (['townsfolk', 'outsider', 'minion', 'demon'] as const).map((t) => others.filter((p) => teamOf(p) === t)).find((tier) => tier.length);
+      if (pool) addDrunk(s, choose(s, pool, 'sweetheart', owner.id), owner, 'sweetheart', null);
     } } },
   { id: 'barber', name: 'Barber', team: 'outsider', shape: 'choose', edition: 'sv', firstNight: 0, otherNight: 400,
     ability: 'If you died today or tonight, the Demon may choose 2 players (not another Demon) to swap characters.',
