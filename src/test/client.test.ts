@@ -7,7 +7,9 @@ import { addPlayer, castVote, createGame, declareNeighbor, nominate, skipSpeech,
 import { CHARACTERS } from '../game/characters.js';
 import { MIN_ANSWER_MS } from '../game/night.js';
 import type { CharacterId, GameState } from '../game/types.js';
-import { viewFor, type GameView } from '../game/view.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { PROTOCOL_VERSION, viewFor, type GameView } from '../game/view.js';
 import { playGame } from './driver.js';
 import { brokenText, loadApp, type FakeClient, type FakeNode } from './fakedom.js';
 import {
@@ -428,6 +430,61 @@ test('the Gambler: a pick screen for the player, then a character screen for the
   assert.ok(!app.root.buttons().some((b) => b.text() === 'No one'), 'the guess is not optional');
   buttonsOf(app, 'char-choice').find((n) => n.text().includes('Soldier'))!.click();
   assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [], character: 'soldier' });
+});
+
+test('regression (FR): the Dreamer on night 1 gets the list of players to tap — not just the prompt and "J\'ai compris"', async () => {
+  const s = mk(['imp', 'poisoner', 'dreamer', 'soldier', 'empath', 'chef', 'mayor']);
+  startNight(s);
+  advanceUntil(s, 'dreamer');
+  const dreamer = byChar(s, 'dreamer');
+  const view = viewFor(s, dreamer.id);
+  assert.equal(view.nightTurn!.kind, 'pick');
+  const app = await loadApp('fr');
+  ready(app, view);
+  assert.match(app.text(), /Choisissez un joueur \(pas vous\)/);
+  assert.equal(buttonsOf(app, 'choice').length, s.players.length, 'a button for every player');
+  assert.equal(buttonsOf(app, 'choice')[dreamer.seat].disabled, true, 'not yourself');
+  assert.ok(!app.root.buttons().some((b) => b.text() === "J'ai compris"), 'no "J\'ai compris" on a pick screen');
+  buttonsOf(app, 'choice')[byChar(s, 'imp').seat].click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [byChar(s, 'imp').id] });
+});
+
+test('regression (FR): a tip screen shows an "Astuce" or a "Définition" to read under "Votre tour" — never the heading alone', async () => {
+  const s = mk(['imp', 'poisoner', 'dreamer', 'soldier', 'empath', 'chef', 'mayor']);
+  startNight(s);
+  advanceUntil(s, 'dreamer');
+  const app = await loadApp('fr');
+  for (let i = 0; i < 20; i++) {
+    const view = JSON.parse(JSON.stringify(viewFor(s, byChar(s, 'soldier').id))) as GameView;
+    view.nightTurn!.stepKey = `1-9-${i}`; // a new screen each time: a new draw
+    ready(app, view);
+    assert.match(app.text(), /Votre tour/);
+    assert.match(app.text(), /Astuce de « .+ » :|Définition de « .+ » :/, app.text().slice(0, 300));
+    assert.ok(app.root.buttons().some((b) => b.text() === "J'ai compris"));
+  }
+});
+
+test('regression: an app newer than a server left running on an old build says "restart the server" instead of drawing broken screens', async () => {
+  // Exactly what a phone received from the old server: the old view shape, with no protocol number.
+  const s = mk(['imp', 'poisoner', 'dreamer', 'soldier', 'empath', 'chef', 'mayor']);
+  startNight(s);
+  advanceUntil(s, 'dreamer');
+  const v = viewFor(s, byChar(s, 'dreamer').id) as unknown as Record<string, unknown>;
+  delete v.protocol;
+  v.nightTurn = { shape: 'choose', title: 'Your turn', body: { key: 'dreamerChoose' }, min: 1, max: 1, choices: [], decoy: false, stepKey: '1-3', waitMs: 0 };
+  for (const [lang, title] of [['en', 'The server needs a restart'], ['fr', 'Le serveur doit être redémarré']] as const) {
+    const app = await loadApp(lang);
+    const text = app.show(v, { seen: true });
+    assert.ok(text.includes(title), text.slice(0, 200));
+    assert.ok(!app.root.buttons().some((b) => /Got it|J'ai compris/.test(b.text())), 'no answer button that would send nonsense');
+  }
+});
+
+test('the app and the server declare the same protocol version', async () => {
+  const appJs = fs.readFileSync(path.resolve('public/app.js'), 'utf8');
+  assert.equal(Number(/const PROTOCOL_VERSION = (\d+);/.exec(appJs)?.[1]), PROTOCOL_VERSION);
+  const s = mk(['imp', 'poisoner', 'dreamer', 'soldier', 'empath']);
+  assert.equal(viewFor(s, s.players[0].id).protocol, PROTOCOL_VERSION);
 });
 
 test('an info screen has a "Got it" button that sends an empty answer once unlocked', async () => {

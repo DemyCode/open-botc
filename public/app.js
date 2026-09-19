@@ -242,6 +242,8 @@ const STRINGS = {
     leaveGame: 'Leave Game',
     leaveConfirm: "Leave this game? You'll go back to the join/create screen.",
     connecting: 'Connecting…',
+    versionMismatchTitle: 'The server needs a restart',
+    versionMismatch: 'This app and the server running the game are not the same version, so the screens would be wrong. Ask whoever runs the server to restart it (npm start rebuilds it), then reload this page.',
     lobby: 'Lobby',
     shareCode: 'Share this code with everyone at the table.',
     seating: 'Seating',
@@ -349,6 +351,8 @@ const STRINGS = {
     leaveGame: 'Quitter',
     leaveConfirm: "Quitter cette partie ? Vous retournerez à l'écran d'accueil.",
     connecting: 'Connexion…',
+    versionMismatchTitle: 'Le serveur doit être redémarré',
+    versionMismatch: "Cette application et le serveur de la partie ne sont pas de la même version : les écrans seraient faux. Demandez à la personne qui gère le serveur de le redémarrer (npm start le reconstruit), puis rechargez cette page.",
     lobby: 'Salon',
     shareCode: 'Partagez ce code avec tout le monde à la table.',
     seating: 'Placement',
@@ -1448,6 +1452,9 @@ function renderDuskScreen(v) {
   ]);
 }
 
+/** The view shape this app understands — must equal PROTOCOL_VERSION in src/game/view.ts. */
+const PROTOCOL_VERSION = 6;
+
 const NIGHT_HEADINGS = { pick: 'yourTurn', character: 'yourTurn', info: 'yourInformation', result: 'yourResult', tip: 'yourTurn' };
 
 /** One night screen = one tap. A tip (everyone who isn't acting right now) is a tip or glossary entry and "Got it". */
@@ -2049,6 +2056,11 @@ function render() {
   }
   if (!state.view) {
     app.appendChild(renderScreen([el('p', { class: 'muted center' }, t('connecting'))]));
+    return;
+  }
+  // The server and this app come from different versions: say so, rather than draw screens wrongly.
+  if (v.protocol !== PROTOCOL_VERSION) {
+    app.appendChild(renderScreen([el('div', { class: 'card center' }, [el('h2', {}, '⚠️ ' + t('versionMismatchTitle')), el('p', { class: 'muted' }, t('versionMismatch'))])]));
     return;
   }
   if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) {

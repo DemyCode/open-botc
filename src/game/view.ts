@@ -77,7 +77,17 @@ export interface NominationView {
   votes: Record<string, boolean>;
 }
 
+/**
+ * The shape of the views this server sends. The app (public/app.js) declares the one it understands:
+ * when they differ — a server left running on an old build while the app on disk is new, or the other
+ * way round — the app says so instead of drawing screens it can't understand. Bump both together
+ * whenever the view changes in a way an older app or server would misread.
+ */
+export const PROTOCOL_VERSION = 6;
+
 export interface GameView {
+  /** See PROTOCOL_VERSION. */
+  protocol: number;
   code: string;
   /** The script (edition or custom mix) and the characters it holds — public, chosen in the lobby. */
   script: { id: string; characters: string[] };
@@ -249,7 +259,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
   const amIAlive = self ? shownAlive(self) : false;
 
   return {
-    code: state.code, script: { id: state.scriptId, characters: state.scriptChars }, phase: state.phase, night: state.night, day: state.day,
+    protocol: PROTOCOL_VERSION, code: state.code, script: { id: state.scriptId, characters: state.scriptChars }, phase: state.phase, night: state.night, day: state.day,
     hostId: state.hostId, selfId: viewerId, players, publicLog: state.publicLog,
     myCharacter: self ? { id: self.perceived, name: CHARACTERS[self.perceived].name, ability: CHARACTERS[self.perceived].ability, alignment: believedAlignment(self, revealAll) } : null,
     myLog: self ? self.log : [],

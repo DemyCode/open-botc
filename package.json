@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server/index.ts",
     "build": "tsc -p .",
+    "prestart": "npm run build",
     "start": "node dist/server/index.js",
     "test": "tsx --test src/test/*.test.ts"
   },
