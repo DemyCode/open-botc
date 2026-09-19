@@ -1315,3 +1315,9 @@ test('the sheet\'s tips and bluffing are in French too', async () => {
   card.find((n) => n.hasClass('advice-btn') && /Bluffer/.test(n.text()))[0].click();
   assert.match(card.find((n) => n.hasClass('advice-list'))[0].text(), /Prétendez être la Lavandière/);
 });
+
+test('regression: the alive/vote chip leaves room for the "hide role" button pinned in the banner corner', () => {
+  const css = fs.readFileSync(path.resolve('public/style.css'), 'utf8');
+  assert.match(css, /\.role-hide-btn\s*\{[^}]*position:\s*absolute/, 'the button floats in the corner');
+  assert.match(css, /\.role-banner \.status-bar\s*\{[^}]*max-width:\s*calc\(100% - \d+px\)/, 'so the chip is kept clear of it');
+});

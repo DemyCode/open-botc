@@ -281,6 +281,10 @@ button.block { width: 100%; }
   box-shadow: none;
 }
 .role-banner.hidden .role-hide-btn { position: static; margin-top: 12px; background: var(--panel-2); }
+/* The hide button floats in the banner's top-right corner: keep the alive/vote chip clear of it,
+   or a long label ("🟢 Vous êtes vivant") slides underneath it on a phone. */
+.role-banner .status-bar { display: block; width: max-content; max-width: calc(100% - 118px); text-align: left; }
+.role-banner.hidden .status-bar { max-width: none; margin-left: auto; margin-right: auto; text-align: center; }
 
 .status-bar {
   display: inline-block;
