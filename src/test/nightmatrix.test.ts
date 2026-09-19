@@ -3,7 +3,7 @@
 // Scarlet Woman, Mayor). Each row plays a real night through the engine.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { castVote, nominate, useSlayer } from '../game/engine.js';
+import { nominate, useSlayer } from '../game/engine.js';
 import { abilityWorks } from '../game/registration.js';
 import type { CharacterId, GameState, PlayerState } from '../game/types.js';
 import { viewFor } from '../game/view.js';

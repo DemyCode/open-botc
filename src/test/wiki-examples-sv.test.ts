@@ -335,7 +335,6 @@ test('Evil Twin ex. 2 — with the Demon dead, good still cannot win while both 
 
 test('Witch ex. 0 — the cursed player nominates and dies; the vote continues', () => {
   const s = mkDay(['imp', 'poisoner', 'witch', 'sage', 'dreamer', 'soldier', 'monk', 'chef']);
-  const witch = byChar(s, 'witch');
   const sage = byChar(s, 'sage');
   s.data.witchTarget = sage.id;
   nominate(s, sage.id, byChar(s, 'dreamer').id); // the cursed Sage nominates
@@ -352,7 +351,6 @@ test('Witch ex. 1 — the Witch curses themself and dies when nominating', () =>
 
 test('Witch ex. 3 — with only three alive the curse no longer works', () => {
   const s = mkDay(['imp', 'poisoner', 'witch', 'savant', 'soldier', 'monk', 'chef']);
-  const witch = byChar(s, 'witch');
   s.data.witchTarget = byChar(s, 'savant').id;
   byChar(s, 'soldier').alive = false;
   byChar(s, 'monk').alive = false;

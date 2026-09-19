@@ -107,7 +107,6 @@ test('Monk: a working protection fully blocks the Demon, and no death is registe
   startNight(s); // night 1 — Monk has no first-night action
   runFullNight(s);
   startNight(s); // night 2
-  const monk = byChar(s, 'monk');
   const empath = byChar(s, 'empath');
   advanceUntil(s, 'monk');
   answerRealTurn(s, [empath.id]);
@@ -166,7 +165,6 @@ test('Poisoner: may target themselves', () => {
 test("Butler: their night choice sets who their vote depends on the next day", () => {
   const s = mk(['imp', 'butler', 'empath', 'soldier', 'washerwoman']);
   startNight(s);
-  const butler = byChar(s, 'butler');
   const empath = byChar(s, 'empath');
   advanceUntil(s, 'butler');
   answerRealTurn(s, [empath.id]);

@@ -3,15 +3,11 @@ import { hooksOf, notifyChosen } from './deaths.js';
 import { demonInfo, minionInfo } from './info.js';
 import { record } from './history.js';
 import { appendLog } from './log.js';
+import { msg } from './messages.js';
 import { abilityLostReason, noteMalfunction } from './registration.js';
-import { evaluateWin } from './win.js';
 import type { NightSpec } from './hooks.js';
 import type { CharacterId, GameState, Msg, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
 import { GameError } from './types.js';
-
-function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
-  return vars ? { key, vars } : { key };
-}
 
 import { EVIL_INTRO_MIN_PLAYERS } from './constants.js';
 export { EVIL_INTRO_MIN_PLAYERS };

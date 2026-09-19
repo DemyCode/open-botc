@@ -2,13 +2,15 @@
 import { EVIL_INTRO_MIN_PLAYERS } from '../constants.js';
 import { setWinner } from '../win.js';
 import { appendLog } from '../log.js';
-import { demonAttack, executePlayer, msg, protectionFor } from '../deaths.js';
+import { demonAttack, executePlayer, protectionFor } from '../deaths.js';
 import { record } from '../history.js';
+import { msg } from '../messages.js';
 import {
   chefInfo, demonInfo, empathInfo, fortuneTellerInfo, investigativeInfo,
-  minionInfo, ravenkeeperInfo, spyInfo, undertakerInfo,
+  ravenkeeperInfo, spyInfo, undertakerInfo,
 } from '../info.js';
 import { abilityLostReason, abilityWorks, registersAs } from '../registration.js';
+import { isDemon, isMinion } from './util.js';
 import type { CharacterDef } from '../hooks.js';
 import type { GameState, Msg, PlayerState } from '../types.js';
 
@@ -18,8 +20,6 @@ export function giveResult(state: GameState, self: PlayerState, text: Msg, step:
   self.nightResult = text;
   record(state, 'info', { actor: self.id, character: self.perceived, step, msg: text, lost: abilityLostReason(state, self) });
 }
-
-const slotOf = (state: GameState, step: string) => `${step}-n${state.night}`;
 
 export const TB: CharacterDef[] = [
   { id: 'washerwoman', name: 'Washerwoman', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 330, otherNight: 0,
@@ -92,7 +92,7 @@ export const TB: CharacterDef[] = [
   { id: 'mayor', name: 'Mayor', team: 'townsfolk', shape: 'info', edition: 'tb', firstNight: 0, otherNight: 0,
     ability: 'If only 3 players live and no execution happens, your team wins. If you die at night, another player might die instead.',
     hooks: {
-      redirectsKill: (s, owner, victim, killer) => {
+      redirectsKill: (s, owner, _victim, killer) => {
         if (!abilityWorks(s, owner)) return null;
         const alternatives = s.players.filter((p) => p.alive && p.id !== owner.id && p.id !== killer.id && !protectionFor(s, p, 'demon'));
         return alternatives.length ? alternatives[Math.floor(Math.random() * alternatives.length)] : owner;
@@ -191,10 +191,3 @@ export const TB: CharacterDef[] = [
     } },
 ];
 
-// (Team lookups without importing the registry, which imports this file.)
-import { CHARACTERS } from '../characters.js';
-function isDemon(p: PlayerState): boolean { return CHARACTERS[p.character]?.team === 'demon'; }
-function isMinion(p: PlayerState): boolean { return CHARACTERS[p.character]?.team === 'minion'; }
-void slotOf;
-void minionInfo;
-void undertakerInfo;

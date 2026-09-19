@@ -2,13 +2,12 @@
 // reactions, replacements) fire the same way whatever killed the player.
 import { CHARACTERS } from './characters.js';
 import { record } from './history.js';
+import { msg } from './messages.js';
 import { abilityLostReason, abilityWorks } from './registration.js';
 import { evaluateWin } from './win.js';
-import type { GameState, Msg, PlayerState } from './types.js';
+import type { GameState, PlayerState } from './types.js';
 
 export type DeathCause = string; // 'demon' | 'execution' | 'virgin' | 'slayer' | 'mayorBounce' | 'starPass' | ...
-
-export const isExecution = (cause: DeathCause): boolean => cause === 'execution' || cause === 'virgin';
 
 /** The hooks of a character (never undefined). */
 export function hooksOf(charId: string) {
@@ -144,10 +143,6 @@ export function abilityKill(state: GameState, actor: PlayerState, target: Player
 export function notifyChosen(state: GameState, chooser: PlayerState, chosenId: string, step: string): void {
   const chosen = state.players.find((p) => p.id === chosenId);
   if (chosen) hooksOf(chosen.character).onChosen?.(state, chosen, chooser, step);
-}
-
-export function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
-  return vars ? { key, vars } : { key };
 }
 
 /**

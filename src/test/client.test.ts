@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { addPlayer, castVote, createGame, declareNeighbor, nominate, skipSpeech, startGame, useSlayer } from '../game/engine.js';
+import { CHARACTERS } from '../game/characters.js';
 import { MIN_ANSWER_MS } from '../game/night.js';
 import type { CharacterId, GameState } from '../game/types.js';
 import { viewFor, type GameView } from '../game/view.js';
@@ -197,6 +198,14 @@ test('rows are not tappable once you have nominated today, nor for someone alrea
 test('the Slayer-shot card is shown to every living player who has not fired — not only to the Slayer', async () => {
   const s = mkDay(['imp', 'slayer', 'empath', 'washerwoman', 'soldier']);
   for (const i of [0, 1, 2, 3, 4]) assert.ok((await dayApp(s, i)).text().includes('Slayer shot'), `player ${i}`);
+});
+
+test('regression: no Slayer-shot card on a script without the Slayer (e.g. Bad Moon Rising)', async () => {
+  const s = mkDay(['po', 'grandmother', 'sailor', 'chambermaid', 'exorcist']);
+  s.scriptChars = s.scriptChars.filter((c) => CHARACTERS[c].edition === 'bmr');
+  assert.ok(!s.scriptChars.includes('slayer'));
+  for (const i of [0, 1, 2, 3, 4]) assert.ok(!(await dayApp(s, i)).text().includes('Slayer shot'), `player ${i}`);
+  assert.throws(() => useSlayer(s, s.players[1].id, s.players[0].id), /not in this script/);
 });
 
 test('the Slayer-shot card is gone once your shot is spent, when you are dead, and at night', async () => {

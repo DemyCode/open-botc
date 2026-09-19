@@ -1,10 +1,7 @@
 import { CHARACTERS } from './characters.js';
 import { record } from './history.js';
+import { msg } from './messages.js';
 import type { GameState, Msg } from './types.js';
-
-function msg(key: string): Msg {
-  return { key };
-}
 
 /** Sets the game's winner exactly once — later calls (e.g. a second condition firing the same
  * tick) are no-ops so the first true result always stands. */

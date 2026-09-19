@@ -1,13 +1,14 @@
 import { CHARACTERS, alignmentOfCharacter } from './characters.js';
 import { executePlayer, hooksOf, markDead } from './deaths.js';
 import { record } from './history.js';
+import { msg } from './messages.js';
 import { EVIL_INTRO_MIN_PLAYERS, beginNight, tick as nightTick } from './night.js';
 import { evaluateWin, setWinner } from './win.js';
 import { abilityLostReason, abilityWorks, noteMalfunction, registersAs } from './registration.js';
 import { randomId } from './rng.js';
 import { dealCharacters } from './setup.js';
 import { CUSTOM_SCRIPT_ID, SCRIPTS, resolveScript } from './scripts.js';
-import type { GameState, Msg, Nomination, PlayerState } from './types.js';
+import type { GameState, Nomination, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
 export { submitRealResponse } from './night.js';
@@ -15,10 +16,6 @@ export { submitRealResponse } from './night.js';
 const ACCUSE_MS = 45_000;
 const DEFEND_MS = 45_000;
 const VOTER_TIMEOUT_MS = 15_000;
-
-function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
-  return vars ? { key, vars } : { key };
-}
 
 function findPlayer(state: GameState, id: string): PlayerState {
   const p = state.players.find((pl) => pl.id === id);
@@ -186,6 +183,7 @@ export function startGame(state: GameState): void {
  */
 export function useSlayer(state: GameState, slayerId: string, targetId: string): void {
   if (state.phase !== 'day') throw new GameError('Slayer can only be used during the day');
+  if (!state.scriptChars.includes('slayer')) throw new GameError('The Slayer is not in this script');
   const self = findPlayer(state, slayerId);
   if (!self.alive) throw new GameError('Dead players cannot use the Slayer shot');
   if (self.slayerUsed) throw new GameError('Slayer shot already used');

@@ -10,19 +10,12 @@
 // closest equivalent (the test says so) or skipped with the reason.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CHARACTERS } from '../game/characters.js';
 import { hooksOf } from '../game/deaths.js';
 import { setAlignment } from '../game/chars/util.js';
 import { abilityLostReason } from '../game/registration.js';
-import type { CharacterId, GameState, PlayerState } from '../game/types.js';
-import { advanceUntil, answerRealTurn, breakDawn, byChar, runFullNight, skipRound, startNight } from './helpers.js';
+import type { CharacterId, GameState } from '../game/types.js';
+import { advanceUntil, answerRealTurn, breakDawn, byChar, skipRound, startNight } from './helpers.js';
 import { execute, findSecret, lastInfo, mk, mkDay, named, night } from './wikiHelpers.js';
-
-/** Answers the next `charId` step with targets (and an optional picked character). */
-function answer(s: GameState, charId: CharacterId, targets: CharacterId[], character?: string): void {
-  advanceUntil(s, charId);
-  answerRealTurn(s, targets.map((c) => byChar(s, c).id), character);
-}
 /** Plays the rest of the current night, then dawn. */
 function finish(s: GameState): void {
   let guard = 0;
@@ -531,7 +524,6 @@ test('Tinker ex. 0 — the Tinker can die at night even when the Demon attacked 
 });
 
 test('Tinker ex. 1 — the Tea Lady stops the Tinker from dying', () => {
-  const s = mkDay(['imp', 'poisoner', 'tinker', 'tealady', 'soldier', 'monk', 'chef']);
   // The Tinker is seat 2, the Tea Lady seat 3: neighbours. Her other neighbour is seat 4 (soldier), good.
   for (let i = 0; i < 40; i++) {
     const t = mkDay(['imp', 'poisoner', 'tinker', 'tealady', 'soldier', 'monk', 'chef']);
@@ -856,7 +848,6 @@ test('Po ex. 1 — a drunk Po that attacks nobody still charges; the three kills
 test('Po ex. 2 — a Po that attacks the Goon becomes drunk and kills only the first victim', () => {
   const s = mkDay(['po', 'poisoner', 'goon', 'moonchild', 'grandmother', 'soldier', 'monk']);
   const mc = byChar(s, 'moonchild');
-  const gm = byChar(s, 'grandmother');
   byChar(s, 'po').flags.poThree = true; // charged: three targets tonight
   night(s, { po: ['moonchild', 'goon', 'grandmother'] });
   assert.equal(mc.alive, false);

@@ -1758,7 +1758,8 @@ function renderDay(v) {
 
   // Shown to every living player who hasn't fired yet — not just the Slayer — so anyone can bluff
   // a shot and nobody can tell the real Slayer from their screen.
-  if (v.myCharacter && !v.mySlayerUsed && v.amIAlive) {
+  // Only when the Slayer is on the script — otherwise the card itself would prove they aren't in play.
+  if (v.myCharacter && !v.mySlayerUsed && v.amIAlive && v.script.characters.includes('slayer')) {
     children.push(
       el('div', { class: 'card' }, [
         el('h2', {}, t('slayerShot')),

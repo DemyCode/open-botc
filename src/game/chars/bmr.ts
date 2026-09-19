@@ -1,22 +1,21 @@
 // Bad Moon Rising.
 import { CHARACTERS } from '../characters.js';
-import { abilityKill, demonAttack, hooksOf, msg, notifyChosen, tryKill } from '../deaths.js';
+import { abilityKill, demonAttack, hooksOf, notifyChosen, tryKill } from '../deaths.js';
+import { msg } from '../messages.js';
 import { addDrunk, addPoison, removeEffects } from '../effects.js';
 import { record } from '../history.js';
-import { demonInfo, livingNeighbors } from '../info.js';
+import { livingNeighbors } from '../info.js';
 import { appendLog } from '../log.js';
 import { abilityWorks } from '../registration.js';
 import { evaluateWin } from '../win.js';
 import { statementForMessage, evalStatement, parseStatement } from '../statements.js';
 import type { CharacterDef } from '../hooks.js';
-import type { GameState, Msg, PlayerState } from '../types.js';
+import type { GameState, PlayerState } from '../types.js';
 import { GameError } from '../types.js';
 import { giveResult } from './tb.js';
-import { alivePlayers, choose, isDemon, isGood, resurrect, roll, setAlignment, teamOf } from './util.js';
+import { alivePlayers, byId, choose, demonChoosePrompt, isDemon, isGood, resurrect, roll, setAlignment, teamOf } from './util.js';
 
-const byId = (s: GameState, id: string): PlayerState => s.players.find((p) => p.id === id)!;
 const never = () => [] as PlayerState[];
-const prompt1 = (body: Msg) => () => ({ min: 1, max: 1, body });
 
 /** Resolves what the Pukka poisoned last night: they die now (unless something protects them). */
 function pukkaResolvePrevious(s: GameState, pukka: PlayerState): void {
@@ -346,7 +345,7 @@ export const BMR: CharacterDef[] = [
     hooks: {
       night: {
         actors: (s) => ((s.data.diedToday ?? []).length ? [] : s.players.filter((p) => (p.alive || p.flags.hiddenAlive) && p.perceived === 'zombuul')),
-        prompt: prompt1(msg('demonChoose')),
+        prompt: demonChoosePrompt,
         apply: (s, self, targets) => demonAttack(s, self, targets[0]),
       },
       lastResort: (s, owner, victim) => {
@@ -412,4 +411,4 @@ export const BMR: CharacterDef[] = [
 function isSafe(s: GameState, p: PlayerState): boolean {
   return s.players.some((o) => o.alive && hooksOf(o.character).protects?.(s, o, p, 'gossip'));
 }
-void abilityKill; void demonInfo;
+

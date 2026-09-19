@@ -1,12 +1,9 @@
 import { CHARACTERS } from './characters.js';
 import { hooksOf } from './deaths.js';
+import { msg } from './messages.js';
 import { abilityWorks, apparentCharacter, registersAs, type RegisterKind } from './registration.js';
 import { stableFloat, stablePick } from './rng.js';
 import type { GameState, Msg, PlayerState, Team } from './types.js';
-
-function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
-  return vars ? { key, vars } : { key };
-}
 
 /**
  * True when this player's information is false for a reason other than being drunk/poisoned: a
@@ -77,18 +74,25 @@ export function chefInfo(state: GameState, self: PlayerState, slot: string): Msg
   return msg('chefInfo', { count });
 }
 
-export function livingNeighbors(state: GameState, self: PlayerState): [PlayerState, PlayerState] {
+/** The nearest living player on each side of `self` (self excluded), optionally matching a predicate. */
+export function nearestLiving(state: GameState, self: PlayerState, predicate?: (p: PlayerState) => boolean): PlayerState[] {
   const seated = state.players.slice().sort((a, b) => a.seat - b.seat);
   const idx = seated.findIndex((p) => p.id === self.id);
-  const find = (step: number) => {
+  const find = (step: number): PlayerState | undefined => {
     let i = idx;
     for (let n = 0; n < seated.length; n++) {
       i = (i + step + seated.length) % seated.length;
-      if (seated[i].alive && seated[i].id !== self.id) return seated[i];
+      if (seated[i].alive && seated[i].id !== self.id && (!predicate || predicate(seated[i]))) return seated[i];
     }
-    return seated[idx];
+    return undefined;
   };
-  return [find(-1), find(1)];
+  return [find(-1), find(1)].filter((p): p is PlayerState => p !== undefined);
+}
+
+export function livingNeighbors(state: GameState, self: PlayerState): [PlayerState, PlayerState] {
+  const me = state.players.find((p) => p.id === self.id)!;
+  const [left, right] = nearestLiving(state, self);
+  return [left ?? me, right ?? me]; // self is the fallback when nobody living sits on that side
 }
 
 export function empathInfo(state: GameState, self: PlayerState, slot: string): Msg {
@@ -180,7 +184,7 @@ export function spyInfo(state: GameState, self: PlayerState, slot: string): Msg 
       dead: state.players.map((p) => (p.alive ? '' : '1')),
     });
   }
-  const fakeRoles = state.players.map((p, i) => stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake', i).id);
+  const fakeRoles = state.players.map((_, i) => stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake', i).id);
   return msg('spyGrimoire', {
     names: state.players.map((p) => p.name),
     roles: fakeRoles,

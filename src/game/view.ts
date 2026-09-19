@@ -1,11 +1,8 @@
 import { CHARACTERS } from './characters.js';
 import { offeredActions, type OfferedAction } from './dayactions.js';
+import { msg } from './messages.js';
 import { MIN_ANSWER_MS, specOf } from './night.js';
 import type { GameState, HistoryEvent, Msg, Nomination, NominationState, Phase, PlayerState } from './types.js';
-
-function msg(key: string, vars?: Record<string, string | number | string[]>): Msg {
-  return vars ? { key, vars } : { key };
-}
 
 export interface PublicPlayerView {
   id: string;

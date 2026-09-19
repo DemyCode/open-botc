@@ -203,7 +203,6 @@ test('Mayor redirect can pick any eligible alternative, not always the same one'
     startNight(s);
     runFullNight(s);
     startNight(s); // night 2
-    const imp = byChar(s, 'imp');
     const mayor = byChar(s, 'mayor');
     advanceUntil(s, 'imp');
     answerRealTurn(s, [mayor.id]);

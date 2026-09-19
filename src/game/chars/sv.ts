@@ -1,36 +1,26 @@
 // Sects & Violets.
 import { CHARACTERS, alignmentOfCharacter, isEvilTeam } from '../characters.js';
-import { abilityKill, demonAttack, executePlayer, markDead, msg, tryKill } from '../deaths.js';
+import { abilityKill, demonAttack, executePlayer, markDead } from '../deaths.js';
 import { addDrunk, addPoison, removeEffects } from '../effects.js';
 import { record } from '../history.js';
-import { infoUnreliable } from '../info.js';
+import { msg } from '../messages.js';
+import { infoUnreliable, nearestLiving } from '../info.js';
 import { appendLog } from '../log.js';
 import { abilityWorks, malfunctionCount } from '../registration.js';
 import { evalStatement, generateStatement, parseStatement, statementForMessage } from '../statements.js';
 import { evaluateWin, setWinner } from '../win.js';
 import type { CharacterDef } from '../hooks.js';
-import type { CharacterId, GameState, Msg, PlayerState } from '../types.js';
+import type { CharacterId, GameState, PlayerState } from '../types.js';
 import { GameError } from '../types.js';
 import { giveResult } from './tb.js';
-import { alivePlayers, choose, isDemon, isGood, isMinion, roll, teamOf } from './util.js';
+import { alivePlayers, byId, choose, demonChoosePrompt, isDemon, isMinion, roll, teamOf } from './util.js';
 
-const byId = (s: GameState, id: string): PlayerState => s.players.find((p) => p.id === id)!;
 const seated = (s: GameState): PlayerState[] => s.players.slice().sort((a, b) => a.seat - b.seat);
 const goodChars = (s: GameState): CharacterId[] => s.scriptChars.filter((c) => !isEvilTeam(CHARACTERS[c].team));
 
 /** The nearest living Townsfolk on each side of `p` (up to two), skipping the dead and non-Townsfolk. */
-function nearestTownsfolkNeighbors(s: GameState, p: PlayerState): PlayerState[] {
-  const order = seated(s);
-  const idx = order.indexOf(p);
-  const out: PlayerState[] = [];
-  for (const dir of [1, -1]) {
-    for (let n = 1; n < order.length; n++) {
-      const q = order[(((idx + dir * n) % order.length) + order.length) % order.length];
-      if (q.alive && q.id !== p.id && teamOf(q) === 'townsfolk') { out.push(q); break; }
-    }
-  }
-  return out;
-}
+const nearestTownsfolkNeighbors = (s: GameState, p: PlayerState): PlayerState[] =>
+  nearestLiving(s, p, (q) => teamOf(q) === 'townsfolk');
 
 /** How many seats from the Demon to its nearest Minion, going either way. */
 function stepsToNearestMinion(s: GameState, demon: PlayerState): number {
@@ -399,7 +389,7 @@ export const SV: CharacterDef[] = [
     hooks: {
       setup: { outsiderDelta: 1 },
       night: {
-        prompt: () => ({ min: 1, max: 1, body: msg('demonChoose') }),
+        prompt: demonChoosePrompt,
         apply: (s, self, targets) => {
           if (!abilityWorks(s, self)) { demonAttack(s, self, targets[0]); return; }
           const target = byId(s, targets[0]);
@@ -421,7 +411,7 @@ export const SV: CharacterDef[] = [
     hooks: {
       setup: { outsiderDelta: -1 },
       night: {
-        prompt: () => ({ min: 1, max: 1, body: msg('demonChoose') }),
+        prompt: demonChoosePrompt,
         apply: (s, self, targets) => {
           const target = byId(s, targets[0]);
           const wasMinion = teamOf(target) === 'minion';
@@ -442,7 +432,7 @@ export const SV: CharacterDef[] = [
           for (const t of nearestTownsfolkNeighbors(s, d)) addPoison(s, t, d, 'nodashii', null, { needsSourceAlive: true });
         }
       },
-      prompt: () => ({ min: 1, max: 1, body: msg('demonChoose') }),
+      prompt: demonChoosePrompt,
       apply: (s, self, targets) => demonAttack(s, self, targets[0]),
     } } },
   { id: 'vortox', name: 'Vortox', team: 'demon', shape: 'choose', edition: 'sv', firstNight: 0, otherNight: 310,
@@ -450,7 +440,7 @@ export const SV: CharacterDef[] = [
     hooks: {
       falsifiesTownsfolkInfo: true,
       night: {
-        prompt: () => ({ min: 1, max: 1, body: msg('demonChoose') }),
+        prompt: demonChoosePrompt,
         apply: (s, self, targets) => demonAttack(s, self, targets[0]),
       },
       endOfDayWin: (s, _owner, executedId) => {
@@ -461,4 +451,4 @@ export const SV: CharacterDef[] = [
     } },
 ];
 
-void tryKill;
+

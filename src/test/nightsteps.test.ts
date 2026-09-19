@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { tick } from '../game/engine.js';
-import { FIRST_NIGHT_SEQUENCE, MIN_ANSWER_MS, OTHER_NIGHT_SEQUENCE, submitRealResponse } from '../game/night.js';
+import { FIRST_NIGHT_SEQUENCE, MIN_ANSWER_MS, submitRealResponse } from '../game/night.js';
 import type { CharacterId, GameState } from '../game/types.js';
 import { viewFor } from '../game/view.js';
 import { advanceUntil, answerDecoys, answerRealTurn, byChar, mk, runFullNight, skipRound, startNight } from './helpers.js';

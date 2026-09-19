@@ -34,13 +34,3 @@ export function stablePick<T>(secret: string, items: T[], ...parts: (string | nu
 export function randomId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
-
-export function shuffleWithSeed<T>(items: T[], seed: number): T[] {
-  const rand = mulberry32(seed);
-  const arr = items.slice();
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}

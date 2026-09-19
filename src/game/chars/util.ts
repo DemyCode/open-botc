@@ -1,12 +1,18 @@
 // Small helpers shared by the character definitions.
 import { CHARACTERS } from '../characters.js';
 import { record } from '../history.js';
+import { msg } from '../messages.js';
 import { stableFloat, stablePick } from '../rng.js';
 import type { GameState, PlayerState, Team } from '../types.js';
 
+/** The player with this id (the id always comes from a validated target list, so it exists). */
+export const byId = (state: GameState, id: string): PlayerState => state.players.find((p) => p.id === id)!;
+
+/** The plain "choose a player to kill" night prompt shared by most Demons. */
+export const demonChoosePrompt = () => ({ min: 1, max: 1, body: msg('demonChoose') });
+
 export const teamOf = (p: PlayerState): Team => CHARACTERS[p.character].team;
 export const isGood = (p: PlayerState): boolean => p.alignment === 'good';
-export const isEvil = (p: PlayerState): boolean => p.alignment === 'evil';
 export const isDemon = (p: PlayerState): boolean => teamOf(p) === 'demon';
 export const isMinion = (p: PlayerState): boolean => teamOf(p) === 'minion';
 

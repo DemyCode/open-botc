@@ -519,7 +519,7 @@ function whereIsEveryone(cs: Client[]): string {
   }).join('\n');
 }
 
-function attachBrain(c: Client, all: () => Client[]): void {
+function attachBrain(c: Client, _all: () => Client[]): void {
   const sent = new Set<string>();
   (c as Client & { sent?: Set<string> }).sent = sent;
   const once = (key: string, msg: Msg, delay = 0) => {
