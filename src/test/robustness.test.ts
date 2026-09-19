@@ -32,14 +32,17 @@ function replay(restoreEveryStep: boolean): string[] {
       restore();
       if (s.phase === 'night') {
         let guard = 0;
-        while (s.pendingRealTurn && guard++ < 200) {
+        while (s.pendingRealTurn && guard++ < 3000) { // (one tap per loop)
           restore();
           const t = s.pendingRealTurn!;
           const id = t.participantIds.find((x) => !(x in t.responses))!;
           const turn = viewFor(s, id).nightTurn!;
-          const picks = turn.shape === 'choose' ? turn.choices.filter((c) => c.id !== id || t.max > 1).slice(0, turn.min).map((c) => c.id) : [];
-          log.push(`night${s.night} ${t.charId} ${s.players.find((p) => p.id === id)!.name} ${turn.decoy ? 'decoy' : 'real'} ${picks.length}`);
-          submitRealResponse(s, id, picks, t.openedAt + 5000);
+          // One tap: the first legal player on a pick screen (none where "No one" is allowed), the first character, or "Got it".
+          const first = turn.choices.find((c) => !c.disabled && c.id !== id) ?? turn.choices.find((c) => !c.disabled);
+          const picks = turn.kind === 'pick' && !turn.canSkip && first ? [first.id] : [];
+          const character = turn.kind === 'character' && !turn.canSkip ? turn.characters[0]?.id : undefined;
+          log.push(`night${s.night} ${t.charId} ${s.players.find((p) => p.id === id)!.name} ${turn.kind} ${picks.length}`);
+          submitRealResponse(s, id, picks, t.openedAt + 5000, character);
         }
         restore();
         if (s.phase === 'night') { tick(s, s.dawnAt!); log.push(`dawn ${s.day}: dead=${s.players.filter((p) => !p.alive).length}`); }

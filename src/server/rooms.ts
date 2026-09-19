@@ -28,7 +28,7 @@ const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
  * (or worse, a crash later mid-game when some code path first touches the missing field), we
  * just discard everything from a mismatched version and start fresh.
  */
-export const SCHEMA_VERSION = 5; // 5: poison is an effect, Monk/Butler state lives in GameState.data (typed); 4: scripts (scriptId/scriptChars), effects, per-player flags; 3: GameState gained `history` (the replay); 2: night steps wake everyone
+export const SCHEMA_VERSION = 6; // 6: night steps are played in rounds (one tap per player per round, tips instead of decoy questions); 5: poison is an effect, Monk/Butler state lives in GameState.data (typed); 4: scripts (scriptId/scriptChars), effects, per-player flags; 3: GameState gained `history` (the replay); 2: night steps wake everyone
 
 interface PersistedFile {
   version: number;

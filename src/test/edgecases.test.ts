@@ -5,7 +5,7 @@ import { castVote, nominate, startGame, tick, toggleEndDayRequest, useSlayer } f
 import { submitRealResponse } from '../game/night.js';
 import { viewFor } from '../game/view.js';
 import {
-  advanceUntil, answerRealTurn, byChar, endDayByConsensus, fastForwardToVote, mk, mkDay, runFullNight, startNight, voteInOrder,
+  advanceUntil, answerDecoys, answerRealTurn, byChar, endDayByConsensus, fastForwardToVote, mk, mkDay, runFullNight, startNight, voteInOrder,
 } from './helpers.js';
 
 // ---------------------------------------------------------------------------------------------
@@ -325,6 +325,10 @@ test('Fortune Teller cannot pick the same player twice', () => {
   startNight(s);
   advanceUntil(s, 'fortuneteller');
   assert.throws(() => submitRealResponse(s, ft.id, [empath.id, empath.id]));
+  // One pick per tap: the Empath first, then the Empath again is refused.
+  submitRealResponse(s, ft.id, [empath.id]);
+  answerDecoys(s);
+  assert.throws(() => submitRealResponse(s, ft.id, [empath.id]), /same player twice/);
 });
 
 test('Fortune Teller must pick exactly two players', () => {
@@ -332,8 +336,12 @@ test('Fortune Teller must pick exactly two players', () => {
   const [imp, ft, empath, washerwoman] = s.players;
   startNight(s);
   advanceUntil(s, 'fortuneteller');
-  assert.throws(() => submitRealResponse(s, ft.id, [empath.id]));
-  assert.throws(() => submitRealResponse(s, ft.id, [empath.id, washerwoman.id, imp.id]));
+  assert.throws(() => submitRealResponse(s, ft.id, []), /Choose a player/, 'no "No one" for the Fortune Teller');
+  assert.throws(() => submitRealResponse(s, ft.id, [empath.id, washerwoman.id, imp.id]), /one player at a time/);
+  submitRealResponse(s, ft.id, [empath.id]);
+  answerDecoys(s);
+  assert.equal(viewFor(s, ft.id).nightTurn!.kind, 'pick', 'one is not enough: a second pick follows');
+  assert.throws(() => submitRealResponse(s, ft.id, []), /Choose a player/);
 });
 
 test('Monk cannot protect themselves', () => {
@@ -362,7 +370,7 @@ test('the Imp may attack a dead player — nothing happens, and nobody is report
   assert.equal(s.publicLog.at(-1)!.key, 'nobodyDiedLastNight');
 });
 
-test('a player dead from an earlier night is never woken for real, but still gets a decoy screen', () => {
+test('a player dead from an earlier night is never woken for real, but still gets a tip screen', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
   const empath = byChar(s, 'empath');
   empath.alive = false;
@@ -372,7 +380,7 @@ test('a player dead from an earlier night is never woken for real, but still get
   assert.ok(!s.pendingRealTurn!.playerIds.includes(empath.id), 'but never a real turn');
 });
 
-test('a Zombuul that looks dead still acts, and the other dead players get decoys so it blends in', () => {
+test('a Zombuul that looks dead still acts, and the other dead players get tips so it blends in', () => {
   const s = mkDay(['zombuul', 'poisoner', 'empath', 'soldier', 'mayor', 'chef', 'butler']);
   const zombuul = byChar(s, 'zombuul');
   const empath = byChar(s, 'empath');
@@ -382,9 +390,9 @@ test('a Zombuul that looks dead still acts, and the other dead players get decoy
   startNight(s);
   advanceUntil(s, 'zombuul');
   assert.ok(s.pendingRealTurn!.playerIds.includes(zombuul.id), 'the hidden Zombuul wakes for real');
-  assert.equal(viewFor(s, zombuul.id).nightTurn?.decoy, false, 'and gets the real turn');
-  assert.equal(viewFor(s, empath.id).nightTurn?.decoy, true, 'a long-dead player gets a decoy, masking it');
-  assert.equal(viewFor(s, byChar(s, 'soldier').id).nightTurn?.decoy, true);
+  assert.equal(viewFor(s, zombuul.id).nightTurn?.kind, 'pick', 'and gets the real screen');
+  assert.equal(viewFor(s, empath.id).nightTurn?.kind, 'tip', 'a long-dead player gets a tip, masking it');
+  assert.equal(viewFor(s, byChar(s, 'soldier').id).nightTurn?.kind, 'tip');
 });
 
 test('a player cannot answer the same night turn twice', () => {

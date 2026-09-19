@@ -5,7 +5,7 @@ import { CHARACTERS } from '../game/characters.js';
 import { submitRealResponse } from '../game/night.js';
 import { tick } from '../game/engine.js';
 import { viewFor } from '../game/view.js';
-import { advanceUntil, answerRealTurn, breakDawn, byChar, byPerceived, mk, runFullNight, skipRound, startNight } from './helpers.js';
+import { advanceUntil, answerDecoys, answerRealTurn, breakDawn, byChar, byPerceived, mk, playRounds, runFullNight, skipRound, startNight } from './helpers.js';
 
 test('a night round only ever involves the actual actor(s) for that character', () => {
   const state = mk([
@@ -93,11 +93,10 @@ test('Fortune Teller: the result of choosing is available immediately, not just 
   const empath = byChar(state, 'empath');
 
   advanceUntil(state, 'fortuneteller');
-  submitRealResponse(state, ft.id, [imp.id, empath.id]);
-
-  // Fortune Teller is the only holder of this round, so it has already advanced by now — the
-  // result must survive on the player, not the (already-replaced) round object.
-  assert.equal(ft.nightResult?.key, 'fortuneTellerYes');
+  // Two picks, one round each (everyone else taps a tip meanwhile)...
+  playRounds(state, 2, { [ft.id]: [[imp.id], [empath.id]] });
+  // ...then a round of its own shows the result on her screen at once.
+  assert.deepEqual(viewFor(state, ft.id).nightTurn, { ...viewFor(state, ft.id).nightTurn!, kind: 'result', body: { key: 'fortuneTellerYes' } });
   assert.deepEqual(ft.nightResult, ft.log.at(-1)?.msg, 'the immediate result should match what was logged');
 });
 
@@ -113,8 +112,9 @@ test('Ravenkeeper: the result of choosing is available immediately, not just in 
   answerRealTurn(state, [rk.id]); // kill the ravenkeeper
 
   advanceUntil(state, 'ravenkeeper');
-  submitRealResponse(state, rk.id, [chef.id]);
+  playRounds(state, 1, { [rk.id]: [[chef.id]] });
 
+  assert.equal(viewFor(state, rk.id).nightTurn?.kind, 'result', 'the answer is on screen right away');
   assert.deepEqual(rk.nightResult, { key: 'ravenkeeperInfo', vars: { name: chef.name, role: 'chef' } });
 });
 
@@ -149,7 +149,9 @@ test('Fortune Teller may legally target a dead player', () => {
   const ft = byChar(state, 'fortuneteller');
   const soldier = byChar(state, 'soldier');
   advanceUntil(state, 'fortuneteller');
-  assert.doesNotThrow(() => submitRealResponse(state, ft.id, [empath.id, soldier.id]));
+  assert.doesNotThrow(() => submitRealResponse(state, ft.id, [empath.id]));
+  answerDecoys(state);
+  assert.doesNotThrow(() => submitRealResponse(state, ft.id, [soldier.id]));
 });
 
 test('Ravenkeeper may legally target a different dead player, not just themselves', () => {
@@ -167,6 +169,7 @@ test('Ravenkeeper may legally target a different dead player, not just themselve
   answerRealTurn(state, [rk.id]); // kill the ravenkeeper so they get their triggered turn
   advanceUntil(state, 'ravenkeeper');
   assert.doesNotThrow(() => submitRealResponse(state, rk.id, [chef.id]));
+  answerDecoys(state);
   assert.deepEqual(rk.nightResult, { key: 'ravenkeeperInfo', vars: { name: chef.name, role: 'chef' } });
 });
 
@@ -178,15 +181,14 @@ test('Butler may legally choose a dead player as their master', () => {
   const butler = byChar(state, 'butler');
   advanceUntil(state, 'butler');
   assert.doesNotThrow(() => submitRealResponse(state, butler.id, [empath.id]));
+  answerDecoys(state);
   assert.equal(state.data.butlerMasterId, empath.id);
 });
 
 test('a night result is still delivered even when answering was the very last action of the whole night', () => {
-  // Regression: the view used to hide nightResult once the phase left 'night'. If a player's
-  // choose-and-get-a-result turn (Fortune Teller, Ravenkeeper) happened to be the last action
-  // left for anyone that night, finishNight() ran synchronously in the same call, so the very
-  // same response that produced the result also flipped the phase to 'day' before it was ever
-  // shown — the player never saw their answer at all.
+  // Regression: a player whose choose-and-get-a-result turn (Fortune Teller, Ravenkeeper) was the
+  // last action of the night once never saw their answer: the night ended in the same call. Now
+  // the result is a round of its own, so the night cannot end before it has been read.
   const s = mk(['fortuneteller', 'imp', 'empath', 'soldier', 'washerwoman']); // no butler/undertaker/spy: nobody acts after the Fortune Teller
   startNight(s);
   runFullNight(s);
@@ -201,15 +203,14 @@ test('a night result is still delivered even when answering was the very last ac
   advanceUntil(s, 'empath');
   answerRealTurn(s, []); // info-shape round, just needs acknowledging
   advanceUntil(s, 'fortuneteller');
-  submitRealResponse(s, ft.id, [imp.id, empath.id]); // the last real actor of the whole night
-  while (s.pendingRealTurn) skipRound(s); // everyone else's decoys, then the remaining steps
-  breakDawn(s);
-
-  assert.equal(s.phase, 'day');
+  s.nightStartedAt = Date.now() - 60_000; // long enough: dawn breaks as soon as the last tap lands
+  playRounds(s, 2, { [ft.id]: [[imp.id], [empath.id]] }); // the last real picks of the whole night
+  assert.equal(s.phase, 'night', 'the night waits for the result to be read');
   const view = viewFor(s, ft.id);
-  assert.equal(view.phase, 'day');
-  assert.ok(view.nightResult, 'the Fortune Teller must still receive her result even though the phase already moved to day');
-  assert.equal(view.nightResult?.key, 'fortuneTellerYes');
+  assert.equal(view.nightTurn?.kind, 'result');
+  assert.deepEqual(view.nightTurn?.body, { key: 'fortuneTellerYes' });
+  playRounds(s, 1, {});
+  assert.equal(s.phase, 'day', 'then day comes at once');
 });
 
 test("a player killed earlier the same night still appears alive in the Fortune Teller's choice list — not revealed before dawn", () => {
@@ -257,6 +258,7 @@ test('the Poisoner may target a dead player — "any player" at night includes t
   const poisoner = byChar(state, 'poisoner');
   advanceUntil(state, 'poisoner');
   submitRealResponse(state, poisoner.id, [empath.id]);
+  answerDecoys(state);
   assert.equal(poisonedId(state), empath.id);
 });
 

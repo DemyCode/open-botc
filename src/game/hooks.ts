@@ -38,7 +38,7 @@ export interface NightSpec {
   prompt?(state: GameState, self: PlayerState): NightPrompt;
   /** "info" steps: the information shown (computed when the step opens). */
   info?(state: GameState, self: PlayerState, slot: string): Msg;
-  /** The effect of the real actor's answer (a decoy answer never reaches this). */
+  /** The effect of the real actor's picks, once the last one is in (a tip's "Got it" never reaches this). */
   apply?(state: GameState, self: PlayerState, targets: string[], slot: string, character?: string): void;
   /** Runs when the step's turn comes, even if nobody is woken (a poison that wears off...). */
   before?(state: GameState): void;
@@ -49,7 +49,7 @@ export interface NightSpec {
   recordsChoice?: boolean;
   /** Whether this step is a wake "due to their ability" tonight (the Chambermaid counts those). Default: yes. */
   abilityWake?: (state: GameState) => boolean;
-  /** The step gives a result right after answering (Fortune Teller, Ravenkeeper): decoys show one too. */
+  /** The step gives a result right after the last pick (Fortune Teller, Ravenkeeper), shown on a round of its own. */
   result?: boolean;
   /** The character is woken when they are dead (Ravenkeeper): they learn of their own death at once. */
   wakesWhenDead?: boolean;

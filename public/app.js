@@ -4,13 +4,9 @@ const state = {
   token: sessionStorage.getItem('botc.token'),
   playerId: sessionStorage.getItem('botc.playerId'),
   view: null,
-  selected: [],
-  selectedCharacter: null, // the "choose a character" half of a Gambler/Courtier/Philosopher/... turn
   turnReadyAt: 0, // when the current night screen may be answered (the 5-second minimum)
-  decoyResultStep: null, // a decoy's stand-in result screen, still to be dismissed (see submitTurn)
   dawnSeenForDay: null,
   duskSeenForNight: null,
-  nightResultSeenForNight: null,
   roleHidden: true,
 };
 
@@ -78,30 +74,24 @@ function handleMessage(msg) {
     handleTurnChange(msg.view);
     handleVoteBuzz(msg.view);
   } else if (msg.t === 'error') {
+    answeredStepKey = null; // a refused night tap may be tried again
     showError(msg.message);
   }
   render();
 }
 
 function turnKey(view) {
-  if (view.nightTurn) return `turn-${view.nightTurn.stepKey}`;
-  // Deliberately not keyed on phase — a fast night can flip to 'day' while she still hasn't
-  // acknowledged the same, unchanged result, and that isn't a new turn worth resetting for again.
-  if (view.nightResult) return `result-${view.night}-${JSON.stringify(view.nightResult)}`;
-  return null;
+  return view.nightTurn ? `turn-${view.nightTurn.stepKey}` : null;
 }
 
 // The server can push a fresh view for reasons that have nothing to do with your own turn
-// (another player's connection status changes, someone else answers their turn, a periodic
-// timeout check, ...). Only wipe the in-progress selection when the turn itself actually
-// changed — otherwise a routine broadcast mid-click would silently clear what you just picked.
+// (another player's connection status changes, someone else answers, a periodic timeout check,
+// ...). Only restart the screen's wait when the screen itself actually changed.
 function handleTurnChange(view) {
   const key = turnKey(view);
   if (key === lastTurnKey) return;
   // Never buzz for anything at night: a buzz is audible across a silent table and would give away
-  // who just got a real turn or result — the very thing decoy questions exist to hide.
-  state.selected = [];
-  state.selectedCharacter = null;
+  // who just got a real screen — the very thing the tips exist to hide.
   // Small margin on top of the server's wait, so the button never unlocks before the server
   // would accept the answer.
   state.turnReadyAt = view.nightTurn ? Date.now() + view.nightTurn.waitMs + 300 : 0;
@@ -280,26 +270,19 @@ const STRINGS = {
     night: (n) => `Night ${n}`,
     yourInformation: 'Your Information',
     yourTurn: 'Your Turn',
-    confirm: 'Confirm',
     gotIt: 'Got it',
     nobody: 'No one',
     yourResult: 'Your Result',
     continueBtn: 'Continue',
     deadRest: 'You are dead and rest peacefully.',
     waitingEveryone: 'Waiting for everyone to answer… Keep your eyes on your phone.',
-    decoyNote: "🎭 Decoy — this answer does nothing. Everyone is woken at every step of the night, so nobody can tell who really acted.",
-    decoyInfo: 'Nothing to learn at this step. Read this, then tap “Got it”.',
-    decoyResult: 'Your answer was noted. Nothing to learn from it.',
+    decoyNote: '🎭 Nothing to do right now. At night everyone taps their phone exactly as often as everyone else, so nobody can tell who really acted.',
+    decoyInfo: 'Nothing to learn right now. Read this, then tap “Got it”.',
+    pickNumber: (n, total) => `Choice ${n} of ${total}`,
+    alreadyPicked: (names) => `Already chosen: ${names}`,
+    waitSeconds: (s) => `You can answer in ${s}s…`,
     tipLabel: (name) => `Tip for "${name}":`,
     termLabel: (name) => `Definition of "${name}":`,
-    decoyTrust: 'Which player do you trust the most right now?',
-    decoySuspect: 'Which player seems the most suspicious to you?',
-    decoyQuiet: 'Which player has been the quietest so far?',
-    decoyNominate: 'If you had to nominate someone tomorrow, who would it be?',
-    decoyDemon: 'Who do you think is the Demon?',
-    decoyBelieve: 'Whose claim do you believe the most?',
-    decoySameTeam: 'Pick two players you think are on the same team.',
-    decoyOutsider: 'Who do you think might be an Outsider?',
     accuses: (a, b) => `${a} accuses ${b}`,
     makingCase: (name, s) => `${name} is making their case… (${s}s)`,
     doneMoveDefense: 'Done — move to defense',
@@ -394,26 +377,19 @@ const STRINGS = {
     night: (n) => `Nuit ${n}`,
     yourInformation: 'Vos informations',
     yourTurn: 'Votre tour',
-    confirm: 'Confirmer',
     gotIt: "J'ai compris",
     nobody: 'Personne',
     yourResult: 'Votre résultat',
     continueBtn: 'Continuer',
     deadRest: 'Vous êtes mort et reposez en paix.',
     waitingEveryone: 'En attente des réponses de tout le monde… Gardez les yeux sur votre téléphone.',
-    decoyNote: "🎭 Leurre — cette réponse ne fait rien. Tout le monde est réveillé à chaque étape de la nuit, donc personne ne peut savoir qui a vraiment agi.",
-    decoyInfo: "Rien à apprendre à cette étape. Lisez ceci, puis touchez « J'ai compris ».",
-    decoyResult: "Votre réponse est notée. Il n'y a rien à en apprendre.",
+    decoyNote: '🎭 Rien à faire pour le moment. La nuit, chacun touche son téléphone exactement autant de fois que les autres, donc personne ne peut savoir qui a vraiment agi.',
+    decoyInfo: "Rien à apprendre pour le moment. Lisez ceci, puis touchez « J'ai compris ».",
+    pickNumber: (n, total) => `Choix ${n} sur ${total}`,
+    alreadyPicked: (names) => `Déjà choisi : ${names}`,
+    waitSeconds: (s) => `Vous pourrez répondre dans ${s} s…`,
     tipLabel: (name) => `Astuce de « ${name} » :`,
     termLabel: (name) => `Définition de « ${name} » :`,
-    decoyTrust: 'En quel joueur avez-vous le plus confiance en ce moment ?',
-    decoySuspect: 'Quel joueur vous semble le plus suspect ?',
-    decoyQuiet: "Quel joueur a été le plus silencieux jusqu'ici ?",
-    decoyNominate: "Si vous deviez nominer quelqu'un demain, qui serait-ce ?",
-    decoyDemon: 'Qui pensez-vous être le Démon ?',
-    decoyBelieve: 'Quel joueur vous semble le plus sincère sur son rôle ?',
-    decoySameTeam: 'Choisissez deux joueurs qui, selon vous, sont dans la même équipe.',
-    decoyOutsider: 'Qui pourrait être un Marginal selon vous ?',
     accuses: (a, b) => `${a} accuse ${b}`,
     makingCase: (name, s) => `${name} plaide sa cause… (${s}s)`,
     doneMoveDefense: 'Terminé — passer à la défense',
@@ -1014,7 +990,6 @@ function leaveGame() {
   state.view = null;
   state.dawnSeenForDay = null;
   state.duskSeenForNight = null;
-  state.nightResultSeenForNight = null;
   render();
 }
 
@@ -1419,28 +1394,15 @@ function renderLobby(v) {
   ]);
 }
 
-function toggleChoice(selected, id, max) {
-  const i = selected.indexOf(id);
-  if (i >= 0) {
-    selected.splice(i, 1);
-    return;
-  }
-  if (max <= 1) selected.length = 0;
-  else if (selected.length >= max) selected.shift();
-  selected.push(id);
-}
-
-function submitTurn(t) {
-  if (turnSecondsLeft() > 0) return;
-  if (t.shape === 'choose') {
-    const character = t.pickCharacter && state.selectedCharacter ? { character: state.selectedCharacter } : {};
-    send({ t: 'nightReal', targetIds: state.selected.slice(), ...character });
-  } else send({ t: 'nightReal', targetIds: [] });
-  state.selected = [];
-  state.selectedCharacter = null;
-  // After a Fortune Teller / Ravenkeeper step, the real player sees their result: a decoy gets
-  // a result screen too, so the two look the same from across the table.
-  if (t.decoy && t.decoyResult) state.decoyResultStep = t.stepKey;
+/**
+ * Every night screen is answered with ONE tap, sent at once: a player, a character, "No one" or
+ * "Got it" — so every phone at the table is tapped exactly as often as every other.
+ */
+let answeredStepKey = null;
+function answerTurn(turn, answer = {}) {
+  if (turnSecondsLeft() > 0 || answeredStepKey === turn.stepKey) return;
+  answeredStepKey = turn.stepKey; // a second tap on the same screen does nothing
+  send({ t: 'nightReal', targetIds: answer.targetIds || [], ...(answer.character ? { character: answer.character } : {}) });
 }
 
 function renderDawnScreen(v) {
@@ -1486,141 +1448,57 @@ function renderDuskScreen(v) {
   ]);
 }
 
-// Shown for a night result (Fortune Teller / Ravenkeeper) regardless of the current phase — a
-// fast night can already have moved on to 'day' by the time this renders, but the player must
-// still get a screen they actively dismiss before seeing whatever comes next, exactly like the
-// dawn/dusk screens. Requires an explicit "Got it" tap rather than just fading away on its own,
-// so a quick game around the table can never race past it.
-function renderNightResultScreen(v) {
-  return renderResultScreen(v, tMsg(v.nightResult), () => {
-    state.nightResultSeenForNight = v.night;
-  });
-}
+const NIGHT_HEADINGS = { pick: 'yourTurn', character: 'yourTurn', info: 'yourInformation', result: 'yourResult', tip: 'yourTurn' };
 
-/** The decoy's stand-in for a result screen — laid out exactly like the real one. */
-function renderDecoyResultScreen(v) {
-  const tip = currentTip(v, 'result-' + state.decoyResultStep);
-  return renderResultScreen(v, tip ? tip.text : t('decoyResult'), () => {
-    state.decoyResultStep = null;
-  }, true, tip ? tip.label : null);
-}
-
-function renderResultScreen(v, text, onDone, isDecoy, tipShown) {
-  return renderScreen([
-    roleBanner(v),
-    el('div', { class: 'moon' }, '🌙'),
-    el('h1', { class: 'center' }, t('night', v.night)),
-    noTalkingBanner(),
-    el('div', { class: 'card' }, [
-      el('h2', {}, t('yourResult')),
-      isDecoy && tipShown ? el('p', { class: 'tip-label' }, tipShown) : null,
-      el('p', { class: 'muted' }, glossify(text)),
-      isDecoy ? el('p', { class: 'muted decoy-note' }, t('decoyNote')) : null,
-    ]),
-    el(
-      'button',
-      {
-        class: 'block',
-        onclick: () => {
-          onDone();
-          render();
-        },
-      },
-      t('gotIt')
-    ),
-  ]);
-}
-
+/** One night screen = one tap. A tip (everyone who isn't acting right now) is a tip or glossary entry and "Got it". */
 function renderNight(v) {
   const banner = el('div', { class: 'moon' }, '🌙');
 
   if (v.nightTurn) {
     const turn = v.nightTurn;
-    const children = [
-      roleBanner(v),
-      banner,
-      el('h1', { class: 'center' }, t('night', v.night)),
-      noTalkingBanner(),
-      el('div', { class: 'card' }, [
-        el('h2', {}, turn.shape === 'info' ? t('yourInformation') : t('yourTurn')),
-        turn.decoy && turn.body.key === 'decoyInfo'
-          ? tipBlock(v, 'step-' + turn.stepKey, t('decoyInfo'))
-          : el('p', { class: 'muted' }, glossify(turn.decoy ? t(turn.body.key) : tMsg(turn.body))),
-        turn.decoy ? el('p', { class: 'muted decoy-note' }, t('decoyNote')) : null,
-      ]),
-    ];
-    // Nobody can answer in the first 5 seconds of a step — real turn or decoy alike.
+    // Nobody can answer in the first 5 seconds of a screen — real or tip alike.
     const wait = turnSecondsLeft();
-    const label = (text) => (wait > 0 ? `${text} (${wait})` : text);
+    const locked = wait > 0 ? 'true' : null;
+    const card = [el('h2', {}, t(NIGHT_HEADINGS[turn.kind] || 'yourTurn'))];
+    if (turn.kind === 'tip') {
+      card.push(tipBlock(v, 'step-' + turn.stepKey, t('decoyInfo')), el('p', { class: 'muted decoy-note' }, t('decoyNote')));
+    } else {
+      card.push(el('p', { class: 'muted' }, glossify(tMsg(turn.body))));
+    }
+    if (turn.kind === 'pick' && turn.total > 1) card.push(el('p', { class: 'muted pick-count' }, t('pickNumber', turn.index + 1, turn.total)));
+    if (turn.kind === 'pick' && turn.picked.length) card.push(el('p', { class: 'muted picked' }, t('alreadyPicked', turn.picked.map((p) => p.name).join(', '))));
+    const children = [roleBanner(v), banner, el('h1', { class: 'center' }, t('night', v.night)), noTalkingBanner(), el('div', { class: 'card' }, card)];
+    if (wait > 0) children.push(el('p', { class: 'muted center countdown' }, t('waitSeconds', wait)));
+    const skip = () => el('button', { class: 'block skip', disabled: locked, onclick: () => answerTurn(turn) }, t('nobody'));
 
-    if (turn.shape === 'choose') {
-      if (turn.max > 0) {
-        const grid = el(
+    if (turn.kind === 'pick') {
+      children.push(
+        el(
           'div',
           { class: 'choice-grid' },
           turn.choices.map((c) =>
             el(
               'button',
               {
-                class: 'choice' + (state.selected.includes(c.id) ? ' selected' : '') + (c.alive ? '' : ' dead'),
-                onclick: () => {
-                  toggleChoice(state.selected, c.id, turn.max);
-                  render();
-                },
+                class: 'choice' + (c.alive ? '' : ' dead'),
+                disabled: locked || (c.disabled ? 'true' : null),
+                onclick: () => !c.disabled && answerTurn(turn, { targetIds: [c.id] }),
               },
               `${c.seat + 1}. ${c.name}` + (c.alive ? '' : t('deadSuffix'))
             )
           )
-        );
-        children.push(grid);
-      }
-      // Some steps also ask which character (Gambler, Courtier, Philosopher, Cerenovus, Pit-Hag).
-      if (turn.pickCharacter) {
-        const charButtons = turn.characters.map((c) =>
-          el(
-            'button',
-            {
-              class: 'char-choice' + (state.selectedCharacter === c.id ? ' selected' : ''),
-              onclick: () => {
-                state.selectedCharacter = state.selectedCharacter === c.id ? null : c.id;
-                render();
-              },
-            },
-            [characterIcon(c.id, 'inline'), ' ' + roleNameFor(c.id)]
-          )
-        );
-        // "Choose a character (or no one)": an explicit way to decline (the Courtier, the Philosopher).
-        if (turn.optionalCharacter) {
-          charButtons.unshift(
-            el(
-              'button',
-              {
-                class: 'char-choice' + (state.selectedCharacter == null ? ' selected' : ''),
-                onclick: () => {
-                  state.selectedCharacter = null;
-                  render();
-                },
-              },
-              t('nobody')
-            )
-          );
-        }
-        children.push(el('div', { class: 'choice-grid char-grid' }, charButtons));
-      }
-      const needsCharacter = turn.pickCharacter && !turn.optionalCharacter && !state.selectedCharacter;
-      children.push(
-        el(
-          'button',
-          {
-            class: 'block',
-            disabled: wait > 0 || state.selected.length < turn.min || (turn.counts && !turn.counts.includes(state.selected.length)) || needsCharacter ? 'true' : null,
-            onclick: () => submitTurn(turn),
-          },
-          label(t('confirm'))
         )
       );
+      if (turn.canSkip) children.push(skip());
+    } else if (turn.kind === 'character') {
+      // (Gambler, Courtier, Philosopher, Cerenovus, Pit-Hag.)
+      const charButtons = turn.characters.map((c) =>
+        el('button', { class: 'char-choice', disabled: locked, onclick: () => answerTurn(turn, { character: c.id }) }, [characterIcon(c.id, 'inline'), ' ' + roleNameFor(c.id)])
+      );
+      children.push(el('div', { class: 'choice-grid char-grid' }, charButtons));
+      if (turn.canSkip) children.push(skip());
     } else {
-      children.push(el('button', { class: 'block', disabled: wait > 0 ? 'true' : null, onclick: () => submitTurn(turn) }, label(t('gotIt'))));
+      children.push(el('button', { class: 'block', disabled: locked, onclick: () => answerTurn(turn) }, wait > 0 ? `${t('gotIt')} (${wait})` : t('gotIt')));
     }
     return renderScreen(children);
   }
@@ -2143,8 +2021,6 @@ function renderEnded(v) {
 
 function computeSignature(v) {
   if (!v) return 'connecting';
-  if (v.nightResult && state.nightResultSeenForNight !== v.night) return `nightresult-${v.night}`;
-  if (state.decoyResultStep) return `decoyresult-${state.decoyResultStep}`;
   if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) return `dawn-${v.day}`;
   if (v.phase === 'night' && v.duskMessage && state.duskSeenForNight !== v.night) return `dusk-${v.night}`;
   if (v.phase === 'lobby') return 'lobby';
@@ -2156,11 +2032,6 @@ function computeSignature(v) {
 
 function render() {
   const v = state.code && state.playerId ? state.view : null;
-  // A decoy's stand-in result outlives the night the same way a real result does (the last step
-  // of a night can be a result step: the Chambermaid). It only belongs to the night just played.
-  if (!v || (v.phase !== 'night' && v.phase !== 'day') || (state.decoyResultStep && !state.decoyResultStep.startsWith(v.night + '-'))) {
-    state.decoyResultStep = null;
-  }
   const signature = computeSignature(v) + ':' + LANG;
   animateThisRender = signature !== lastScreenSignature;
   lastScreenSignature = signature;
@@ -2178,14 +2049,6 @@ function render() {
   }
   if (!state.view) {
     app.appendChild(renderScreen([el('p', { class: 'muted center' }, t('connecting'))]));
-    return;
-  }
-  if (v.nightResult && state.nightResultSeenForNight !== v.night) {
-    app.appendChild(renderNightResultScreen(v));
-    return;
-  }
-  if (state.decoyResultStep) {
-    app.appendChild(renderDecoyResultScreen(v));
     return;
   }
   if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) {

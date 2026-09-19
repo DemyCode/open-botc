@@ -12,7 +12,7 @@ import type { CharacterId, GameState, Msg } from '../game/types.js';
 import { viewFor } from '../game/view.js';
 import {
   advanceUntil, answerRealTurn, breakDawn, byChar, endDayByConsensus, fastForwardToVote, mk, mkDay,
-  runFullNight, skipRound, startNight, voteInOrder,
+  playRounds, runFullNight, skipRound, startNight, voteInOrder,
 } from './helpers.js';
 
 type Pick = { targets?: CharacterId[]; character?: string };
@@ -192,13 +192,22 @@ test('Juggler is woken only on the night after their first day — not every nig
 
 // ================================================================ Seamstress: once per game, when THEY choose
 
-test('Seamstress may shake their head: choosing no-one keeps the ability for a later night', () => {
+test('Seamstress: "No one" is offered on her first pick only — once she has chosen one player, she must choose a second', () => {
   const s = mk(['imp', 'poisoner', 'seamstress', 'soldier', 'monk', 'chef', 'mayor']);
   startNight(s);
   advanceUntil(s, 'seamstress');
   const seam = byChar(s, 'seamstress');
-  assert.deepEqual(viewFor(s, seam.id).nightTurn!.counts, [0, 2]);
-  assert.throws(() => submitRealResponse(s, seam.id, [byChar(s, 'chef').id]), /selection count/, 'one player is not an answer');
+  assert.equal(viewFor(s, seam.id).nightTurn!.canSkip, true, '"No one" on the first pick');
+  playRounds(s, 1, { [seam.id]: [[byChar(s, 'chef').id]] });
+  assert.equal(viewFor(s, seam.id).nightTurn!.canSkip, false, 'one player is not an answer');
+  assert.throws(() => submitRealResponse(s, seam.id, []), /Choose a player/);
+});
+
+test('Seamstress may shake their head: choosing no-one keeps the ability for a later night', () => {
+  const s = mk(['imp', 'poisoner', 'seamstress', 'soldier', 'monk', 'chef', 'mayor']);
+  const seam = byChar(s, 'seamstress');
+  startNight(s);
+  advanceUntil(s, 'seamstress');
   answerRealTurn(s, []);
   night(s);
   assert.equal(seam.flags.seamstressUsed, undefined, 'not used up');

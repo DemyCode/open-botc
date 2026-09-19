@@ -11,7 +11,7 @@ import type { CharacterId } from '../game/types.js';
 import { viewFor, type GameView } from '../game/view.js';
 import { playGame } from './driver.js';
 import { brokenText, loadApp } from './fakedom.js';
-import { advanceUntil, byChar, mk, runFullNight, startNight } from './helpers.js';
+import { advanceUntil, byChar, mk, playRounds, runFullNight, startNight } from './helpers.js';
 
 type Lang = 'en' | 'fr';
 type Entry = { kind: 'tip'; en: string; fr: string };
@@ -122,7 +122,7 @@ test('the wiki glossary terms do not repeat the app\'s own terms', () => {
 
 // ---------------------------------------------------------------- what a player sees
 
-/** A decoy "information" screen for a player whose role banner says `character`. */
+/** A tip screen (the Soldier's, during the Empath's step) for a player whose role banner says `character`. */
 function decoyView(character: CharacterId, stepKey = '2-1'): GameView {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier', 'monk', 'chef']);
   startNight(s);
@@ -130,8 +130,7 @@ function decoyView(character: CharacterId, stepKey = '2-1'): GameView {
   startNight(s);
   advanceUntil(s, 'empath');
   const v = JSON.parse(JSON.stringify(viewFor(s, byChar(s, 'soldier').id))) as GameView;
-  assert.equal(v.nightTurn!.decoy, true);
-  assert.equal(v.nightTurn!.body.key, 'decoyInfo', 'an information-step decoy');
+  assert.equal(v.nightTurn!.kind, 'tip');
   v.nightTurn!.stepKey = stepKey;
   v.myCharacter = { id: character, name: CHARACTERS[character].name, ability: CHARACTERS[character].ability, alignment: 'good' } as GameView['myCharacter'];
   return v;
@@ -314,21 +313,20 @@ test('a real information screen is unchanged: it shows the real information, not
   assert.ok(!/Tip from the|Bluffing advice|Definition from the/.test(text));
 });
 
-test('a decoy that stands in for a result screen (Fortune Teller / Ravenkeeper step) also shows something to read', async () => {
+test('while the Fortune Teller reads her result, everyone else reads something too (a round of its own)', async () => {
   const s = mk(['imp', 'poisoner', 'fortuneteller', 'washerwoman', 'soldier', 'monk', 'chef']);
+  const ft = byChar(s, 'fortuneteller');
   startNight(s);
   runFullNight(s);
   startNight(s);
   advanceUntil(s, 'fortuneteller');
+  playRounds(s, 2, { [ft.id]: [[byChar(s, 'imp').id], [byChar(s, 'chef').id]] });
+  assert.equal(viewFor(s, ft.id).nightTurn!.kind, 'result');
   const v = viewFor(s, byChar(s, 'soldier').id);
-  assert.equal(v.nightTurn!.decoyResult, true);
+  assert.equal(v.nightTurn!.kind, 'tip');
   const app = await loadApp('en');
   app.run(`handleTurnChange(${JSON.stringify(v)}); state.turnReadyAt = 0;`);
-  app.show(v, { seen: true });
-  app.root.find((n) => n.hasClass('choice')).slice(0, 2).forEach((c) => { c.click(); app.run('render()'); });
-  app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.click();
-  const text = app.run<string>("(function(){ render(); return document.getElementById('app').textContent; })()");
-  assert.ok(text.includes('Your Result'));
+  const text = app.show(v, { seen: true });
   const what = shown(text, 'en');
   assert.ok(what, 'something readable');
   const l = label(what, "en");

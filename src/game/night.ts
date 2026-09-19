@@ -5,17 +5,16 @@ import { record } from './history.js';
 import { appendLog } from './log.js';
 import { msg } from './messages.js';
 import { abilityLostReason, hasAbility, noteMalfunction } from './registration.js';
-import { stablePick } from './rng.js';
 import type { NightSpec } from './hooks.js';
-import type { CharacterId, GameState, Msg, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
+import type { ActorProgress, ActorPrompt, CharacterId, GameState, Msg, NightScreen, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
 import { GameError } from './types.js';
 
 import { EVIL_INTRO_MIN_PLAYERS } from './constants.js';
 export { EVIL_INTRO_MIN_PLAYERS };
 
 /**
- * Dawn breaks the moment the last answer lands — no extra wait: everyone answers every step (real
- * turn or decoy), so being the last to answer reveals nothing. The one floor: a night never ends
+ * Dawn breaks the moment the last answer lands — no extra wait: everyone taps once in every round
+ * (a real screen or a tip), so being the last to answer reveals nothing. The one floor: a night never ends
  * sooner than MIN_NIGHT_MS after it began — otherwise a night where nobody (or only one quick
  * player) acts would end so fast that everyone could tell.
  */
@@ -26,16 +25,9 @@ const fromEnv = (name: string, fallback: number): number => {
 };
 export const MIN_NIGHT_MS = fromEnv('BOTC_MIN_NIGHT_MS', 30_000);
 
-/** Nobody — real actor or not — can answer a night step sooner than this after it opens, so an
- * instant answer never marks a decoy apart from a real choice. Enforced by the server clock. */
+/** Nobody — real actor or not — can answer a night screen sooner than this after its round opens, so an
+ * instant tap never marks a tip apart from a real choice. Enforced by the server clock. */
 export const MIN_ANSWER_MS = fromEnv('BOTC_MIN_ANSWER_MS', 5_000);
-
-/** Decoy questions for "choose" steps (asked of everyone who isn't the real actor). Keys are
- * translated on the client. A 2-player step always gets the 2-player question. */
-export const DECOY_PICK_ONE = ['decoyTrust', 'decoySuspect', 'decoyQuiet', 'decoyNominate', 'decoyDemon', 'decoyBelieve', 'decoyOutsider'];
-export const DECOY_PICK_TWO = 'decoySameTeam';
-/** The decoy for an "info" step: something to read, then "Got it" — like the real info screen. */
-export const DECOY_INFO = 'decoyInfo';
 
 export { evaluateWin, setWinner } from './win.js';
 
@@ -110,28 +102,23 @@ function shapeFor(state: GameState, step: string): NightTurnShape {
   return PSEUDO_STEPS[step] ? 'info' : CHARACTERS[step]?.shape ?? 'info';
 }
 
-/** Who is woken at every step tonight: every player the table still sees as alive — including
- * someone killed earlier tonight, who mustn't notice their screens stopping before dawn. */
 /**
- * Who gets a screen during a step: everyone. The living get the real prompt or a decoy; the dead
- * get decoys too, so that a player who *looks* dead but still wakes (the Zombuul, a Vigormortis'
- * Minion, the Sage) cannot be spotted by being the only "corpse" with something to do.
+ * Who gets a screen during a step: everyone. The actors get their real screens, everyone else tips;
+ * the dead get tips too, so that a player who *looks* dead but still wakes (the Zombuul, a
+ * Vigormortis' Minion, the Sage) cannot be spotted by being the only "corpse" with something to do.
  */
 function nightParticipants(state: GameState): PlayerState[] {
   return state.players;
 }
 
-function startRound(state: GameState, step: string, actors: PlayerState[]): void {
+function startStep(state: GameState, step: string, actors: PlayerState[]): void {
   const slot = `${step}-n${state.night}`;
   const shape = shapeFor(state, step);
   const spec = specOf(step);
   const bodyByPlayer: Record<string, Msg> = {};
-  let min = 0;
-  let max = 0;
-  let counts: number[] | undefined;
-  let pickCharacter = false;
-  let optionalCharacter = false;
-  let characterPool: CharacterId[] | undefined;
+  const prompts: Record<string, ActorPrompt> = {};
+  const progress: Record<string, ActorProgress> = {};
+  let last: ActorPrompt = { min: 0, max: 0 };
 
   if (shape === 'info') {
     for (const p of actors) {
@@ -140,17 +127,21 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
       bodyByPlayer[p.id] = text;
       noteMalfunction(state, p);
       record(state, 'info', { actor: p.id, character: p.perceived, step, msg: text, lost: abilityLostReason(state, p) });
+      progress[p.id] = { targets: [] };
     }
   } else {
     for (const p of actors) {
       const cfg = spec?.prompt ? spec.prompt(state, p) : { min: 0, max: 0, body: msg('empty') };
-      min = cfg.min;
-      max = cfg.max;
-      counts = cfg.counts;
-      pickCharacter = !!cfg.pickCharacter;
-      optionalCharacter = !!cfg.optionalCharacter;
-      characterPool = cfg.characterPool;
+      last = {
+        min: cfg.min, max: cfg.max,
+        ...(cfg.counts ? { counts: cfg.counts } : {}),
+        ...(cfg.pickCharacter ? { pickCharacter: true } : {}),
+        ...(cfg.optionalCharacter ? { optionalCharacter: true } : {}),
+        ...(cfg.characterPool ? { characterPool: cfg.characterPool } : {}),
+      };
+      prompts[p.id] = last;
       bodyByPlayer[p.id] = cfg.body;
+      progress[p.id] = { targets: [] };
     }
   }
 
@@ -160,22 +151,94 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
     for (const id of actorIds) if (!woke.includes(id)) woke.push(id);
   }
   const participantIds = [...new Set([...actorIds, ...nightParticipants(state).map((p) => p.id)])];
-  const decoys: Record<string, string> = {};
-  for (const id of participantIds) {
-    if (actorIds.includes(id)) continue;
-    if (shape === 'info') decoys[id] = DECOY_INFO;
-    else if (max === 2) decoys[id] = DECOY_PICK_TWO;
-    else {
-      const last = (state.lastDecoyKeys ??= {});
-      const pool = DECOY_PICK_ONE.filter((k) => k !== last[id]); // never the same question twice in a row
-      decoys[id] = last[id] = stablePick(state.secret, pool, 'decoy', state.night, step, id);
+
+  const t: PendingRealTurn = {
+    charId: step, playerIds: actorIds, participantIds, round: -1, screens: {}, progress, prompts,
+    shape, min: last.min, max: last.max, ...(last.counts ? { counts: last.counts } : {}), bodyByPlayer,
+    responses: {}, openedAt: Date.now(),
+    pickCharacter: !!last.pickCharacter, optionalCharacter: !!last.optionalCharacter, characterPool: last.characterPool,
+    result: !!spec?.result,
+  };
+  state.pendingRealTurn = t;
+  openNextRound(state, t);
+}
+
+/** Which selection sizes an actor may end their picks on. */
+function allowedCounts(cfg: ActorPrompt): number[] {
+  return cfg.counts ?? Array.from({ length: cfg.max - cfg.min + 1 }, (_, i) => cfg.min + i);
+}
+
+/** The next screen a real actor needs, or null if they are finished with this step. */
+function actorScreen(t: PendingRealTurn, id: string): NightScreen | null {
+  const prog = t.progress[id];
+  if (prog.done) return null;
+  if (t.shape === 'info') return { kind: 'info', body: t.bodyByPlayer[id] };
+  if (prog.applied) return prog.result ? { kind: 'result', body: prog.result } : null;
+  const cfg = t.prompts[id];
+  const k = prog.targets.length;
+  if (!prog.stopped && k < cfg.max) {
+    return { kind: 'pick', body: t.bodyByPlayer[id], index: k, total: cfg.max, canSkip: allowedCounts(cfg).includes(k) };
+  }
+  // Choosing no-one at all ends the turn there (the Assassin, the Seamstress keeping her ability...).
+  if (cfg.pickCharacter && !prog.characterDone && !(prog.stopped && k === 0 && cfg.max > 0)) {
+    return { kind: 'character', body: t.bodyByPlayer[id], canSkip: !!cfg.optionalCharacter };
+  }
+  return null; // choosing is over: the ability applies at the end of this round
+}
+
+/**
+ * Opens the step's next round: every actor who still has something to do gets that screen, everyone
+ * else a tip. When no actor has anything left, the step is over and the night moves on.
+ */
+function openNextRound(state: GameState, t: PendingRealTurn): void {
+  // Abilities take effect as soon as their last pick is in (in the step's actor order).
+  for (const id of t.playerIds) {
+    const prog = t.progress[id];
+    if (t.shape !== 'choose' || prog.applied || actorScreen(t, id)) continue;
+    const self = findPlayer(state, id);
+    const before = self.nightResult;
+    applyRealChoice(state, t.charId, id, prog.targets, prog.character);
+    prog.applied = true;
+    prog.result = t.result && self.nightResult && self.nightResult !== before ? self.nightResult : null;
+    if (state.winner) {
+      // The kill that was just applied ended the game: no more screens.
+      state.pendingRealTurn = null;
+      return;
     }
   }
+  const screens: Record<string, NightScreen> = {};
+  let anyReal = false;
+  for (const id of t.participantIds) {
+    const s = t.playerIds.includes(id) ? actorScreen(t, id) : null;
+    if (s) anyReal = true;
+    screens[id] = s ?? { kind: 'tip' };
+  }
+  if (!anyReal) {
+    advanceNightSlot(state);
+    return;
+  }
+  t.round += 1;
+  t.screens = screens;
+  t.responses = {};
+  t.openedAt = Date.now();
+}
 
-  state.pendingRealTurn = {
-    charId: step, playerIds: actorIds, participantIds, decoys, shape, min, max, ...(counts ? { counts } : {}), bodyByPlayer,
-    responses: {}, openedAt: Date.now(), pickCharacter, optionalCharacter, characterPool, result: !!spec?.result,
-  };
+/** Everyone has answered this round: record each actor's answer, apply finished choices, open the next round. */
+function closeRound(state: GameState, t: PendingRealTurn): void {
+  for (const id of t.playerIds) {
+    const screen = t.screens[id];
+    const prog = t.progress[id];
+    const answer = t.responses[id] ?? [];
+    if (screen.kind === 'info' || screen.kind === 'result') prog.done = true;
+    else if (screen.kind === 'pick') {
+      if (answer.length === 0) prog.stopped = true;
+      else prog.targets.push(answer[0]);
+    } else if (screen.kind === 'character') {
+      prog.characterDone = true;
+      if (answer[0]) prog.character = answer[0]; // a character screen's answer is [character], or [] for "No one"
+    }
+  }
+  openNextRound(state, t);
 }
 
 export function beginNight(state: GameState): void {
@@ -223,7 +286,7 @@ export function advanceNightSlot(state: GameState): void {
     const actors = actorsFor(state, step);
     if (actors.length === 0) continue;
     state.nightStepNumber = (state.nightStepNumber ?? 0) + 1;
-    startRound(state, step, actors);
+    startStep(state, step, actors);
     return;
   }
   // Everyone has acted: day comes now — unless the night is still shorter than MIN_NIGHT_MS, in
@@ -290,51 +353,68 @@ function maybeAdvance(state: GameState): void {
     return;
   }
   const t = state.pendingRealTurn;
-  if (t && stepComplete(state, t)) advanceNightSlot(state);
+  if (t && roundComplete(state, t)) closeRound(state, t);
 }
 
-/** A step is done once every real actor has answered, and every decoy too — except a decoy of
- * someone who has lost connection: a real turn is always waited for, a decoy never blocks. */
-function stepComplete(state: GameState, t: PendingRealTurn): boolean {
+/** A round is over once every real actor has answered, and every tip too — except a tip on the phone
+ * of someone who has lost connection: a real screen is always waited for, a tip never blocks. */
+function roundComplete(state: GameState, t: PendingRealTurn): boolean {
   return t.participantIds.every((id) => {
     if (id in t.responses) return true;
-    if (t.playerIds.includes(id)) return false;
+    if (t.screens[id]?.kind !== 'tip') return false;
     return !state.players.find((p) => p.id === id)?.connected;
   });
 }
 
+/** Why `targetId` may not be this actor's next pick (the rules of the ability, plus: not someone already picked) — null if they may. */
+function pickRefusal(state: GameState, t: PendingRealTurn, actorId: string, targetId: string): string | null {
+  const self = state.players.find((p) => p.id === actorId);
+  const target = state.players.find((p) => p.id === targetId);
+  if (!self || !target) return 'Invalid target';
+  const spec = specOf(t.charId);
+  if (spec?.notSelf && targetId === actorId) return 'Cannot choose yourself';
+  if (t.progress[actorId]?.targets.includes(targetId)) return 'Cannot choose the same player twice';
+  // "If you get to choose 'any player' at night, you can choose yourself or a dead player" — unless the ability says otherwise.
+  const eligible = spec?.prompt?.(state, self).eligible;
+  return !eligible || eligible(state, self, target) ? null : 'You cannot choose that player';
+}
+
+/** Whether `targetId` may be this actor's next pick. */
+export function canPick(state: GameState, t: PendingRealTurn, actorId: string, targetId: string): boolean {
+  return pickRefusal(state, t, actorId, targetId) === null;
+}
+
+/** The characters this actor may name on a character screen. */
+export function characterChoices(state: GameState, t: PendingRealTurn, actorId: string): CharacterId[] {
+  return t.prompts[actorId]?.characterPool ?? state.scriptChars;
+}
+
 /**
- * A player's answer to the current night step — their real turn, or their decoy question (the
- * server knows which; the protocol doesn't differ). `now` is the server clock: when given, an
- * answer sooner than MIN_ANSWER_MS after the step opened is refused.
+ * A player's tap on their current night screen: one pick (`[playerId]`, or `[]` for "No one"), one
+ * character, or "Got it" (info, result, tip). The protocol is the same for every kind, so the
+ * server alone knows whose tap was real. `now` is the server clock: when given, a tap sooner than
+ * MIN_ANSWER_MS after the round opened is refused.
  */
 export function submitRealResponse(state: GameState, playerId: string, targetIds: string[], now?: number, character?: string): void {
   const t = state.pendingRealTurn;
   if (!t || !t.participantIds.includes(playerId)) throw new GameError('No pending night turn for this player');
   if (playerId in t.responses) throw new GameError('Already responded');
   if (now !== undefined && now < t.openedAt + MIN_ANSWER_MS) throw new GameError('Too early — take a few seconds');
-  const isDecoy = !t.playerIds.includes(playerId);
-  const spec = specOf(t.charId);
-  if (t.shape === 'choose') {
-    if (targetIds.length < t.min || targetIds.length > t.max) throw new GameError('Invalid selection count');
-    if (!isDecoy && t.counts && !t.counts.includes(targetIds.length)) throw new GameError('Invalid selection count');
-    if (new Set(targetIds).size !== targetIds.length) throw new GameError('Cannot choose the same player twice');
-    // "If you get to choose 'any player' at night, you can choose yourself or a dead player."
-    const eligible = new Set(state.players.map((p) => p.id));
-    for (const id of targetIds) if (!eligible.has(id)) throw new GameError('Invalid target');
-    if (!isDecoy && spec?.notSelf && targetIds.includes(playerId)) {
-      throw new GameError('Cannot choose yourself');
-    }
-    if (!isDecoy && t.pickCharacter && !(character ? CHARACTERS[character] : specOf(t.charId)?.prompt?.(state, findPlayer(state, playerId)).optionalCharacter)) throw new GameError('Choose a character');
-    if (!isDecoy && character && t.characterPool && !t.characterPool.includes(character)) throw new GameError('Choose a valid character');
-    if (!isDecoy) {
-      const eligible = specOf(t.charId)?.prompt?.(state, findPlayer(state, playerId)).eligible;
-      const self = findPlayer(state, playerId);
-      if (eligible) for (const id of targetIds) if (!eligible(state, self, findPlayer(state, id))) throw new GameError('You cannot choose that player');
-    }
+  const screen = t.screens[playerId];
+  let answer: string[] = [];
+  if (screen.kind === 'pick') {
+    if (targetIds.length > 1) throw new GameError('Choose one player at a time');
+    if (targetIds.length === 0 && !screen.canSkip) throw new GameError('Choose a player');
+    const refusal = targetIds.length === 1 ? pickRefusal(state, t, playerId, targetIds[0]) : null;
+    if (refusal) throw new GameError(refusal);
+    answer = targetIds.slice();
+  } else if (screen.kind === 'character') {
+    if (!character && !screen.canSkip) throw new GameError('Choose a character');
+    if (character && (!CHARACTERS[character] || !characterChoices(state, t, playerId).includes(character))) throw new GameError('Choose a valid character');
+    answer = character ? [character] : [];
   }
-  t.responses[playerId] = t.shape === 'choose' ? targetIds : [];
-  if (!isDecoy && t.shape === 'choose') applyRealChoice(state, t.charId, playerId, targetIds, character); // a decoy answer is never used
+  // (An info, result or tip screen is just "Got it": whatever else was sent is ignored.)
+  t.responses[playerId] = answer;
   maybeAdvance(state);
 }
 

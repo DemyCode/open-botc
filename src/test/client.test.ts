@@ -11,7 +11,7 @@ import { viewFor, type GameView } from '../game/view.js';
 import { playGame } from './driver.js';
 import { brokenText, loadApp, type FakeClient, type FakeNode } from './fakedom.js';
 import {
-  advanceUntil, answerRealTurn, breakDawn, byChar, endDayByConsensus, fastForwardToVote, markAllReady, mk, mkDay, runFullNight, skipRound, startNight,
+  advanceUntil, answerRealTurn, breakDawn, byChar, endDayByConsensus, fastForwardToVote, markAllReady, mk, mkDay, playRounds, runFullNight, skipRound, startNight,
 } from './helpers.js';
 
 const KNOWN_MESSAGES = new Set(['join', 'auth', 'leave', 'start', 'declareNeighbor', 'nightReal', 'nominate', 'skipSpeech', 'readySpeech', 'vote', 'endDay', 'slayer']);
@@ -305,75 +305,65 @@ function nightView(char: 'poisoner' | 'washerwoman' | 'fortuneteller', viewer: '
   return { s, view: viewFor(s, who.id) };
 }
 
-test('a night "pick players" screen: the button counts down 5 seconds, then unlocks; nothing to pick → still locked', async () => {
-  const { view } = nightView('poisoner', 'actor');
-  const app = await loadApp('en');
-  app.run(`handleTurnChange(${JSON.stringify(view)})`);
+/** The labels of the buttons of a given class. */
+const buttonsOf = (app: FakeClient, cls: string) => app.root.find((n) => n.hasClass(cls));
+/** Shows `view` as a fresh screen whose 5-second wait is already over. */
+function ready(app: FakeClient, view: GameView): void {
+  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
   app.show(view, { seen: true });
-  let confirm = app.root.buttons().find((b) => /^Confirm/.test(b.text()))!;
-  assert.match(confirm.text(), /\(\d\)/, 'a countdown while waiting');
-  assert.equal(confirm.disabled, true);
-  app.run('state.turnReadyAt = 0');
-  app.show(view, { seen: true });
-  confirm = app.root.buttons().find((b) => /^Confirm/.test(b.text()))!;
-  assert.equal(confirm.text(), 'Confirm');
-  assert.equal(confirm.disabled, true, 'still locked until someone is chosen');
-});
+}
 
-test('a night screen: choosing a player then Confirm sends exactly that choice, once the wait is over', async () => {
+test('a pick screen: the players are locked with a countdown for 5 seconds, then ONE tap sends that player at once — no Confirm', async () => {
   const { s, view } = nightView('poisoner', 'actor');
   const app = await loadApp('en');
-  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
-  app.show(view, { seen: true });
-  app.root.find((n) => n.hasClass('choice'))[3].click();
-  app.run('render()');
-  const confirm = app.root.buttons().find((b) => /^Confirm/.test(b.text()))!;
-  assert.equal(confirm.disabled, false);
-  confirm.click();
-  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [s.players[3].id] });
-});
-
-test('during the wait a tap on Confirm does nothing (the button is locked and the handler refuses too)', async () => {
-  const { view } = nightView('poisoner', 'actor');
-  const app = await loadApp('en');
   app.run(`handleTurnChange(${JSON.stringify(view)})`);
-  app.show(view, { seen: true });
-  app.root.find((n) => n.hasClass('choice'))[1].click();
-  app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.click();
-  assert.ok(!app.sent.some((m) => m.t === 'nightReal'), 'nothing sent before the 5 seconds are up');
+  const waiting = app.show(view, { seen: true });
+  assert.match(waiting, /You can answer in \ds/, 'a countdown while waiting');
+  assert.ok(buttonsOf(app, 'choice').every((b) => b.disabled), 'every player is locked');
+  buttonsOf(app, 'choice')[3].click();
+  assert.ok(!app.sent.some((m) => m.t === 'nightReal'), 'a tap during the wait sends nothing');
+  ready(app, view);
+  assert.ok(!app.root.buttons().some((b) => /^Confirm/.test(b.text())), 'no Confirm button: the tap is the answer');
+  buttonsOf(app, 'choice')[3].click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [s.players[3].id] });
+  buttonsOf(app, 'choice')[4].click();
+  assert.equal(app.sent.filter((m) => m.t === 'nightReal').length, 1, 'a second tap on the same screen sends nothing');
 });
 
-test('the Fortune Teller\'s screen asks for exactly two players', async () => {
-  const { view } = nightView('fortuneteller', 'actor');
+test('the Fortune Teller picks her two players on two screens: "Choice 1 of 2", then "Choice 2 of 2" with the first one greyed out', async () => {
+  const { s, view } = nightView('fortuneteller', 'actor');
+  const ft = byChar(s, 'fortuneteller');
+  const imp = byChar(s, 'imp');
   const app = await loadApp('en');
-  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
-  app.show(view, { seen: true });
-  const choices = () => app.root.find((n) => n.hasClass('choice'));
-  choices()[0].click(); app.run('render()');
-  assert.equal(app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.disabled, true, 'one is not enough');
-  choices()[1].click(); app.run('render()');
-  assert.equal(app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.disabled, false);
-  choices()[2].click(); app.run('render()'); // a third replaces the oldest
-  assert.equal(app.root.find((n) => n.hasClass('choice') && n.hasClass('selected')).length, 2);
+  ready(app, view);
+  assert.match(app.text(), /Choice 1 of 2/);
+  assert.ok(!app.root.buttons().some((b) => b.text() === 'No one'), 'the Fortune Teller must choose');
+  buttonsOf(app, 'choice')[imp.seat].click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [imp.id] });
+  playRounds(s, 1, { [ft.id]: [[imp.id]] }); // the round ends once everyone has tapped
+  const second = viewFor(s, ft.id);
+  ready(app, second);
+  assert.match(app.text(), /Choice 2 of 2/);
+  assert.match(app.text(), new RegExp(`Already chosen: ${imp.name}`));
+  assert.equal(buttonsOf(app, 'choice')[imp.seat].disabled, true, 'the same player cannot be chosen twice');
 });
 
-test('the Seamstress\'s screen accepts no-one (to save the ability) or two players — never just one', async () => {
+test('the Seamstress\'s first pick offers "No one" (to keep her ability); once she chose one player, the second pick does not', async () => {
   const s = mk(['imp', 'poisoner', 'seamstress', 'soldier', 'empath', 'chef', 'mayor']);
   startNight(s);
   advanceUntil(s, 'seamstress');
-  const view = viewFor(s, byChar(s, 'seamstress').id);
+  const seam = byChar(s, 'seamstress');
   const app = await loadApp('en');
-  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
-  app.show(view, { seen: true });
-  const confirm = () => app.root.buttons().find((b) => /^Confirm/.test(b.text()))!;
-  const choices = () => app.root.find((n) => n.hasClass('choice'));
-  assert.equal(confirm().disabled, false, 'no-one: keep the ability for another night');
-  choices()[3].click(); app.run('render()');
-  assert.equal(confirm().disabled, true, 'one player is not an answer');
-  choices()[4].click(); app.run('render()');
-  assert.equal(confirm().disabled, false);
-  confirm().click();
-  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [s.players[3].id, s.players[4].id] });
+  ready(app, viewFor(s, seam.id));
+  app.root.buttons().find((b) => b.text() === 'No one')!.click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [] });
+  const t = mk(['imp', 'poisoner', 'seamstress', 'soldier', 'empath', 'chef', 'mayor']);
+  startNight(t);
+  advanceUntil(t, 'seamstress');
+  playRounds(t, 1, { [byChar(t, 'seamstress').id]: [[byChar(t, 'soldier').id]] });
+  const other = await loadApp('en');
+  ready(other, viewFor(t, byChar(t, 'seamstress').id));
+  assert.ok(!other.root.buttons().some((b) => b.text() === 'No one'), 'one player is not an answer');
 });
 
 test('the Pukka is asked whom to POISON (who dies tomorrow night), never "choose a player to kill"', async () => {
@@ -400,147 +390,87 @@ function courtierView(): { s: GameState; view: GameView } {
   return { s, view: viewFor(s, byChar(s, 'courtier').id) };
 }
 
-test("the Courtier's turn asks for a character (not a player) and can be declined with No one", async () => {
+test("the Courtier's screen is a character screen: one tap on a character sends it at once", async () => {
   const { view } = courtierView();
-  assert.ok(view.nightTurn);
-  assert.equal(view.nightTurn.pickCharacter, true);
-  assert.equal(view.nightTurn.optionalCharacter, true);
-  assert.equal(view.nightTurn.max, 0, 'no player is chosen');
-  assert.ok(view.nightTurn.characters.some((c) => c.id === 'empath'));
+  assert.equal(view.nightTurn!.kind, 'character');
+  assert.ok(view.nightTurn!.characters.some((c) => c.id === 'empath'));
   const app = await loadApp('en');
-  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
-  app.show(view, { seen: true });
-  assert.equal(app.root.find((n) => n.hasClass('choice')).length, 0, 'no player buttons');
-  assert.equal(app.root.find((n) => n.hasClass('char-choice')).length, view.nightTurn.characters.length + 1, 'a button per character plus No one');
-  assert.equal(app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.disabled, false, 'declining is allowed');
-  app.root.find((n) => n.hasClass('char-choice') && n.text().includes('Empath'))[0].click();
-  app.run('render()');
-  app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.click();
+  ready(app, view);
+  assert.equal(buttonsOf(app, 'choice').length, 0, 'no player buttons');
+  assert.equal(buttonsOf(app, 'char-choice').length, view.nightTurn!.characters.length, 'a button per character');
+  buttonsOf(app, 'char-choice').find((n) => n.text().includes('Empath'))!.click();
   assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [], character: 'empath' });
 });
 
-test('the Courtier can decline: No one is preselected and Confirm sends no character', async () => {
+test('the Courtier can decline with "No one", which sends no character', async () => {
   const { view } = courtierView();
   const app = await loadApp('en');
-  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
-  app.show(view, { seen: true });
-  const noOne = app.root.find((n) => n.hasClass('char-choice') && n.hasClass('selected'));
-  assert.equal(noOne.length, 1, 'No one starts selected');
-  app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.click();
+  ready(app, view);
+  app.root.buttons().find((b) => b.text() === 'No one')!.click();
   assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [] });
 });
 
-test('a step that needs both a player and a character (the Gambler) unlocks only once both are chosen', async () => {
+test('the Gambler: a pick screen for the player, then a character screen for the guess — one tap each', async () => {
   const s = mk(['imp', 'poisoner', 'gambler', 'soldier', 'empath', 'chef', 'mayor']);
   startNight(s);
   runFullNight(s);
   startNight(s);
   advanceUntil(s, 'gambler');
-  const view = viewFor(s, byChar(s, 'gambler').id);
-  assert.equal(view.nightTurn!.pickCharacter, true);
-  assert.equal(view.nightTurn!.optionalCharacter, false);
-  assert.equal(view.nightTurn!.max, 1);
+  const gambler = byChar(s, 'gambler');
   const app = await loadApp('en');
-  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
-  app.show(view, { seen: true });
-  const confirm = () => app.root.buttons().find((b) => /^Confirm/.test(b.text()))!;
-  app.root.find((n) => n.hasClass('char-choice') && n.text().includes('Empath'))[0].click();
-  app.run('render()');
-  assert.equal(confirm().disabled, true, 'a character alone is not enough');
-  app.root.find((n) => n.hasClass('choice'))[3].click();
-  app.run('render()');
-  assert.equal(confirm().disabled, false);
-  confirm().click();
-  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [s.players[3].id], character: 'empath' });
+  ready(app, viewFor(s, gambler.id));
+  assert.equal(buttonsOf(app, 'char-choice').length, 0, 'first the player');
+  buttonsOf(app, 'choice')[3].click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [s.players[3].id] });
+  playRounds(s, 1, { [gambler.id]: [[s.players[3].id]] });
+  ready(app, viewFor(s, gambler.id));
+  assert.equal(buttonsOf(app, 'choice').length, 0, 'then the character');
+  assert.ok(!app.root.buttons().some((b) => b.text() === 'No one'), 'the guess is not optional');
+  buttonsOf(app, 'char-choice').find((n) => n.text().includes('Soldier'))!.click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [], character: 'soldier' });
 });
 
 test('an info screen has a "Got it" button that sends an empty answer once unlocked', async () => {
   const { view } = nightView('washerwoman', 'actor');
   const app = await loadApp('en');
-  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
-  app.show(view, { seen: true });
+  ready(app, view);
   assert.ok(app.text().includes('Your Information'));
   app.root.buttons().find((b) => b.text() === 'Got it')!.click();
   assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [] });
 });
 
-test('a decoy looks like a real turn: same title, same grid, plus a note — and the same countdown', async () => {
-  const real = nightView('poisoner', 'actor');
-  const decoy = nightView('poisoner', 'other');
+test('everyone else gets a tip: something to read and "Got it" — no players to pick, nothing about the step, the same countdown', async () => {
+  const tip = nightView('fortuneteller', 'other');
+  assert.equal(tip.view.nightTurn!.kind, 'tip');
   const app = await loadApp('en');
-  app.run(`handleTurnChange(${JSON.stringify(real.view)})`);
-  const realText = app.show(real.view, { seen: true });
-  const realChoices = app.root.find((n) => n.hasClass('choice')).length;
-  app.run(`handleTurnChange(${JSON.stringify(decoy.view)})`);
-  const decoyText = app.show(decoy.view, { seen: true });
-  assert.equal(app.root.find((n) => n.hasClass('choice')).length, realChoices);
-  assert.ok(realText.includes('Your Turn') && decoyText.includes('Your Turn'));
-  assert.ok(decoyText.includes('Decoy') && !realText.includes('Decoy'));
-  assert.match(app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.text(), /\(\d\)/);
+  app.run(`handleTurnChange(${JSON.stringify(tip.view)})`);
+  const text = app.show(tip.view, { seen: true });
+  assert.equal(buttonsOf(app, 'choice').length, 0, 'no player buttons');
+  assert.ok(/💡|📖/.test(text), 'a tip or a definition to read');
+  assert.ok(text.includes('Nothing to do right now'));
+  assert.ok(!text.includes('Choose 2 players to check for the Demon'), 'the real prompt is never on a tip');
+  assert.match(app.root.buttons().find((b) => /^Got it/.test(b.text()))!.text(), /\(\d\)/, 'the same 5-second wait');
+  ready(app, tip.view);
+  app.root.buttons().find((b) => b.text() === 'Got it')!.click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [] });
 });
 
-test('after answering a decoy at the Fortune Teller\'s step, a stand-in result screen appears — like the real one', async () => {
-  const decoy = nightView('fortuneteller', 'other');
-  assert.equal(decoy.view.nightTurn!.decoyResult, true);
+test('a result is a screen of its own ("Your Result" and "Got it"), while everyone else reads a tip', async () => {
+  const { s } = nightView('fortuneteller', 'actor');
+  const ft = byChar(s, 'fortuneteller');
+  playRounds(s, 2, { [ft.id]: [[byChar(s, 'imp').id], [byChar(s, 'chef').id]] });
   const app = await loadApp('en');
-  app.run(`handleTurnChange(${JSON.stringify(decoy.view)}); state.turnReadyAt = 0;`);
-  app.show(decoy.view, { seen: true });
-  app.root.find((n) => n.hasClass('choice')).slice(0, 2).forEach((c) => { c.click(); app.run('render()'); });
-  app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.click();
-  const after = app.run<string>("(function(){ render(); return document.getElementById('app').textContent; })()");
-  assert.ok(after.includes('Your Result'), after.slice(0, 200));
+  ready(app, viewFor(s, ft.id));
+  assert.ok(app.text().includes('Your Result'));
+  assert.ok(app.text().includes('Yes'), app.text().slice(0, 300));
+  app.root.buttons().find((b) => b.text() === 'Got it')!.click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [] });
+  const other = await loadApp('en');
+  ready(other, viewFor(s, byChar(s, 'soldier').id));
+  assert.ok(!other.text().includes('Your Result'));
+  assert.ok(other.root.buttons().some((b) => b.text() === 'Got it'));
 });
 
-test('Chambermaid step: ONE round — the real one picks 2 then sees a result; everyone else picks 2 for a decoy then sees a stand-in result', () => {
-  const s = mk(['imp', 'poisoner', 'chambermaid', 'soldier', 'monk', 'chef', 'mayor']);
-  startNight(s);
-  runFullNight(s);
-  startNight(s);
-  advanceUntil(s, 'chambermaid');
-  const t = s.pendingRealTurn!;
-  const maid = byChar(s, 'chambermaid');
-  assert.deepEqual(t.playerIds, [maid.id]);
-  const real = viewFor(s, maid.id).nightTurn!;
-  assert.equal(real.decoy, false);
-  assert.equal(real.max, 2);
-  for (const p of s.players.filter((q) => q.id !== maid.id)) {
-    const decoy = viewFor(s, p.id).nightTurn!;
-    assert.equal(decoy.decoy, true);
-    assert.deepEqual(decoy.body, { key: 'decoySameTeam' }, 'a 2-player question, like the real one');
-    assert.equal(decoy.min, 2);
-    assert.equal(decoy.decoyResult, true, 'followed by a stand-in result screen');
-  }
-  answerRealTurn(s, [byChar(s, 'soldier').id, byChar(s, 'monk').id]);
-  assert.notEqual(s.pendingRealTurn?.charId, 'chambermaid', 'no second round: the step is over once everyone answered');
-  assert.equal(maid.nightResult!.key, 'chambermaidInfo');
-});
-
-test('regression: when the Chambermaid is the last step, a decoy\'s stand-in result still shows before dawn — like the real result', async () => {
-  const s = mk(['imp', 'poisoner', 'chambermaid', 'soldier', 'monk', 'chef', 'mayor']);
-  startNight(s);
-  runFullNight(s);
-  startNight(s);
-  advanceUntil(s, 'chambermaid');
-  s.nightStartedAt = Date.now() - 60_000; // a long night: day breaks the moment the last answer lands
-  const decoyPlayer = byChar(s, 'soldier');
-  const app = await loadApp('en');
-  const decoyView = viewFor(s, decoyPlayer.id);
-  app.run(`handleTurnChange(${JSON.stringify(decoyView)}); state.turnReadyAt = 0;`);
-  app.show(decoyView, { seen: true });
-  app.root.find((n) => n.hasClass('choice')).slice(0, 2).forEach((c) => { c.click(); app.run('render()'); });
-  app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.click();
-  // Everyone's answers land; the Chambermaid was the last step, so the day starts at once.
-  answerRealTurn(s, [byChar(s, 'monk').id, byChar(s, 'chef').id]);
-  assert.equal(s.phase, 'day');
-  // The real Chambermaid gets their result before the dawn screen...
-  const real = await loadApp('en');
-  assert.ok(real.show(viewFor(s, byChar(s, 'chambermaid').id), { seen: false }).includes('Your Result'));
-  // ...so the decoy must too, or the table can tell who kept tapping.
-  const shown = app.show(viewFor(s, decoyPlayer.id), { seen: false });
-  assert.ok(shown.includes('Your Result'), shown.slice(0, 200));
-  app.root.buttons().find((b) => /Got it/.test(b.text()))!.click();
-  assert.ok(app.text().includes('You survived the night'), 'then the dawn screen');
-});
 
 test('waiting between steps: the same calm screen for everyone, and the dead just rest', async () => {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
@@ -568,20 +498,6 @@ test('dusk and dawn screens show first and go away when you tap Continue', async
   assert.ok(day.includes('Day') && !day.includes('You died tonight'));
   const others = app.show(viewFor(s, byChar(s, 'soldier').id), { seen: false });
   assert.ok(others.includes('You survived the night'));
-});
-
-test('a Fortune Teller\'s result is a screen of its own that needs a tap, even if the night is already over', async () => {
-  const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier', 'fortuneteller']);
-  startNight(s);
-  runFullNight(s);
-  startNight(s);
-  advanceUntil(s, 'fortuneteller');
-  answerRealTurn(s, [byChar(s, 'imp').id, byChar(s, 'empath').id]);
-  while (s.pendingRealTurn) skipRound(s);
-  const app = await loadApp('en');
-  const text = app.show(viewFor(s, byChar(s, 'fortuneteller').id), { seen: false });
-  assert.ok(text.includes('Your Result'), text.slice(0, 200));
-  assert.match(text, /Yes|No/);
 });
 
 // ---------------------------------------------------------------- buzzing

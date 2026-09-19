@@ -62,19 +62,72 @@ export interface PlayerState {
 export type NightTurnShape = 'info' | 'choose';
 
 /**
- * One step of the night order (Poisoner, Monk, Imp, ...). Every living player is "woken" at every
- * step: the real actors (`playerIds`) get their real screen, everyone else gets a decoy question
- * of the same shape — so nobody can tell who really acted. As for the Storyteller, a step only
- * happens when its character is in play (and, for the Ravenkeeper, was killed tonight).
+ * What one player's phone shows during one round of a night step — exactly one tap answers it.
+ * - `pick`: choose ONE player (the ability's next pick), or "No one" when `canSkip`.
+ * - `character`: choose one character, or "No one" when `canSkip`.
+ * - `info` / `result`: read the information, then "Got it".
+ * - `tip`: everyone who isn't acting this round reads a tip or a glossary entry, then "Got it".
+ */
+export type NightScreenKind = 'pick' | 'character' | 'info' | 'result' | 'tip';
+
+export interface NightScreen {
+  kind: NightScreenKind;
+  /** The prompt (pick/character) or the information (info/result). Absent for a tip. */
+  body?: Msg;
+  /** pick: which pick this is (0-based) out of `total` at most. */
+  index?: number;
+  total?: number;
+  /** pick/character: "No one" is a valid answer. */
+  canSkip?: boolean;
+}
+
+/** A real actor's "choose" settings for this step (the serializable part of a NightPrompt). */
+export interface ActorPrompt {
+  min: number;
+  max: number;
+  counts?: number[];
+  pickCharacter?: boolean;
+  optionalCharacter?: boolean;
+  characterPool?: CharacterId[];
+}
+
+/** A real actor's progress through a step's rounds. */
+export interface ActorProgress {
+  targets: string[];
+  character?: string;
+  /** Answered "No one" to a pick: no more picks. */
+  stopped?: boolean;
+  /** The character round has been answered (or skipped). */
+  characterDone?: boolean;
+  /** The ability has taken effect (after the last pick). */
+  applied?: boolean;
+  /** The information the ability gave, still to be shown on its own result screen. */
+  result?: Msg | null;
+  /** Nothing more to show. */
+  done?: boolean;
+}
+
+/**
+ * One step of the night order (Poisoner, Monk, Imp, ...), played in ROUNDS: in every round every
+ * player gets exactly one screen and taps exactly once — the real actors their real screen (one pick,
+ * one character, their information, their result), everyone else a tip — so every phone at the table
+ * is tapped the same number of times and nothing on a decoy says what anyone else is doing. As for the
+ * Storyteller, a step only happens when its character is in play (and, for the Ravenkeeper, was killed tonight).
  */
 export interface PendingRealTurn {
   charId: string;
   /** The real actors this step. */
   playerIds: string[];
-  /** Everyone woken this step: the real actors plus every other publicly-alive player. */
+  /** Everyone woken this step: the real actors plus every other player. */
   participantIds: string[];
-  /** The decoy question shown to each non-actor participant (a client-side question key). */
-  decoys: Record<string, string>;
+  /** The current round of this step (0-based). */
+  round: number;
+  /** This round's screen for every participant. */
+  screens: Record<string, NightScreen>;
+  /** Each real actor's progress through the step. */
+  progress: Record<string, ActorProgress>;
+  /** Each real actor's "choose" settings (choose steps only). */
+  prompts: Record<string, ActorPrompt>;
   shape: NightTurnShape;
   min: number;
   max: number;
@@ -82,15 +135,16 @@ export interface PendingRealTurn {
   counts?: number[];
   /** Per-player prompt, since minion-info/imp differ slightly per recipient. */
   bodyByPlayer: Record<string, Msg>;
+  /** Who has answered THIS round, and with what (reset at every round). */
   responses: Record<string, string[]>;
-  /** When this step opened (ms): nobody may answer until MIN_ANSWER_MS after it. */
+  /** When this round opened (ms): nobody may answer until MIN_ANSWER_MS after it. */
   openedAt: number;
   /** The real actor also picks a character (Gambler, Cerenovus, Pit-Hag...). */
   pickCharacter?: boolean;
   optionalCharacter?: boolean;
   /** Which characters the actor may pick (default: the whole script). */
   characterPool?: CharacterId[];
-  /** The step gives a result right after answering: decoys show a stand-in result screen. */
+  /** The step gives a result right after the last pick, on a round of its own. */
   result?: boolean;
 }
 
@@ -216,9 +270,7 @@ export interface GameState {
   nightStartedAt?: number;
   /** How many steps have run so far tonight (the screens' identity — never the character's slot). */
   nightStepNumber?: number;
-  /** Each player's most recent "pick a player" decoy question, so the next one is always different. */
-  lastDecoyKeys?: Record<string, string>;
-  /** Set once everyone has acted: dawn breaks at this time (ms), not the instant the last answer lands. */
+  /** Set once everyone has acted, if the night is still shorter than MIN_NIGHT_MS: dawn breaks at this time (ms). */
   dawnAt?: number | null;
   publicLog: Msg[];
   currentNomination: Nomination | null;

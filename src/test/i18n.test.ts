@@ -8,7 +8,6 @@ import path from 'node:path';
 import { test } from 'node:test';
 import vm from 'node:vm';
 import { CHARACTERS } from '../game/characters.js';
-import { DECOY_INFO, DECOY_PICK_ONE, DECOY_PICK_TWO } from '../game/night.js';
 import type { GameState, Msg } from '../game/types.js';
 import { viewFor } from '../game/view.js';
 import { playGame } from './driver.js';
@@ -74,8 +73,8 @@ test('every t(\'key\') used in the app exists in both languages', () => {
   for (const call of appJs.matchAll(/\bt\(([^()]*)\)/g)) {
     for (const lit of call[1].matchAll(/'([A-Za-z][A-Za-z0-9]*)'/g)) used.add(lit[1]);
   }
-  // Keys the app builds from the server: decoy questions and their labels.
-  for (const k of [...DECOY_PICK_ONE, DECOY_PICK_TWO, DECOY_INFO, 'decoyNote', 'decoyResult', 'waitingEveryone']) used.add(k);
+  // Keys the app shows on its own for a night tip, and while waiting.
+  for (const k of ['decoyInfo', 'decoyNote', 'waitingEveryone']) used.add(k);
   const missing: string[] = [];
   for (const k of used) for (const lang of LANGS) if (!(k in STRINGS[lang])) missing.push(`${lang}:${k}`);
   assert.deepEqual(missing, []);
@@ -153,10 +152,9 @@ function collect(into: Map<string, Msg>): (s: GameState) => void {
       const v = viewFor(s, p.id);
       v.publicLog.forEach(add);
       v.myLog.forEach((e) => add(e.msg));
-      add(v.nightResult);
       add(v.dawnMessage);
       add(v.duskMessage);
-      if (v.nightTurn && !v.nightTurn.decoy) add(v.nightTurn.body);
+      if (v.nightTurn) add(v.nightTurn.body);
     }
   };
 }

@@ -513,7 +513,7 @@ function whereIsEveryone(cs: Client[]): string {
     const t = v.nightTurn;
     const n = v.nomination;
     return `${c.name}(${v.myCharacter?.id}${me?.alive ? '' : ',dead'}): ${v.phase} n${v.night} d${v.day}` +
-      (t ? ` step=${t.stepKey} ${t.decoy ? 'decoy' : 'REAL'} wait=${t.waitMs}` : '') +
+      (t ? ` step=${t.stepKey} ${t.kind} wait=${t.waitMs}` : '') +
       (n ? ` nom=${n.state} voter=${n.currentVoterName}` : '') + (v.phase === 'day' ? ` endReady=${v.endDayReadyCount}/${v.endDayAliveCount} block=${v.onBlockId}` : '') +
       (c.errors().length ? ` errors=${JSON.stringify(c.errors().slice(-2))}` : '') + ` sent=[${[...((c as Client & { sent?: Set<string> }).sent ?? [])].filter((k) => k.startsWith('endday') || k.startsWith('nominate')).join(' ')}] myEnd=${v.myEndDayReady}`;
   }).join('\n');
@@ -533,8 +533,11 @@ function attachBrain(c: Client, _all: () => Client[]): void {
     const me = v.players.find((p: Msg) => p.isSelf);
     if (v.phase === 'night' && v.nightTurn) {
       const t = v.nightTurn;
-      const picks = t.shape === 'choose' ? t.choices.filter((x: Msg) => x.id !== c.id || t.max > 1).slice(0, t.min).map((x: Msg) => x.id) : [];
-      once(`night-${t.stepKey}`, { t: 'nightReal', targetIds: picks }, t.waitMs + 20);
+      // One tap per screen: the first legal player (or "No one" where allowed), the first character, or "Got it".
+      const first = t.choices.find((x: Msg) => !x.disabled && x.id !== c.id) ?? t.choices.find((x: Msg) => !x.disabled);
+      const picks = t.kind === 'pick' && !t.canSkip && first ? [first.id] : [];
+      const character = t.kind === 'character' && !t.canSkip ? t.characters[0]?.id : undefined;
+      once(`night-${t.stepKey}`, { t: 'nightReal', targetIds: picks, ...(character ? { character } : {}) }, t.waitMs + 20);
     }
     if (v.phase === 'day') {
       const alive = v.players.filter((p: Msg) => p.alive).sort((a: Msg, b: Msg) => a.seat - b.seat);

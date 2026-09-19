@@ -2,7 +2,7 @@ import { ALL_CHARACTER_IDS, CHARACTERS, alignmentOfCharacter } from '../game/cha
 import { addPlayer, castVote, createGame, markReadyForSpeech, skipSpeech, toggleEndDayRequest } from '../game/engine.js';
 import { beginNight, submitRealResponse, tick as nightTick } from '../game/night.js';
 import { viewFor } from '../game/view.js';
-import type { CharacterId, GameState } from '../game/types.js';
+import type { CharacterId, GameState, NightScreen, PendingRealTurn } from '../game/types.js';
 
 export function mk(charIds: CharacterId[], opts: { drunkFakeChar?: CharacterId } = {}): GameState {
   const state = createGame('TEST');
@@ -43,24 +43,73 @@ export function startNight(state: GameState): void {
   beginNight(state);
 }
 
-/** Answers every still-open decoy question of the current night step with something valid. */
-export function answerDecoys(state: GameState): void {
+/** A real actor's one tap on a pick/character screen. */
+export type Tap = { targets?: string[]; character?: string };
+
+/**
+ * Plays the current night step to its end, ROUND BY ROUND, the way the phones do: in each round
+ * every player taps once — a real actor as `tap` says on a pick/character screen, "Got it" on
+ * anything else (info, result, tip).
+ */
+export function playStep(state: GameState, tap: (id: string, screen: NightScreen, t: PendingRealTurn) => Tap): void {
   const t = state.pendingRealTurn;
-  if (!t) return;
-  for (const id of t.participantIds.slice()) {
-    if (t.playerIds.includes(id) || id in t.responses || state.pendingRealTurn !== t) continue;
-    submitRealResponse(state, id, t.shape === 'choose' ? state.players.slice(0, t.min).map((p) => p.id) : []);
+  if (!t) throw new Error('No pending real turn');
+  let guard = 0;
+  while (state.pendingRealTurn === t && guard++ < 50) {
+    const round = t.round;
+    for (const id of t.participantIds) {
+      if (state.pendingRealTurn !== t || t.round !== round) break;
+      if (id in t.responses) continue;
+      const screen = t.screens[id];
+      if (screen.kind !== 'pick' && screen.kind !== 'character') submitRealResponse(state, id, []);
+      else {
+        const a = tap(id, screen, t);
+        submitRealResponse(state, id, a.targets ?? [], undefined, a.character);
+      }
+    }
   }
 }
 
-/** Answers the current night step: every real actor with `targetIds`, everyone else's decoy with anything. */
-export function answerRealTurn(state: GameState, targetIds: string[] = [], character?: string): void {
-  const t = state.pendingRealTurn;
-  if (!t) throw new Error('No pending real turn');
-  for (const id of t.playerIds) {
-    if (!(id in t.responses)) submitRealResponse(state, id, targetIds, undefined, character);
+/**
+ * Plays exactly `n` rounds of the night: the players in `taps` tap what it says (one entry per round:
+ * the target ids of that one pick, or `[]` for "No one"/"Got it"; a character screen names `character`);
+ * everyone else taps "Got it" — or, with `auto`, a real actor nobody scripted makes an arbitrary legal choice.
+ */
+export function playRounds(state: GameState, n: number, taps: Record<string, string[][]>, character?: string, auto = false): void {
+  for (let r = 0; r < n; r++) {
+    const t = state.pendingRealTurn;
+    if (!t) throw new Error(`No round left to play (round ${r + 1} of ${n})`);
+    const round = t.round;
+    for (const id of t.participantIds) {
+      if (state.pendingRealTurn !== t || t.round !== round) break;
+      if (id in t.responses) continue;
+      const screen = t.screens[id];
+      const mine = taps[id]?.[r];
+      if (!mine && auto && (screen.kind === 'pick' || screen.kind === 'character')) {
+        const a = defaultTap(state, id, screen, t);
+        submitRealResponse(state, id, a.targets ?? [], undefined, a.character);
+      } else submitRealResponse(state, id, mine ?? [], undefined, screen.kind === 'character' ? character : undefined);
+    }
   }
-  answerDecoys(state);
+}
+
+/** Taps "Got it" on every still-open tip of the current round. */
+export function answerDecoys(state: GameState): void {
+  const t = state.pendingRealTurn;
+  if (!t) return;
+  const round = t.round;
+  for (const id of t.participantIds.slice()) {
+    if (state.pendingRealTurn !== t || t.round !== round) return;
+    if (t.screens[id]?.kind === 'tip' && !(id in t.responses)) submitRealResponse(state, id, []);
+  }
+}
+
+/**
+ * Plays the current night step: every real actor picks `targetIds` one by one (then "No one" if the
+ * list runs out), names `character` when asked, and taps "Got it" on their info/result; everyone else taps "Got it".
+ */
+export function answerRealTurn(state: GameState, targetIds: string[] = [], character?: string): void {
+  playStep(state, (_id, screen) => (screen.kind === 'pick' ? { targets: targetIds[screen.index ?? 0] ? [targetIds[screen.index ?? 0]] : [] } : { character }));
 }
 
 /** Skips the rest of a night shorter than MIN_NIGHT_MS once everyone has acted (see night.ts). */
@@ -68,45 +117,41 @@ export function breakDawn(state: GameState): void {
   if (state.phase === 'night' && state.dawnAt != null) nightTick(state, state.dawnAt);
 }
 
-/** Some players the ability may choose, other than the actor themself (preferring the living). */
-function pickable(state: GameState, actor: string, count: number): string[] {
+/** A player the ability may pick next, other than the actor themself (preferring the living). */
+function pickable(state: GameState, actor: string): string[] {
   const choices = viewFor(state, actor).nightTurn?.choices ?? [];
   const ok = choices.filter((c) => !c.disabled && c.id !== actor);
-  return [...ok.filter((c) => c.alive), ...ok.filter((c) => !c.alive)].slice(0, count).map((c) => c.id);
+  return [...ok.filter((c) => c.alive), ...ok.filter((c) => !c.alive)].slice(0, 1).map((c) => c.id);
 }
 
-/** Resolves the current round with arbitrary-but-valid answers, for rounds the test doesn't care
+/** Plays the current step with arbitrary-but-valid answers, for steps the test doesn't care
  * about — or, once everyone has acted, lets dawn break. */
 export function skipRound(state: GameState): void {
-  const t = state.pendingRealTurn;
-  if (!t) {
+  if (!state.pendingRealTurn) {
     breakDawn(state);
     return;
   }
-  for (const id of t.playerIds.slice()) {
-    if (id in t.responses || state.pendingRealTurn !== t) continue;
-    // A skipped Poisoner poisons themselves (legal, and harmless): poisoning anyone else would
-    // quietly switch off whichever ability the test is actually about.
-    // A step that asks for a character (the Gambler) is skipped harmlessly with a correct guess about oneself.
-    const me = state.players.find((p) => p.id === id)!;
-    const targets =
-      t.charId === 'poisoner'
-        ? [id]
-        : t.pickCharacter && t.min > 0
-          ? [id]
-          : t.shape === 'choose'
-            ? pickable(state, id, t.min)
-            : [];
-    // A step that asks for a character: pick a legal one from the screen (a Pit-Hag may only name a
-    // character not in play, a Cerenovus only a good one), falling back to the actor's own.
-    let character: string | undefined;
-    if (t.pickCharacter && t.min > 0) {
-      const pool = viewFor(state, id).nightTurn?.characters.map((c) => c.id) ?? [];
-      character = pool.length ? pool[0] : me.character;
-    }
-    submitRealResponse(state, id, targets, undefined, character);
+  playStep(state, (id, screen, t) => defaultTap(state, id, screen, t));
+}
+
+/** An arbitrary-but-valid, harmless tap for a real actor's pick/character screen. */
+function defaultTap(state: GameState, id: string, screen: NightScreen, t: PendingRealTurn): Tap {
+  const cfg = t.prompts[id];
+  if (screen.kind === 'character') {
+    // A legal character from the screen (a Pit-Hag may only name one not in play, a Cerenovus only a
+    // good one), falling back to the actor's own; an optional one is declined.
+    if (screen.canSkip) return {};
+    const pool = viewFor(state, id).nightTurn?.characters.map((c) => c.id) ?? [];
+    return { character: pool.length ? pool[0] : state.players.find((p) => p.id === id)!.character };
   }
-  answerDecoys(state);
+  const k = screen.index ?? 0;
+  // As few picks as the ability allows.
+  if (screen.canSkip && k >= cfg.min) return { targets: [] };
+  // A skipped Poisoner poisons themselves (legal, and harmless): poisoning anyone else would
+  // quietly switch off whichever ability the test is actually about. A step that also asks for a
+  // character (the Gambler) targets oneself.
+  if (k === 0 && (t.charId === 'poisoner' || cfg.pickCharacter)) return { targets: [id] };
+  return { targets: pickable(state, id) };
 }
 
 /** Fast-forwards the night until the pending real turn matches `charId`, throwing if it's never reached. */

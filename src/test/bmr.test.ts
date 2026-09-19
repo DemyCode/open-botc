@@ -913,7 +913,7 @@ test('Po: attacks one player, may choose nobody — then attacks three players t
   advanceUntil(s, 'po');
   assert.equal(s.pendingRealTurn!.min, 3);
   assert.equal(s.pendingRealTurn!.max, 3);
-  assert.throws(() => answerRealTurn(s, []), /selection/i);
+  assert.throws(() => answerRealTurn(s, []), /Choose a player/, '"No one" is not allowed tonight');
   answerRealTurn(s, ['empath', 'washerwoman', 'monk'].map((c) => byChar(s, c as CharacterId).id));
   breakDawn(s);
   assert.equal(s.deathsTonight.length, 3);

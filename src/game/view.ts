@@ -2,8 +2,8 @@ import { CHARACTERS } from './characters.js';
 import { offeredActions, type OfferedAction } from './dayactions.js';
 import { nominationRefusal, slayerShotRefusal } from './offers.js';
 import { msg } from './messages.js';
-import { MIN_ANSWER_MS, specOf } from './night.js';
-import type { GameState, HistoryEvent, Msg, Nomination, NominationState, Phase, PlayerState } from './types.js';
+import { MIN_ANSWER_MS, canPick, characterChoices } from './night.js';
+import type { GameState, HistoryEvent, Msg, NightScreenKind, Nomination, NominationState, Phase, PlayerState } from './types.js';
 
 export interface PublicPlayerView {
   id: string;
@@ -34,26 +34,27 @@ export interface NightTurnChoice {
   disabled?: boolean;
 }
 
+/**
+ * One night screen: answered with exactly ONE tap (a player, a character, "No one" or "Got it"), so
+ * every phone is tapped the same number of times. A `tip` carries nothing about the game: the app
+ * shows a random tip or glossary entry from the script.
+ */
 export interface NightTurnView {
-  shape: 'info' | 'choose';
-  title: string;
-  /** The real prompt/info, or for a decoy `{ key: <decoy question key> }`. */
-  body: Msg;
-  min: number;
-  max: number;
-  /** When set, the only selection sizes the confirm button accepts (e.g. [0, 2]). */
-  counts: number[] | null;
+  kind: NightScreenKind;
+  /** The prompt (pick/character) or the information (info/result); null for a tip. */
+  body: Msg | null;
+  /** pick: the players (any, dead or alive, yourself included unless the ability says otherwise). */
   choices: NightTurnChoice[];
-  /** True when this screen is a decoy question — only ever told to the player it's shown to. */
-  decoy: boolean;
-  /** For a decoy at a step whose real actor gets a result right after answering (Fortune Teller,
-   * Ravenkeeper): show a result screen after it too, so the two look alike. */
-  decoyResult: boolean;
-  /** The step also asks for a character, chosen among these (the script's). */
-  pickCharacter: boolean;
-  optionalCharacter: boolean;
+  /** pick: who this ability has already picked this step, in order. */
+  picked: { id: string; name: string }[];
+  /** pick: this is pick number `index + 1` of at most `total`. */
+  index: number;
+  total: number;
+  /** pick/character: "No one" is a valid answer. */
+  canSkip: boolean;
+  /** character: the characters that may be named. */
   characters: { id: string; name: string; team: string }[];
-  /** Identifies this night step — changes at every step, even when two steps look the same. */
+  /** Identifies this screen — changes at every round of every step, even when two screens look the same. */
   stepKey: string;
   /** How long (ms) until this screen may be answered (see MIN_ANSWER_MS). */
   waitMs: number;
@@ -107,9 +108,6 @@ export interface GameView {
   endDayAliveCount: number;
   myEndDayReady: boolean;
   nightTurn: NightTurnView | null;
-  /** The outcome of a "choose" ability that produces information (Fortune Teller, Ravenkeeper),
-   * shown right after answering — otherwise it would only ever surface later in myLog. */
-  nightResult: Msg | null;
   /** Personalized "You died tonight." / "You survived the night." — only set once day begins. */
   dawnMessage: Msg | null;
   /** "The village executed you." / "X was executed." / "Nobody has been killed today..." — only set once night begins. */
@@ -145,29 +143,22 @@ function believedAlignment(p: PlayerState, revealAll: boolean): string {
 function buildNightTurn(state: GameState, viewerId: string): NightTurnView | null {
   const t = state.pendingRealTurn;
   if (!t || !t.participantIds.includes(viewerId) || viewerId in t.responses) return null;
-  const decoy = !t.playerIds.includes(viewerId);
-  const self = state.players.find((p) => p.id === viewerId);
-  const spec = specOf(t.charId);
-  const eligible = !decoy && self ? spec?.prompt?.(state, self).eligible : undefined;
-  const notSelf = !decoy && !!spec?.notSelf;
+  const screen = t.screens[viewerId] ?? { kind: 'tip' };
+  const nameOf = (id: string) => state.players.find((p) => p.id === id)?.name ?? '';
   const choices: NightTurnChoice[] =
-    t.shape === 'choose'
-      ? state.players // any player, dead or alive, yourself included — the rules allow it
-          .map((p) => ({ id: p.id, name: p.name, seat: p.seat, alive: publiclyAlive(p), ...((eligible && self && !eligible(state, self, p)) || (notSelf && p.id === viewerId) ? { disabled: true } : {}) }))
+    screen.kind === 'pick'
+      ? state.players.map((p) => ({ id: p.id, name: p.name, seat: p.seat, alive: publiclyAlive(p), ...(canPick(state, t, viewerId, p.id) ? {} : { disabled: true }) }))
       : [];
-  // A decoy asks a simple question; its picker never takes more than the question needs.
-  const min = decoy && t.shape === 'choose' ? (t.max === 2 ? 2 : 1) : t.min;
-  const max = decoy && t.shape === 'choose' ? (t.max === 2 ? 2 : 1) : t.max;
   return {
-    shape: t.shape, title: 'Your turn',
-    body: decoy ? msg(t.decoys[viewerId]) : t.bodyByPlayer[viewerId] ?? msg('empty'),
-    min, max, counts: !decoy && t.counts ? t.counts : null, choices,
-    decoy,
-    decoyResult: decoy && !!t.result,
-    pickCharacter: !decoy && !!t.pickCharacter,
-    optionalCharacter: !decoy && !!t.optionalCharacter,
-    characters: !decoy && t.pickCharacter ? (t.characterPool ?? state.scriptChars).map((id) => ({ id, name: CHARACTERS[id].name, team: CHARACTERS[id].team })) : [],
-    stepKey: `${state.night}-${state.nightStepNumber ?? 0}`,
+    kind: screen.kind,
+    body: screen.body ?? null,
+    choices,
+    picked: screen.kind === 'pick' ? (t.progress[viewerId]?.targets ?? []).map((id) => ({ id, name: nameOf(id) })) : [],
+    index: screen.index ?? 0,
+    total: screen.total ?? 0,
+    canSkip: !!screen.canSkip,
+    characters: screen.kind === 'character' ? characterChoices(state, t, viewerId).map((id) => ({ id, name: CHARACTERS[id].name, team: CHARACTERS[id].team })) : [],
+    stepKey: `${state.night}-${state.nightStepNumber ?? 0}-${t.round}`,
     waitMs: Math.max(0, t.openedAt + MIN_ANSWER_MS - Date.now()),
   };
 }
@@ -245,10 +236,6 @@ export function viewFor(state: GameState, viewerId: string): GameView {
 
   const nomination = state.currentNomination ? buildNomination(state, state.currentNomination) : null;
   const nightTurn = state.phase === 'night' ? buildNightTurn(state, viewerId) : null;
-  // Not gated on phase === 'night': if answering was the last thing needed to finish the whole
-  // night, the phase can already be 'day' by the time this view is built. The result must still
-  // reach the player — it's only ever cleared by the *next* beginNight, not by the day starting.
-  const nightResult = self?.nightResult ?? null;
   const dawnMessage = state.phase === 'day' ? buildDawnMessage(self) : null;
   const duskMessage = state.phase === 'night' ? buildDuskMessage(state, self) : null;
   const neighbors = seatNeighbors(state, viewerId);
@@ -281,10 +268,9 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     endDayAliveCount: state.players.filter((p) => p.alive).length,
     myEndDayReady: !!self && state.endDayRequestedBy.includes(self.id),
     nightTurn,
-    nightResult,
     dawnMessage,
     duskMessage,
-    waitingForOthers: state.phase === 'night' && !nightTurn && !nightResult && amIAlive,
+    waitingForOthers: state.phase === 'night' && !nightTurn && amIAlive,
     nomination,
     onBlockId: state.onBlockId,
     winner: state.winner,

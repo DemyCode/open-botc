@@ -56,7 +56,7 @@ export function checkInvariants(s: GameState, where: string): void {
   }
   if (s.phase === 'night' && s.pendingRealTurn) {
     const t = s.pendingRealTurn;
-    assert.ok(t.playerIds.length > 0, `${where}: a step ran with nobody really acting (everyone would get a decoy)`);
+    assert.ok(t.playerIds.length > 0, `${where}: a step ran with nobody really acting (everyone would only get tips)`);
     // A dead player may still act only if their ability wakes the dead (the Ravenkeeper, the Sage)
     // or they keep their ability after being killed (a Vigormortis' Minion).
     const wakesWhileDead = (p: PlayerState): boolean => p.flags.keepsAbility === true || p.flags.hiddenAlive === true || CHARACTERS[p.perceived]?.hooks?.night?.wakesWhenDead === true;
@@ -64,10 +64,18 @@ export function checkInvariants(s: GameState, where: string): void {
       const p = s.players.find((q) => q.id === id)!;
       assert.ok(p.alive || wakesWhileDead(p), `${where}: only the living (or an ability that wakes the dead) wake`);
     }
-    // Everyone gets a screen at every step: the living get the real prompt or a decoy, and the dead
-    // get decoys too, so a player who looks dead but still wakes (the Zombuul) is not the only
-    // "corpse" with something to do.
+    // Everyone gets a screen at every round: the actors their real one, everyone else a tip — the dead
+    // too, so a player who looks dead but still wakes (the Zombuul) is not the only "corpse" with
+    // something to do.
     assert.deepEqual(new Set(t.participantIds), new Set(s.players.map((p) => p.id)), `${where}: everyone is woken`);
+    // One screen per player per round; a tip tells nothing about the game, and only real actors get a real screen.
+    for (const id of t.participantIds) {
+      if (id in t.responses) continue;
+      const turn = viewFor(s, id).nightTurn!;
+      assert.equal(turn.kind, t.screens[id].kind, `${where}: the phone shows this round's screen`);
+      if (turn.kind === 'tip') assert.deepEqual([turn.body, turn.choices.length, turn.characters.length], [null, 0, 0], `${where}: a tip carries nothing`);
+      else assert.ok(t.playerIds.includes(id), `${where}: only a real actor gets a real screen`);
+    }
   }
   if (s.phase === 'day') {
     assert.equal(s.pendingRealTurn, null, `${where}: no night turn during the day`);
@@ -91,7 +99,8 @@ export function checkInvariants(s: GameState, where: string): void {
 
 function playNight(s: GameState, rand: Rand, where: string): void {
   let guard = 0;
-  while (s.phase === 'night' && guard++ < 200) {
+  // (Counted in taps: every player taps once per round, and a step can take several rounds.)
+  while (s.phase === 'night' && guard++ < 5000) {
     const t = s.pendingRealTurn;
     if (!t) {
       assert.ok(s.dawnAt != null, `${where}: a night with nobody left to act is waiting for dawn`);
@@ -103,36 +112,32 @@ function playNight(s: GameState, rand: Rand, where: string): void {
     // Someone who isn't woken at all (dead from an earlier night) tries to answer: always refused.
     const outsider = s.players.find((p) => !t.participantIds.includes(p.id));
     if (outsider) assert.equal(attempt(() => submitRealResponse(s, outsider.id, [])), false, `${where}: stranger answered`);
-    // Answering before the 5-second minimum is always refused, real turn or decoy.
+    // Answering before the 5-second minimum is always refused, real screen or tip.
     const anyone = t.participantIds.find((id) => !(id in t.responses))!;
     assert.equal(attempt(() => submitRealResponse(s, anyone, [], t.openedAt + 4_999)), false, `${where}: answered too early`);
 
+    // One tap per screen: whoever hasn't answered this round taps now.
     const actorId = t.participantIds.find((id) => !(id in t.responses))!;
-    if (rand() < 0.2 && t.shape === 'choose') {
-      // A bad answer (wrong count, duplicates, nonsense id) must be refused, not applied.
-      const bad = pick(rand, t.min === 0 ? [['nobody'], [actorId, actorId, actorId]] : [[], ['nobody'], [actorId, actorId, actorId]]);
-      assert.equal(attempt(() => submitRealResponse(s, actorId, bad)), false, `${where}: a bad answer was accepted`);
-    }
-    if (t.shape === 'choose') {
-      // The screen's own choices already mark who is ineligible, so follow them.
-      const turn = viewFor(s, actorId).nightTurn;
-      const choices = (turn?.choices ?? []).filter((c) => !c.disabled);
+    const screen = t.screens[actorId];
+    const turn = viewFor(s, actorId).nightTurn!;
+    if (screen.kind === 'pick') {
+      if (rand() < 0.2) {
+        // A bad answer (two players at once, nonsense id, or "No one" when that isn't allowed) must be refused, not applied.
+        const bad = pick(rand, [['nobody'], [actorId, actorId], ...(screen.canSkip ? [] : [[]])]);
+        assert.equal(attempt(() => submitRealResponse(s, actorId, bad)), false, `${where}: a bad answer was accepted`);
+      }
+      // The screen's own choices already mark who is ineligible (or already picked), so follow them.
+      const choices = turn.choices.filter((c) => !c.disabled);
+      assert.ok(choices.length > 0 || screen.canSkip, `${where}: a pick screen always has a legal answer`);
       // Real players mostly aim at the living (the dead are legal targets, but pointless).
-      const livingOnly = rand() < 0.85;
-      let pool = choices.filter((c) => !livingOnly || c.alive || s.players.filter((q) => q.alive).length < t.max).map((c) => c.id);
-      if (pool.length < t.min) pool = choices.map((c) => c.id);
-      if (pool.length < t.min) pool = s.players.map((p) => p.id);
-      const targets: string[] = [];
-      while (targets.length < t.min) {
-        const id = pick(rand, pool);
-        if (!targets.includes(id)) targets.push(id);
-      }
-      // A step that also asks for a character (Gambler, Cerenovus, Pit-Hag...): pick one from the screen.
-      let character: string | undefined;
-      if (t.pickCharacter && turn && turn.characters.length && !(t.optionalCharacter && t.min === 0 && rand() < 0.3)) {
-        character = pick(rand, turn.characters.map((c) => c.id));
-      }
-      submitRealResponse(s, actorId, targets, t.openedAt + 5_000, character);
+      const living = choices.filter((c) => c.alive);
+      const pool = (rand() < 0.85 && living.length ? living : choices).map((c) => c.id);
+      const skip = screen.canSkip && (!pool.length || rand() < 0.3);
+      submitRealResponse(s, actorId, skip ? [] : [pick(rand, pool)], t.openedAt + 5_000);
+    } else if (screen.kind === 'character') {
+      // (Gambler, Cerenovus, Pit-Hag...: one from the screen; an optional one is sometimes declined.)
+      const skip = screen.canSkip && (!turn.characters.length || rand() < 0.3);
+      submitRealResponse(s, actorId, [], t.openedAt + 5_000, skip ? undefined : pick(rand, turn.characters.map((c) => c.id)));
     } else {
       submitRealResponse(s, actorId, [], t.openedAt + 5_000);
     }

@@ -1,5 +1,5 @@
-// Whole games, start to finish, with every action scripted. At every night step the tests assert
-// exactly who sees a real turn and who sees a decoy — so "who sees what, when" is pinned down.
+// Whole games, start to finish, with every action scripted. At every round of every night step the
+// tests assert exactly who sees a real screen and who sees a tip — so "who sees what, when" is pinned down.
 import assert from 'node:assert/strict';
 import { poisonedId } from './helpers.js';
 import { test } from 'node:test';
@@ -13,12 +13,11 @@ import { endDayByConsensus, fastForwardToVote, mk, startNight, voteInOrder } fro
 const names = (ps: PlayerState[]) => ps.map((p) => p.name).sort();
 
 /**
- * Plays one night step exactly as scripted and asserts, at every moment, who sees what:
- *  - the step is the expected character's;
- *  - the real actors (and only they) see a real screen, everyone else the living see a decoy;
- *  - once the real actors have answered, the remaining screens are ALL decoys — the step is still
- *    waiting, so "everybody has a decoy" at that point is normal;
- *  - the step only ends when the last decoy is answered.
+ * Plays one night step exactly as scripted, round by round, and asserts at every moment who sees what:
+ *  - the step is the expected character's, and everyone is woken;
+ *  - in every round the real actors (and only they) see a real screen, everyone else a tip;
+ *  - a real actor picks ONE player per round (`real` lists them in order), then reads any result;
+ *  - once the real actors have tapped, every screen still open is a tip and the round waits for it.
  */
 function playStep(s: GameState, char: string, real: Record<string, PlayerState[]>, alsoWokenAsDecoys: PlayerState[] = []): void {
   const t = s.pendingRealTurn!;
@@ -26,29 +25,34 @@ function playStep(s: GameState, char: string, real: Record<string, PlayerState[]
   assert.equal(t.charId, char, `step order: expected ${char}, got ${t.charId}`);
   const actors = Object.keys(real).map((n) => s.players.find((p) => p.name === n)!);
   assert.deepEqual(names(t.participantIds.map((id) => s.players.find((p) => p.id === id)!)),
-    names(s.players), `${char}: everyone is woken (real or decoy)`);
-  for (const p of s.players) {
-    const turn = viewFor(s, p.id).nightTurn;
-    if (actors.includes(p)) assert.equal(turn?.decoy, false, `${char}: ${p.name} has the REAL turn`);
-    else assert.equal(turn?.decoy, true, `${char}: ${p.name} has a decoy`);
-  }
-  for (const p of alsoWokenAsDecoys) assert.equal(viewFor(s, p.id).nightTurn?.decoy, true, `${char}: ${p.name} still gets decoys`);
+    names(s.players), `${char}: everyone is woken (real or tip)`);
+  let guard = 0;
+  while (s.pendingRealTurn === t && guard++ < 10) {
+    const round = t.round;
+    for (const p of s.players) {
+      const turn = viewFor(s, p.id).nightTurn;
+      if (actors.includes(p)) assert.notEqual(turn?.kind, 'tip', `${char}: ${p.name} has the REAL screen`);
+      else assert.equal(turn?.kind, 'tip', `${char}: ${p.name} has a tip`);
+    }
+    for (const p of alsoWokenAsDecoys) assert.equal(viewFor(s, p.id).nightTurn?.kind, 'tip', `${char}: ${p.name} still gets tips`);
 
-  const at = t.openedAt + MIN_ANSWER_MS;
-  for (const actor of actors) {
-    assert.throws(() => submitRealResponse(s, actor.id, real[actor.name].map((p) => p.id), at - 1), /Too early/);
-    submitRealResponse(s, actor.id, real[actor.name].map((p) => p.id), at);
+    const at = t.openedAt + MIN_ANSWER_MS;
+    for (const actor of actors) {
+      const screen = t.screens[actor.id];
+      const pick = screen.kind === 'pick' ? real[actor.name][screen.index ?? 0] : undefined;
+      const answer = pick ? [pick.id] : [];
+      assert.throws(() => submitRealResponse(s, actor.id, answer, at - 1), /Too early/);
+      submitRealResponse(s, actor.id, answer, at);
+    }
+    // The real screens are done. Everyone still waiting is on a tip, and the round has not ended.
+    const waiting = t.participantIds.filter((id) => !(id in t.responses));
+    if (waiting.length) {
+      assert.equal(t.round, round, `${char}: the round waits for the tips`);
+      for (const id of waiting) assert.equal(viewFor(s, id).nightTurn?.kind, 'tip', `${char}: every remaining screen is a tip`);
+    }
+    for (const id of waiting) submitRealResponse(s, id, [], at);
   }
-  // The real turn is done. Everyone still waiting is on a decoy, and the step has not ended.
-  const waiting = t.participantIds.filter((id) => !(id in t.responses));
-  if (waiting.length) {
-    assert.equal(s.pendingRealTurn, t, `${char}: the step waits for the decoys`);
-    for (const id of waiting) assert.equal(viewFor(s, id).nightTurn?.decoy, true, `${char}: every remaining screen is a decoy`);
-  }
-  for (const id of waiting) {
-    const turn = viewFor(s, id).nightTurn!;
-    submitRealResponse(s, id, turn.shape === 'choose' ? turn.choices.slice(0, turn.min).map((c) => c.id) : [], at);
-  }
+  assert.notEqual(s.pendingRealTurn, t, `${char}: the step is over`);
 }
 
 /** After the last step: nothing more to do until dawn, then the day starts. */
@@ -88,7 +92,7 @@ test('full game 1 (7 players): night 1, a quiet day, a night kill, then the Demo
   playStep(s, 'monk', { [monk.name]: [washerwoman] });
   playStep(s, 'imp', { [imp.name]: [washerwoman] });
   assert.equal(washerwoman.alive, false);
-  // The victim is still woken (as a decoy) and cannot tell they died: their own view says alive.
+  // The victim is still woken (with tips) and cannot tell they died: their own view says alive.
   assert.equal(viewFor(s, washerwoman.id).amIAlive, true, 'a night kill stays hidden until dawn');
   playStep(s, 'empath', { [empath.name]: [] });
   dawn(s);
@@ -140,26 +144,28 @@ test('full game 2 (5 players): a dead Empath gets no step, a wrong execution, th
   const t = s.pendingRealTurn!;
   assert.equal(t.charId, 'imp');
   submitRealResponse(s, imp.id, [washerwoman.id], t.openedAt + MIN_ANSWER_MS);
-  assert.equal(s.winner, 'evil');
+  assert.equal(s.winner, null, 'the kill lands when the round closes...');
+  for (const id of t.participantIds) if (!(id in t.responses)) submitRealResponse(s, id, [], t.openedAt + MIN_ANSWER_MS);
+  assert.equal(s.winner, 'evil', '...once everyone has tapped');
   assert.equal(s.phase, 'ended');
   assert.equal(s.pendingRealTurn, null, 'the game is over: no more steps');
 });
 
-test('a step where the real actor answered fast: everybody still waiting shows a decoy — that is normal', () => {
-  // This is the situation that looks like "everybody has a decoy": the real turn is already
-  // done, the step just waits for the others' decoys.
+test('a round where the real actor answered fast: everybody still waiting shows a tip — that is normal', () => {
+  // This is the situation that looks like "everybody has a tip": the real screen is already
+  // answered, the round just waits for the others' "Got it".
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
   const poisoner = s.players[1];
   startNight(s);
   const t = s.pendingRealTurn!;
   assert.equal(t.charId, 'poisoner');
-  const real = s.players.filter((p) => viewFor(s, p.id).nightTurn?.decoy === false);
-  assert.deepEqual(names(real), [poisoner.name], 'at the start of the step, exactly one player has the real turn');
+  const real = s.players.filter((p) => viewFor(s, p.id).nightTurn?.kind !== 'tip');
+  assert.deepEqual(names(real), [poisoner.name], 'at the start of the step, exactly one player has the real screen');
 
   submitRealResponse(s, poisoner.id, [poisoner.id], t.openedAt + MIN_ANSWER_MS);
   const stillOnScreen = s.players.filter((p) => viewFor(s, p.id).nightTurn);
   assert.equal(stillOnScreen.length, 4, 'the four others are still answering');
-  assert.ok(stillOnScreen.every((p) => viewFor(s, p.id).nightTurn!.decoy), 'and all of them show a decoy');
+  assert.ok(stillOnScreen.every((p) => viewFor(s, p.id).nightTurn!.kind === 'tip'), 'and all of them show a tip');
   assert.equal(s.pendingRealTurn, t, 'the step has not moved on');
   assert.equal(viewFor(s, poisoner.id).nightTurn, null, 'the real actor is done and just waits');
 });
@@ -181,18 +187,24 @@ test('the same game replayed gives the exact same transcript (a full game from t
           while (s.pendingRealTurn) {
             const t = s.pendingRealTurn;
             const actors = t.playerIds.map((id) => s.players.find((p) => p.id === id)!.name);
-            const decoys = t.participantIds.filter((id) => !t.playerIds.includes(id)).map((id) => s.players.find((p) => p.id === id)!.name);
-            log.push(`night ${s.night} ${t.charId}: real=${actors.join('+')} decoys=${decoys.length}`);
-            const at = t.openedAt + MIN_ANSWER_MS;
-            for (const id of t.participantIds.slice()) {
-              if (s.pendingRealTurn !== t) break;
-              const turn = viewFor(s, id).nightTurn;
-              if (!turn) continue;
-              const self = id;
-              const picks = turn.shape === 'choose'
-                ? turn.choices.filter((c) => (c.id !== self || t.max > 1)).slice(0, turn.min).map((c) => c.id)
-                : [];
-              submitRealResponse(s, id, picks, at);
+            const tips = t.participantIds.filter((id) => !t.playerIds.includes(id)).map((id) => s.players.find((p) => p.id === id)!.name);
+            log.push(`night ${s.night} ${t.charId}: real=${actors.join('+')} tips=${tips.length}`);
+            // Round by round, everyone taps once: a real actor makes the first legal choice (as few picks as allowed).
+            while (s.pendingRealTurn === t) {
+              const round = t.round;
+              const at = t.openedAt + MIN_ANSWER_MS;
+              for (const id of t.participantIds.slice()) {
+                if (s.pendingRealTurn !== t || t.round !== round) break;
+                const turn = viewFor(s, id).nightTurn;
+                if (!turn) continue;
+                let picks: string[] = [];
+                let character: string | undefined;
+                if (turn.kind === 'pick' && !(turn.canSkip && turn.index >= t.prompts[id].min)) {
+                  const c = turn.choices.find((x) => !x.disabled && x.id !== id) ?? turn.choices.find((x) => !x.disabled);
+                  picks = c ? [c.id] : [];
+                } else if (turn.kind === 'character' && !turn.canSkip) character = turn.characters[0]?.id;
+                submitRealResponse(s, id, picks, at, character);
+              }
             }
           }
           if (s.phase === 'night') {
@@ -227,8 +239,8 @@ test('the same game replayed gives the exact same transcript (a full game from t
   assert.ok(first.some((l) => l.includes('minion-info')), 'with 8 players the evil team is introduced on night 1');
 });
 
-test('every scripted step of every character in Trouble Brewing: who is real, who is decoy, in the official order', () => {
-  // One game with a character for each night step, so the order and the "real vs decoy" split of
+test('every scripted step of every character in Trouble Brewing: who is real, who gets tips, in the official order', () => {
+  // One game with a character for each night step, so the order and the "real vs tip" split of
   // EVERY step is asserted. Night 2 adds the Ravenkeeper (killed by the Imp) and the Undertaker.
   const chars: CharacterId[] = ['imp', 'poisoner', 'spy', 'washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'fortuneteller', 'butler', 'ravenkeeper', 'undertaker'];
   const s = mk(chars);

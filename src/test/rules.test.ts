@@ -230,7 +230,7 @@ test('the Fortune Teller may include themselves in their two picks', () => {
   const imp = byChar(s, 'imp');
   startNight(s);
   advanceUntil(s, 'fortuneteller');
-  submitRealResponse(s, ft.id, [ft.id, imp.id]);
+  answerRealTurn(s, [ft.id, imp.id]); // one pick at a time: themself, then the Imp
   assert.equal(ft.nightResult?.key, 'fortuneTellerYes');
 });
 

@@ -14,7 +14,7 @@ import {
 const VIEW_KEYS = [
   'amIAlive', 'code', 'dawnMessage', 'day', 'duskMessage', 'endDayAliveCount', 'endDayReadyCount', 'endDayReadyNames', 'hostId',
   'leftNeighborName', 'slayerShotAvailable', 'canNominate', 'nominatableIds', 'myDayActions', 'myCharacter', 'myEndDayReady', 'myGhostVoteUsed', 'myLog', 'mySeatRightId', 'night',
-  'nightResult', 'nightTurn', 'nomination', 'onBlockId', 'phase', 'publicLog', 'players', 'rightNeighborName', 'seatingConfirmed',
+  'nightTurn', 'nomination', 'onBlockId', 'phase', 'publicLog', 'players', 'rightNeighborName', 'seatingConfirmed',
   'selfId', 'waitingForOthers', 'winner', 'replay', 'script',
 ];
 const PLAYER_KEYS = [
@@ -156,15 +156,18 @@ test('a poisoned or drunk player looks exactly like a healthy one in their own d
   assert.ok(!keys.some((k) => /poison|drunk|sober|healthy/i.test(k)));
 });
 
-test('a night decoy is indistinguishable from a real turn in everything but the flag the phone itself needs', () => {
+test('a night tip has the same shape as a real screen, and carries nothing about what anyone else is doing', () => {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier', 'monk', 'chef']);
   startNight(s);
   advanceUntil(s, 'poisoner');
   const real = viewFor(s, byChar(s, 'poisoner').id).nightTurn!;
-  const decoy = viewFor(s, byChar(s, 'soldier').id).nightTurn!;
-  assert.deepEqual(Object.keys(real).sort(), Object.keys(decoy).sort());
-  assert.equal(real.choices.length, decoy.choices.length);
-  assert.deepEqual(real.choices, decoy.choices, 'the same list of players to pick from');
+  const tip = viewFor(s, byChar(s, 'soldier').id).nightTurn!;
+  assert.deepEqual(Object.keys(real).sort(), Object.keys(tip).sort());
+  assert.equal(real.kind, 'pick');
+  assert.equal(tip.kind, 'tip');
+  assert.equal(tip.body, null, 'no prompt: nothing says a "choose one player" step is happening');
+  assert.deepEqual([tip.choices, tip.characters, tip.picked, tip.total], [[], [], [], 0]);
+  assert.equal(tip.stepKey, real.stepKey, 'the same screen number for everyone');
 });
 
 test('nobody\'s view shows how many decoys/real turns exist at a step, only their own screen', () => {
