@@ -625,6 +625,7 @@ const MESSAGES = {
     executedOther: (v) => `${v.name} was executed by the village.`,
     // ---- Bad Moon Rising
     demonChoose: () => 'Choose a player to kill.',
+    pukkaChoose: () => 'Choose a player to poison. They will die tomorrow night.',
     grandmotherInfo: (v) => `Your grandchild is ${v.name}, the ${roleNameFor(v.role)}.`,
     sailorChoose: () => 'Choose an alive player: either you or they are drunk until dusk.',
     chambermaidChoose: () => 'Choose 2 alive players (not yourself) to see how many woke tonight.',
@@ -731,6 +732,7 @@ const MESSAGES = {
     executedOther: (v) => `${v.name} a été exécuté(e) par le village.`,
     // ---- Bad Moon Rising
     demonChoose: () => 'Choisissez un joueur à tuer.',
+    pukkaChoose: () => 'Choisissez un joueur à empoisonner. Il mourra la nuit prochaine.',
     grandmotherInfo: (v) => `Votre petit-enfant est ${v.name}, le ${roleNameFor(v.role)}.`,
     sailorChoose: () => 'Choisissez un joueur en vie : vous ou lui serez ivre jusqu’au crépuscule.',
     chambermaidChoose: () => 'Choisissez 2 joueurs en vie (pas vous) pour savoir combien se sont réveillés cette nuit.',

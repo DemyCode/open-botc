@@ -379,7 +379,7 @@ export const BMR: CharacterDef[] = [
       },
       // The Pukka never poisons itself: that would switch off its own ability forever (it is its
       // own poison's source) and the game could never resolve the previous victim.
-      prompt: () => ({ min: 1, max: 1, body: msg('demonChoose'), eligible: (_s, self, t) => t.id !== self.id }),
+      prompt: () => ({ min: 1, max: 1, body: msg('pukkaChoose'), eligible: (_s, self, t) => t.id !== self.id }),
       apply: (s, self, targets) => {
         pukkaResolvePrevious(s, self);
         if (s.winner || !abilityWorks(s, self)) return;

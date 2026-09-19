@@ -376,6 +376,21 @@ test('the Seamstress\'s screen accepts no-one (to save the ability) or two playe
   assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [s.players[3].id, s.players[4].id] });
 });
 
+test('the Pukka is asked whom to POISON (who dies tomorrow night), never "choose a player to kill"', async () => {
+  const s = mk(['pukka', 'poisoner', 'empath', 'washerwoman', 'soldier', 'chef', 'mayor']);
+  startNight(s);
+  advanceUntil(s, 'pukka');
+  const view = viewFor(s, byChar(s, 'pukka').id);
+  assert.deepEqual(view.nightTurn!.body, { key: 'pukkaChoose' });
+  for (const [lang, poison, kill] of [['en', /poison/, /to kill/], ['fr', /empoisonner/, /à tuer/]] as const) {
+    const app = await loadApp(lang);
+    app.run(`handleTurnChange(${JSON.stringify(view)})`);
+    app.show(view, { seen: true });
+    assert.match(app.root.text(), poison);
+    assert.doesNotMatch(app.root.text(), kill);
+  }
+});
+
 function courtierView(): { s: GameState; view: GameView } {
   const s = mk(['imp', 'poisoner', 'courtier', 'soldier', 'empath', 'chef', 'mayor']);
   startNight(s);
