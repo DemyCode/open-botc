@@ -12,8 +12,21 @@ import type { GameState, Msg, PlayerState, Team } from './types.js';
  */
 export function infoIsFalse(state: GameState, self: PlayerState): boolean {
   if (CHARACTERS[self.character].team !== 'townsfolk') return false;
-  return state.players.some((p) => p.alive && hooksOf(p.character).falsifiesTownsfolkInfo);
+  // (A drunk or poisoned Vortox has no ability, so it falsifies nothing.)
+  return state.players.some((p) => p.alive && hooksOf(p.character).falsifiesTownsfolkInfo && abilityWorks(state, p));
 }
+
+/**
+ * Under a Vortox, information must be FALSE — not merely random like a drunk's, which may happen to
+ * be right. Picks a wrong value among `candidates` (the plausible answers); `fallback` if every one is right.
+ */
+export function wrongAnswer<T>(state: GameState, self: PlayerState, truth: T, candidates: T[], fallback: T, slot: string): T {
+  const wrong = candidates.filter((c) => c !== truth);
+  return wrong.length ? stablePick(state.secret, wrong, slot, self.id, 'vortox') : fallback;
+}
+
+/** 0, 1, ..., n. */
+export const upTo = (n: number): number[] => Array.from({ length: Math.max(0, n) + 1 }, (_, i) => i);
 
 /** Whether an information ability should be treated as malfunctioning (drunk, poisoned, or a Vortox). */
 export function infoUnreliable(state: GameState, self: PlayerState): boolean {
@@ -52,7 +65,10 @@ export function investigativeInfo(state: GameState, self: PlayerState, team: Exc
     return msg('investigativeInfo', { a: pair[0].name, b: pair[1].name, role });
   }
   const [a, b] = pickPair(state, pool, slot, self.id, 'fake');
-  const fake = stablePick(state.secret, scriptCharacters(state, team), slot, self.id, 'fake-char');
+  const roles = scriptCharacters(state, team);
+  // Under a Vortox the pair must be wrong: neither player is the character named.
+  const falseRoles = roles.filter((c) => c !== a.character && c !== b.character);
+  const fake = stablePick(state.secret, infoIsFalse(state, self) && falseRoles.length ? falseRoles : roles, slot, self.id, 'fake-char');
   return msg('investigativeInfo', { a: a.name, b: b.name, role: fake });
 }
 
@@ -73,7 +89,8 @@ export function chefInfo(state: GameState, self: PlayerState, slot: string): Msg
     const ctx = { asker: self.id, slot: `${slot}-pair${i}` };
     if (registersAs(state, p1, 'evil', ctx) && registersAs(state, p2, 'evil', ctx)) count++;
   }
-  if (infoUnreliable(state, self)) {
+  if (infoIsFalse(state, self)) count = wrongAnswer(state, self, count, upTo(maxEvilPairs(state)), count + 1, slot);
+  else if (infoUnreliable(state, self)) {
     count = Math.floor(stableFloat(state.secret, slot, self.id, 'fake') * (maxEvilPairs(state) + 1));
   }
   return msg('chefInfo', { count });
@@ -104,8 +121,10 @@ export function empathInfo(state: GameState, self: PlayerState, slot: string): M
   const ctx = { asker: self.id, slot };
   const [left, right] = livingNeighbors(state, self);
   let count = [left, right].filter((p) => registersAs(state, p, 'evil', ctx)).length;
-  if (infoUnreliable(state, self)) {
-    count = Math.floor(stableFloat(state.secret, slot, self.id, 'fake') * (new Set([left.id, right.id].filter((id) => id !== self.id)).size + 1));
+  const neighbours = new Set([left.id, right.id].filter((id) => id !== self.id)).size;
+  if (infoIsFalse(state, self)) count = wrongAnswer(state, self, count, upTo(neighbours), count + 1, slot);
+  else if (infoUnreliable(state, self)) {
+    count = Math.floor(stableFloat(state.secret, slot, self.id, 'fake') * (neighbours + 1));
   }
   return msg('empathInfo', { count });
 }
@@ -114,7 +133,7 @@ export function fortuneTellerInfo(state: GameState, self: PlayerState, targetIds
   const ctx = { asker: self.id, slot };
   const targets = state.players.filter((p) => targetIds.includes(p.id));
   const real = targets.some((t) => t.isRedHerring || registersAs(state, t, 'demon', ctx));
-  const answer = infoUnreliable(state, self) ? stableFloat(state.secret, slot, self.id, 'fake') < 0.5 : real;
+  const answer = infoIsFalse(state, self) ? !real : infoUnreliable(state, self) ? stableFloat(state.secret, slot, self.id, 'fake') < 0.5 : real;
   return msg(answer ? 'fortuneTellerYes' : 'fortuneTellerNo');
 }
 
@@ -132,20 +151,19 @@ function apparentToObserver(state: GameState, target: PlayerState, ctx: { asker:
 /** Only ever asked on a night after an execution: with none, the Undertaker is not woken at all. */
 export function undertakerInfo(state: GameState, self: PlayerState, executed: PlayerState | null, slot: string): Msg {
   if (!executed) return msg('empty');
-  const ctx = { asker: self.id, slot };
-  const shown = infoUnreliable(state, self)
-    ? stablePick(state.secret, scriptCharacters(state), slot, self.id, 'fake')
-    : apparentToObserver(state, executed, ctx);
-  return msg('undertakerInfo', { name: executed.name, role: shown });
+  return msg('undertakerInfo', { name: executed.name, role: characterSeen(state, self, executed, slot) });
 }
 
 export function ravenkeeperInfo(state: GameState, self: PlayerState, targetId: string, slot: string): Msg {
   const target = state.players.find((p) => p.id === targetId)!;
-  const ctx = { asker: self.id, slot };
-  const shown = infoUnreliable(state, self)
-    ? stablePick(state.secret, scriptCharacters(state), slot, self.id, 'fake')
-    : apparentToObserver(state, target, ctx);
-  return msg('ravenkeeperInfo', { name: target.name, role: shown });
+  return msg('ravenkeeperInfo', { name: target.name, role: characterSeen(state, self, target, slot) });
+}
+
+/** The character an Undertaker/Ravenkeeper is shown for `target`: how they register; any when drunk; never the true one under a Vortox. */
+function characterSeen(state: GameState, self: PlayerState, target: PlayerState, slot: string): string {
+  if (infoIsFalse(state, self)) return wrongAnswer(state, self, target.character, scriptCharacters(state), target.character, slot);
+  if (infoUnreliable(state, self)) return stablePick(state.secret, scriptCharacters(state), slot, self.id, 'fake');
+  return apparentToObserver(state, target, { asker: self.id, slot });
 }
 
 export function minionInfo(state: GameState, self: PlayerState): Msg {

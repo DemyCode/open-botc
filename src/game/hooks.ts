@@ -14,6 +14,8 @@ import type { RegisterKind } from './registration.js';
 export interface NightPrompt {
   min: number;
   max: number;
+  /** The only selection sizes allowed within min..max (the Seamstress: 0 to keep the ability for later, or 2 — never 1). */
+  counts?: number[];
   body: Msg;
   /** Also pick a character (Gambler, Cerenovus, Pit-Hag...): the answer then carries `character`. */
   pickCharacter?: boolean;
@@ -139,8 +141,9 @@ export interface DayAbility {
   onlyDay?: number;
   /** Extra limits (Moonchild: only right after dying). Return false to hide the action. */
   available?(state: GameState, self: PlayerState): boolean;
-  /** Uses the action. `self` is whoever pressed it, real or not; check self.character. */
-  use(state: GameState, self: PlayerState, targets: string[], payload: Record<string, unknown>): void;
+  /** Uses the action. `self` is whoever pressed it, real or not; check self.character.
+   * Return 'endsDay' if it caused today's one execution (the Mutant): the night begins at once. */
+  use(state: GameState, self: PlayerState, targets: string[], payload: Record<string, unknown>): 'endsDay' | void;
 }
 
 export interface CharacterDef {

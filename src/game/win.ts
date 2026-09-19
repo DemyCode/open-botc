@@ -1,5 +1,6 @@
 import { CHARACTERS } from './characters.js';
 import { record } from './history.js';
+import { isExecution } from './constants.js';
 import { msg } from './messages.js';
 import type { GameState, Msg } from './types.js';
 
@@ -29,7 +30,7 @@ export function evaluateWin(state: GameState): void {
   if (!demonAlive) {
     // "Good can't win if you both live" (the Evil Twin): the game goes on even with no Demon.
     if (alive.some((p) => CHARACTERS[p.character].hooks?.blocksGoodWin?.(state, p))) return;
-    const byExecution = state.data.demonDeathCause === 'execution' || state.data.demonDeathCause === 'virgin';
+    const byExecution = isExecution(state.data.demonDeathCause ?? '');
     const delayed = byExecution && alive.some((p) => CHARACTERS[p.character].hooks?.delaysGoodWin?.(state, p));
     if (delayed) {
       state.data.finalDay = state.day; // "play for 1 more day": the Demon's death is not announced

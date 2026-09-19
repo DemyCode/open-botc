@@ -1,10 +1,10 @@
 // Bad Moon Rising.
 import { CHARACTERS } from '../characters.js';
-import { abilityKill, demonAttack, hooksOf, notifyChosen, tryKill } from '../deaths.js';
+import { abilityKill, demonAttack, hooksOf, isExecution, notifyChosen, tryKill } from '../deaths.js';
 import { msg } from '../messages.js';
 import { addDrunk, addPoison } from '../effects.js';
 import { record } from '../history.js';
-import { livingNeighbors } from '../info.js';
+import { infoIsFalse, infoUnreliable, livingNeighbors, upTo, wrongAnswer } from '../info.js';
 import { appendLog } from '../log.js';
 import { abilityWorks } from '../registration.js';
 import { evaluateWin } from '../win.js';
@@ -38,7 +38,8 @@ function pukkaResolvePrevious(s: GameState, pukka: PlayerState): void {
 
 export const BMR: CharacterDef[] = [
   // ------------------------------------------------------------------------------------ Townsfolk
-  { id: 'grandmother', name: 'Grandmother', team: 'townsfolk', shape: 'info', edition: 'bmr', firstNight: 400, otherNight: 510,
+  // (She only wakes on the first night: her grief on later nights is the onAnyDeath hook, not a wake.)
+  { id: 'grandmother', name: 'Grandmother', team: 'townsfolk', shape: 'info', edition: 'bmr', firstNight: 400, otherNight: 0,
     ability: 'You start knowing a good player & their character. If the Demon kills them, you die too.',
     hooks: {
       night: { info: (s, self, slot) => {
@@ -46,9 +47,10 @@ export const BMR: CharacterDef[] = [
         const pool = good.length ? good : s.players.filter((p) => p.id !== self.id);
         const child = choose(s, pool, slot, self.id, 'grandchild');
         self.flags.grandchildId = child.id;
-        if (abilityWorks(s, self)) return msg('grandmotherInfo', { name: child.name, role: child.character });
-        // A drunk or poisoned Grandmother may be told a false character.
-        const fake = choose(s, s.scriptChars.filter((c) => CHARACTERS[c].team === 'townsfolk' || CHARACTERS[c].team === 'outsider'), slot, self.id, 'fake');
+        if (!infoUnreliable(s, self)) return msg('grandmotherInfo', { name: child.name, role: child.character });
+        // A drunk or poisoned Grandmother may be told a false character; under a Vortox it is always a wrong one.
+        const goodRoles = s.scriptChars.filter((c) => CHARACTERS[c].team === 'townsfolk' || CHARACTERS[c].team === 'outsider');
+        const fake = infoIsFalse(s, self) ? wrongAnswer(s, self, child.character, goodRoles, child.character, slot) : choose(s, goodRoles, slot, self.id, 'fake');
         return msg('grandmotherInfo', { name: child.name, role: fake });
       } },
       onAnyDeath: (s, owner, dead, cause) => {
@@ -84,7 +86,8 @@ export const BMR: CharacterDef[] = [
       apply: (s, self, targets, slot) => {
         const woke: string[] = s.data.woke ?? [];
         const real = targets.filter((id) => woke.includes(id)).length;
-        const count = abilityWorks(s, self) ? real : Math.floor(roll(s, slot, self.id, 'fake') * 3);
+        const count = infoIsFalse(s, self) ? wrongAnswer(s, self, real, upTo(2), real + 1, slot)
+          : !infoUnreliable(s, self) ? real : Math.floor(roll(s, slot, self.id, 'fake') * 3);
         giveResult(s, self, msg('chambermaidInfo', { count }), 'chambermaid');
       },
     } } },
@@ -199,7 +202,7 @@ export const BMR: CharacterDef[] = [
   { id: 'minstrel', name: 'Minstrel', team: 'townsfolk', shape: 'info', edition: 'bmr', firstNight: 0, otherNight: 0,
     ability: 'When a Minion dies by execution, all other players (except Travellers) are drunk until dusk tomorrow.',
     hooks: { onAnyDeath: (s, owner, dead, cause) => {
-      if ((cause !== 'execution' && cause !== 'virgin') || teamOf(dead) !== 'minion' || !abilityWorks(s, owner)) return;
+      if (!isExecution(cause) || teamOf(dead) !== 'minion' || !abilityWorks(s, owner)) return;
       for (const p of s.players) if (p.id !== owner.id) addDrunk(s, p, owner, 'minstrel', s.night + 1);
     } } },
   { id: 'tealady', name: 'Tea Lady', team: 'townsfolk', shape: 'info', edition: 'bmr', firstNight: 0, otherNight: 0,
@@ -212,7 +215,7 @@ export const BMR: CharacterDef[] = [
   { id: 'pacifist', name: 'Pacifist', team: 'townsfolk', shape: 'info', edition: 'bmr', firstNight: 0, otherNight: 0,
     ability: 'Executed good players might not die.',
     hooks: { lastResort: (s, owner, victim, cause) => {
-      if ((cause !== 'execution' && cause !== 'virgin') || !isGood(victim) || !abilityWorks(s, owner) || owner.flags.pacifistUsed) return null;
+      if (!isExecution(cause) || !isGood(victim) || !abilityWorks(s, owner) || owner.flags.pacifistUsed) return null;
       // The Storyteller chooses, and "once per game is usually about right".
       owner.flags.pacifistUsed = true;
       return 'pacifist';
@@ -309,7 +312,7 @@ export const BMR: CharacterDef[] = [
           const gf = s.players.filter((p) => p.alive && p.perceived === 'godfather');
           if (s.night === 1) return gf;
           // "Whenever an Outsider is executed and dies" — an Outsider who died another way (the Witch's curse) does not count.
-          const executed = (id: string) => ['execution', 'virgin', 'madness'].includes(s.data.deathCause?.[id] ?? '');
+          const executed = (id: string) => isExecution(s.data.deathCause?.[id] ?? '');
           const died: string[] = s.data.diedToday ?? [];
           return died.some((id) => teamOf(byId(s, id)) === 'outsider' && executed(id)) ? gf : [];
         },
@@ -333,7 +336,7 @@ export const BMR: CharacterDef[] = [
           if (abilityWorks(s, self)) s.data.daProtected = targets[0];
         },
       },
-      protects: (s, owner, victim, cause) => ((cause === 'execution' || cause === 'virgin') && s.data.daProtected === victim.id && abilityWorks(s, owner) ? 'devilsadvocate' : null),
+      protects: (s, owner, victim, cause) => (isExecution(cause) && s.data.daProtected === victim.id && abilityWorks(s, owner) ? 'devilsadvocate' : null),
     } },
   { id: 'assassin', name: 'Assassin', team: 'minion', shape: 'choose', edition: 'bmr', firstNight: 0, otherNight: 360,
     ability: 'Once per game, at night*, choose a player: they die, even if for some reason they could not.',
@@ -368,8 +371,8 @@ export const BMR: CharacterDef[] = [
     } },
   { id: 'pukka', name: 'Pukka', team: 'demon', shape: 'choose', edition: 'bmr', firstNight: 280, otherNight: 260,
     ability: 'Each night, choose a player: they are poisoned. The previously poisoned player dies then becomes healthy.',
+    // (No ownDemonInfo: the Pukka's own step is a "choose" one, so its Minions and bluffs come from the shared Demon-info step.)
     hooks: { night: {
-      ownDemonInfo: true,
       before: (s) => {
         // An exorcised Pukka doesn't wake, but last night's victim still dies.
         for (const p of s.players.filter((q) => q.alive && q.character === 'pukka' && (s.data.exorcised ?? []).includes(q.id))) pukkaResolvePrevious(s, p);

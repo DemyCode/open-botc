@@ -357,6 +357,25 @@ test('the Fortune Teller\'s screen asks for exactly two players', async () => {
   assert.equal(app.root.find((n) => n.hasClass('choice') && n.hasClass('selected')).length, 2);
 });
 
+test('the Seamstress\'s screen accepts no-one (to save the ability) or two players — never just one', async () => {
+  const s = mk(['imp', 'poisoner', 'seamstress', 'soldier', 'empath', 'chef', 'mayor']);
+  startNight(s);
+  advanceUntil(s, 'seamstress');
+  const view = viewFor(s, byChar(s, 'seamstress').id);
+  const app = await loadApp('en');
+  app.run(`handleTurnChange(${JSON.stringify(view)}); state.turnReadyAt = 0;`);
+  app.show(view, { seen: true });
+  const confirm = () => app.root.buttons().find((b) => /^Confirm/.test(b.text()))!;
+  const choices = () => app.root.find((n) => n.hasClass('choice'));
+  assert.equal(confirm().disabled, false, 'no-one: keep the ability for another night');
+  choices()[3].click(); app.run('render()');
+  assert.equal(confirm().disabled, true, 'one player is not an answer');
+  choices()[4].click(); app.run('render()');
+  assert.equal(confirm().disabled, false);
+  confirm().click();
+  assert.deepEqual(app.sent.at(-1), { t: 'nightReal', targetIds: [s.players[3].id, s.players[4].id] });
+});
+
 function courtierView(): { s: GameState; view: GameView } {
   const s = mk(['imp', 'poisoner', 'courtier', 'soldier', 'empath', 'chef', 'mayor']);
   startNight(s);

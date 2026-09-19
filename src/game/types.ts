@@ -78,6 +78,8 @@ export interface PendingRealTurn {
   shape: NightTurnShape;
   min: number;
   max: number;
+  /** The only selection sizes allowed within min..max (see NightPrompt.counts). */
+  counts?: number[];
   /** Per-player prompt, since minion-info/imp differ slightly per recipient. */
   bodyByPlayer: Record<string, Msg>;
   responses: Record<string, string[]>;

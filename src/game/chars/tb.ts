@@ -2,7 +2,7 @@
 import { EVIL_INTRO_MIN_PLAYERS } from '../constants.js';
 import { setWinner } from '../win.js';
 import { appendLog } from '../log.js';
-import { demonAttack, executePlayer, protectionFor } from '../deaths.js';
+import { demonAttack, executePlayer, isExecution, protectionFor } from '../deaths.js';
 import { record } from '../history.js';
 import { msg } from '../messages.js';
 import {
@@ -129,7 +129,7 @@ export const TB: CharacterDef[] = [
   { id: 'saint', name: 'Saint', team: 'outsider', shape: 'info', edition: 'tb', firstNight: 0, otherNight: 0,
     ability: 'If you die by execution, your team loses.',
     hooks: { onDeath: (s, owner, cause) => {
-      if ((cause === 'execution' || cause === 'virgin') && abilityWorks(s, owner)) setWinner(s, 'evil', msg('saintWins', { name: owner.name }));
+      if (isExecution(cause) && abilityWorks(s, owner)) setWinner(s, 'evil', msg('saintWins', { name: owner.name }));
     } } },
   { id: 'poisoner', name: 'Poisoner', team: 'minion', shape: 'choose', edition: 'tb', firstNight: 170, otherNight: 70,
     ability: 'Each night, choose a player: they are poisoned tonight and tomorrow day.',

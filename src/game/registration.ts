@@ -3,6 +3,17 @@ import { hooksOf } from './deaths.js';
 import { stableFloat, stablePick } from './rng.js';
 import type { CharacterId, GameState, PlayerState } from './types.js';
 
+/**
+ * Whether `p` still has their ability at all: the living do; so does a dead Minion the Vigormortis
+ * killed ("they die but keep their ability for as long as the Vigormortis remains alive").
+ */
+export function hasAbility(state: GameState, p: PlayerState): boolean {
+  if (p.alive) return true;
+  if (!p.flags.keepsAbility) return false;
+  const from = p.flags.keepsAbilityFrom as string | undefined;
+  return !from || state.players.some((q) => q.id === from && q.alive);
+}
+
 /** True if this player's own ability actually functions right now (false if drunk or poisoned, or if it never does). */
 export function abilityWorks(state: GameState, p: PlayerState): boolean {
   return abilityLostReason(state, p) === null;
@@ -15,13 +26,13 @@ export function abilityLostReason(state: GameState, p: PlayerState, depth = 0): 
   // A live poisoner (the No Dashii): its own ability must be working, and it must be alive.
   if (depth <= 3) {
     for (const owner of state.players) {
-      if (!owner.alive || owner.id === p.id) continue;
+      if (!hasAbility(state, owner) || owner.id === p.id) continue;
       if (hooksOf(owner.character).poisons?.(state, owner, p) && abilityLostReason(state, owner, depth + 1) === null) return 'poisoned';
     }
   }
   for (const e of state.effects) {
     if (e.target !== p.id) continue;
-    if (e.needsSourceAlive && !state.players.some((q) => q.id === e.source && q.alive && (!e.needsSourceChar || q.character === e.needsSourceChar))) continue;
+    if (e.needsSourceAlive && !state.players.some((q) => q.id === e.source && hasAbility(state, q) && (!e.needsSourceChar || q.character === e.needsSourceChar))) continue;
     if (e.needsTargetChar && p.character !== e.needsTargetChar) continue;
     if (e.needsSourceWorking) {
       const src = state.players.find((q) => q.id === e.source);

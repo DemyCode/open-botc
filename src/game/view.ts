@@ -41,6 +41,8 @@ export interface NightTurnView {
   body: Msg;
   min: number;
   max: number;
+  /** When set, the only selection sizes the confirm button accepts (e.g. [0, 2]). */
+  counts: number[] | null;
   choices: NightTurnChoice[];
   /** True when this screen is a decoy question — only ever told to the player it's shown to. */
   decoy: boolean;
@@ -130,6 +132,16 @@ function publiclyAlive(p: PlayerState): boolean {
   return p.alive || p.diedTonight;
 }
 
+/**
+ * The alignment a player is shown on their own card: the one that goes with who they THINK they are.
+ * The Lunatic believes they are the (evil) Demon — a card reading "Imp · good" would tell them the truth.
+ */
+function believedAlignment(p: PlayerState, revealAll: boolean): string {
+  const thinks = CHARACTERS[p.character]?.hooks?.setup?.thinksTheyAre;
+  if (revealAll || !thinks || p.perceived === p.character) return p.alignment;
+  return thinks === 'minion' || thinks === 'demon' ? 'evil' : 'good';
+}
+
 function buildNightTurn(state: GameState, viewerId: string): NightTurnView | null {
   const t = state.pendingRealTurn;
   if (!t || !t.participantIds.includes(viewerId) || viewerId in t.responses) return null;
@@ -149,7 +161,7 @@ function buildNightTurn(state: GameState, viewerId: string): NightTurnView | nul
   return {
     shape: t.shape, title: 'Your turn',
     body: decoy ? msg(t.decoys[viewerId]) : t.bodyByPlayer[viewerId] ?? msg('empty'),
-    min, max, choices,
+    min, max, counts: !decoy && t.counts ? t.counts : null, choices,
     decoy,
     decoyResult: decoy && !!t.result,
     pickCharacter: !decoy && !!t.pickCharacter,
@@ -252,7 +264,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
   return {
     code: state.code, script: { id: state.scriptId, characters: state.scriptChars }, phase: state.phase, night: state.night, day: state.day,
     hostId: state.hostId, selfId: viewerId, players, publicLog: state.publicLog,
-    myCharacter: self ? { id: self.perceived, name: CHARACTERS[self.perceived].name, ability: CHARACTERS[self.perceived].ability, alignment: self.alignment } : null,
+    myCharacter: self ? { id: self.perceived, name: CHARACTERS[self.perceived].name, ability: CHARACTERS[self.perceived].ability, alignment: believedAlignment(self, revealAll) } : null,
     myLog: self ? self.log : [],
     slayerShotAvailable: !!self && slayerShotRefusal(state, self) === null,
     canNominate: !!self && nominationRefusal(state, self) === null,

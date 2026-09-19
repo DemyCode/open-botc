@@ -4,7 +4,7 @@ import { demonInfo, minionInfo } from './info.js';
 import { record } from './history.js';
 import { appendLog } from './log.js';
 import { msg } from './messages.js';
-import { abilityLostReason, noteMalfunction } from './registration.js';
+import { abilityLostReason, hasAbility, noteMalfunction } from './registration.js';
 import { stableFloat, stablePick } from './rng.js';
 import type { NightSpec } from './hooks.js';
 import type { CharacterId, GameState, Msg, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
@@ -100,7 +100,7 @@ function findPlayer(state: GameState, id: string): PlayerState {
 function actorsFor(state: GameState, step: string): PlayerState[] {
   const spec = specOf(step);
   if (!spec) return [];
-  const actors = spec.actors ? spec.actors(state, step) : state.players.filter((p) => (p.alive || p.flags.keepsAbility) && p.perceived === step);
+  const actors = spec.actors ? spec.actors(state, step) : state.players.filter((p) => hasAbility(state, p) && p.perceived === step);
   // A Demon the Exorcist chose does not wake to use their Demon ability tonight.
   const exorcised: string[] = state.data.exorcised ?? [];
   return actors.filter((p) => !(exorcised.includes(p.id) && CHARACTERS[p.character]?.team === 'demon' && !PSEUDO_STEPS[step]));
@@ -130,6 +130,7 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
   const bodyByPlayer: Record<string, Msg> = {};
   let min = 0;
   let max = 0;
+  let counts: number[] | undefined;
   let pickCharacter = false;
   let optionalCharacter = false;
   let characterPool: CharacterId[] | undefined;
@@ -147,6 +148,7 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
       const cfg = spec?.prompt ? spec.prompt(state, p) : { min: 0, max: 0, body: msg('empty') };
       min = cfg.min;
       max = cfg.max;
+      counts = cfg.counts;
       pickCharacter = !!cfg.pickCharacter;
       optionalCharacter = !!cfg.optionalCharacter;
       characterPool = cfg.characterPool;
@@ -173,7 +175,7 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
   }
 
   state.pendingRealTurn = {
-    charId: step, playerIds: actorIds, participantIds, decoys, shape, min, max, bodyByPlayer,
+    charId: step, playerIds: actorIds, participantIds, decoys, shape, min, max, ...(counts ? { counts } : {}), bodyByPlayer,
     responses: {}, openedAt: Date.now(), pickCharacter, optionalCharacter, characterPool, result: !!spec?.result,
   };
 }
@@ -186,6 +188,7 @@ export function beginNight(state: GameState): void {
   state.data.monkProtectedId = null;
   state.nightSlotIndex = -1;
   state.pendingRealTurn = null;
+  state.currentNomination = null; // a day that ended mid-nomination (a Mutant's execution) leaves nothing half-voted
   state.nightStartedAt = Date.now();
   state.nightStepNumber = 0;
   state.dawnAt = null;
@@ -315,6 +318,7 @@ export function submitRealResponse(state: GameState, playerId: string, targetIds
   const spec = specOf(t.charId);
   if (t.shape === 'choose') {
     if (targetIds.length < t.min || targetIds.length > t.max) throw new GameError('Invalid selection count');
+    if (!isDecoy && t.counts && !t.counts.includes(targetIds.length)) throw new GameError('Invalid selection count');
     if (new Set(targetIds).size !== targetIds.length) throw new GameError('Cannot choose the same player twice');
     // "If you get to choose 'any player' at night, you can choose yourself or a dead player."
     const eligible = new Set(state.players.map((p) => p.id));

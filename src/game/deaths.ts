@@ -3,11 +3,12 @@
 import { CHARACTERS } from './characters.js';
 import { record } from './history.js';
 import { msg } from './messages.js';
-import { abilityLostReason, abilityWorks } from './registration.js';
+import { abilityLostReason, abilityWorks, hasAbility } from './registration.js';
 import { evaluateWin } from './win.js';
 import type { GameState, PlayerState } from './types.js';
 
 export type DeathCause = string; // 'demon' | 'execution' | 'virgin' | 'slayer' | 'mayorBounce' | 'starPass' | ...
+export { isExecution } from './constants.js';
 
 /** The hooks of a character (never undefined). */
 export function hooksOf(charId: string) {
@@ -19,10 +20,10 @@ function owners(state: GameState): { p: PlayerState; hooks: ReturnType<typeof ho
   return state.players.map((p) => ({ p, hooks: hooksOf(p.character) }));
 }
 
-/** Which character's ability stops `victim` dying now (a character id), or null. Only living owners protect. */
+/** Which character's ability stops `victim` dying now (a character id), or null. Only owners who still have their ability protect. */
 export function protectionFor(state: GameState, victim: PlayerState, cause: DeathCause): string | null {
   for (const { p, hooks } of owners(state)) {
-    if (!p.alive) continue;
+    if (!hasAbility(state, p)) continue;
     const by = hooks.protects?.(state, p, victim, cause);
     if (by) return by;
   }

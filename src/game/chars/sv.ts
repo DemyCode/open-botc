@@ -1,10 +1,10 @@
 // Sects & Violets.
 import { CHARACTERS, alignmentOfCharacter, isEvilTeam } from '../characters.js';
-import { abilityKill, demonAttack, executePlayer, markDead, protectionFor } from '../deaths.js';
+import { abilityKill, demonAttack, executePlayer, isExecution, markDead, protectionFor } from '../deaths.js';
 import { addDrunk, addPoison } from '../effects.js';
 import { record } from '../history.js';
 import { msg } from '../messages.js';
-import { infoUnreliable } from '../info.js';
+import { infoIsFalse, infoUnreliable, upTo, wrongAnswer } from '../info.js';
 import { appendLog } from '../log.js';
 import { abilityWorks, malfunctionCount } from '../registration.js';
 import { evalStatement, generateStatement, parseStatement, statementForMessage } from '../statements.js';
@@ -77,7 +77,8 @@ export const SV: CharacterDef[] = [
     hooks: { night: { info: (s, self, slot) => {
       const demon = s.players.find(isDemon);
       let count = demon ? stepsToNearestMinion(s, demon) : 0;
-      if (infoUnreliable(s, self)) count = 1 + Math.floor(roll(s, slot, self.id, 'fake') * 3);
+      if (infoIsFalse(s, self)) count = wrongAnswer(s, self, count, upTo(Math.floor(s.players.length / 2)).slice(1), count + 1, slot);
+      else if (infoUnreliable(s, self)) count = 1 + Math.floor(roll(s, slot, self.id, 'fake') * 3);
       return msg('clockmakerInfo', { count });
     } } } },
   { id: 'dreamer', name: 'Dreamer', team: 'townsfolk', shape: 'choose', edition: 'sv', firstNight: 420, otherNight: 560,
@@ -130,7 +131,8 @@ export const SV: CharacterDef[] = [
     ability: "Each night, you learn how many players' abilities worked abnormally (since dawn) due to another character's ability.",
     hooks: { night: { info: (s, self, slot) => {
       let count = malfunctionCount(s);
-      if (infoUnreliable(s, self)) count = 1 + Math.floor(roll(s, slot, self.id, 'fake') * 3);
+      if (infoIsFalse(s, self)) count = wrongAnswer(s, self, count, upTo(4), count + 1, slot);
+      else if (infoUnreliable(s, self)) count = 1 + Math.floor(roll(s, slot, self.id, 'fake') * 3);
       return msg('mathematicianInfo', { count });
     } } } },
   { id: 'flowergirl', name: 'Flowergirl', team: 'townsfolk', shape: 'info', edition: 'sv', firstNight: 0, otherNight: 570,
@@ -149,7 +151,8 @@ export const SV: CharacterDef[] = [
     ability: 'Each night*, you learn how many dead players are evil.',
     hooks: { night: { info: (s, self, slot) => {
       let count = s.players.filter((p) => !p.alive && p.alignment === 'evil').length;
-      if (infoUnreliable(s, self)) count = Math.floor(roll(s, slot, self.id, 'fake') * 4);
+      if (infoIsFalse(s, self)) count = wrongAnswer(s, self, count, upTo(s.players.filter((p) => !p.alive).length), count + 1, slot);
+      else if (infoUnreliable(s, self)) count = Math.floor(roll(s, slot, self.id, 'fake') * 4);
       return msg('oracleInfo', { count });
     } } } },
   { id: 'savant', name: 'Savant', team: 'townsfolk', shape: 'info', edition: 'sv', firstNight: 0, otherNight: 0,
@@ -158,8 +161,12 @@ export const SV: CharacterDef[] = [
       offeredTo: 'alive', private: true, targets: 0, statement: true,
       use: (s, self) => {
         const ctx = { asker: self.id, slot: `savant-d${s.day}` };
-        const a = statementForMessage(s, generateStatement(s, true, `${s.day}-a`, ctx));
-        const b = statementForMessage(s, generateStatement(s, false, `${s.day}-b`, ctx));
+        // 1 true and 1 false — under a Vortox both are false; drunk or poisoned, either may be anything.
+        const unreliable = infoUnreliable(s, self);
+        const truthOf = (which: string, normally: boolean): boolean =>
+          infoIsFalse(s, self) ? false : unreliable ? roll(s, ctx.slot, self.id, 'fake', which) < 0.5 : normally;
+        const a = statementForMessage(s, generateStatement(s, truthOf('a', true), `${s.day}-a`, ctx));
+        const b = statementForMessage(s, generateStatement(s, truthOf('b', false), `${s.day}-b`, ctx));
         appendLog(s, self.id, msg('savantInfo', { a, b }));
         record(s, 'statement', { by: self.id, character: 'savant', a, b });
       },
@@ -169,8 +176,10 @@ export const SV: CharacterDef[] = [
     hooks: { night: {
       recordsChoice: true, result: true, notSelf: true,
       actors: (s) => s.players.filter((p) => p.alive && p.perceived === 'seamstress' && !p.flags.seamstressUsed),
-      prompt: () => ({ min: 2, max: 2, body: msg('seamstressChoose'), eligible: (_s, self, t) => t.id !== self.id }),
+      // "If they shake their head no, nothing happens": choosing no-one keeps the once-per-game ability for later.
+      prompt: () => ({ min: 0, max: 2, counts: [0, 2], body: msg('seamstressChoose'), eligible: (_s, self, t) => t.id !== self.id }),
       apply: (s, self, targets) => {
+        if (targets.length < 2) return;
         self.flags.seamstressUsed = true;
         const [a, b] = targets.map((id) => byId(s, id));
         let same = a.alignment === b.alignment;
@@ -204,7 +213,9 @@ export const SV: CharacterDef[] = [
       use: (s, self, _targets, payload) => {
         const stmt = parseStatement(s, payload.statement);
         const ctx = { asker: self.id, slot: `artist-d${s.day}` };
-        const truth = evalStatement(s, stmt, ctx);
+        const real = evalStatement(s, stmt, ctx);
+        // The Storyteller's answer is false under a Vortox, and may be anything when the Artist is drunk or poisoned.
+        const truth = infoIsFalse(s, self) ? !real : infoUnreliable(s, self) ? roll(s, ctx.slot, self.id, 'fake') < 0.5 : real;
         const q = statementForMessage(s, stmt);
         appendLog(s, self.id, msg('artistAnswer', { question: q, truth: truth ? 1 : 0 }));
         record(s, 'statement', { by: self.id, character: 'artist', question: q, truth });
@@ -226,10 +237,14 @@ export const SV: CharacterDef[] = [
           record(s, 'statement', { by: self.id, character: 'juggler', guesses });
         },
       },
-      night: { info: (s, self, slot) => {
+      night: {
+        // "That night, wake the Juggler": only the night after their 1st day — never again.
+        actors: (s) => (s.night === 2 ? s.players.filter((p) => p.alive && p.perceived === 'juggler') : []),
+        info: (s, self, slot) => {
         const guesses = (self.flags.jugglerGuesses as { p: string; v: string }[] | undefined) ?? [];
         let count = guesses.filter((g) => byId(s, g.p).character === g.v).length;
-        if (infoUnreliable(s, self)) count = Math.floor(roll(s, slot, self.id, 'fake') * (guesses.length + 1));
+        if (infoIsFalse(s, self)) count = wrongAnswer(s, self, count, upTo(guesses.length), count + 1, slot);
+        else if (infoUnreliable(s, self)) count = Math.floor(roll(s, slot, self.id, 'fake') * (guesses.length + 1));
         return msg('jugglerInfo', { count });
       } },
     } },
@@ -258,7 +273,10 @@ export const SV: CharacterDef[] = [
       use: (s, self) => {
         s.publicLog.push(msg('mutantClaims', { name: self.name }));
         record(s, 'claim', { by: self.id, character: 'mutant', real: self.character === 'mutant' });
-        if (self.character === 'mutant' && abilityWorks(s, self)) executePlayer(s, self.id, 'madness');
+        if (self.character !== 'mutant' || !abilityWorks(s, self)) return;
+        executePlayer(s, self.id, 'madness');
+        // "If you execute them during the day before the normal execution happens, go to the night phase."
+        return 'endsDay';
       },
     } } },
   { id: 'sweetheart', name: 'Sweetheart', team: 'outsider', shape: 'info', edition: 'sv', firstNight: 0, otherNight: 0,
@@ -277,14 +295,19 @@ export const SV: CharacterDef[] = [
         const died = !!barber && ((s.data.diedToday ?? []).includes(barber.id) || s.deathsTonight.includes(barber.id));
         return died ? s.players.filter((p) => p.alive && isDemon(p)) : [];
       },
-      prompt: () => ({ min: 2, max: 2, body: msg('barberChoose'), eligible: (_s, _self, t) => !isDemon(t) }),
+      // "The Demon may choose not to swap players", and "may choose themself" — but not another Demon.
+      prompt: () => ({ min: 0, max: 2, counts: [0, 2], body: msg('barberChoose'), eligible: (_s, self, t) => t.id === self.id || !isDemon(t) }),
       apply: (s, _self, targets) => {
+        if (targets.length < 2) return;
         const [a, b] = targets.map((id) => byId(s, id));
         const ca = a.character;
         const cb = b.character;
         a.character = cb; a.perceived = cb;
         b.character = ca; b.perceived = ca;
         record(s, 'swap', { a: a.id, b: b.id });
+        // "Each player learns which character they become."
+        appendLog(s, a.id, msg('barberSwapped', { role: cb }));
+        appendLog(s, b.id, msg('barberSwapped', { role: ca }));
       },
     } } },
   { id: 'klutz', name: 'Klutz', team: 'outsider', shape: 'info', edition: 'sv', firstNight: 0, otherNight: 0,
@@ -301,7 +324,8 @@ export const SV: CharacterDef[] = [
           record(s, 'claim', { by: self.id, character: 'klutz', targets, real });
           if (!real) return;
           self.flags.klutzPending = false;
-          if (isEvilTeam(teamOf(target))) setWinner(s, 'evil', msg('evilWinsKlutz', { name: self.name }));
+          // Alignment, not character type: a good player the Pit-Hag made a Demon is still good.
+          if (target.alignment === 'evil') setWinner(s, 'evil', msg('evilWinsKlutz', { name: self.name }));
         },
       },
     } },
@@ -319,7 +343,7 @@ export const SV: CharacterDef[] = [
       } },
       onAnyDeath: (s, owner, dead, cause) => {
         if (!owner.alive || owner.flags.twinId !== dead.id) return;
-        if (cause !== 'execution' && cause !== 'virgin') return;
+        if (!isExecution(cause)) return;
         if (!abilityWorks(s, owner)) return;
         setWinner(s, 'evil', msg('evilWinsTwin'));
       },
@@ -422,7 +446,9 @@ export const SV: CharacterDef[] = [
           const wouldDie = target.alive && protectionFor(s, target, 'demon') === null;
           if (teamOf(target) === 'outsider' && !self.flags.fangguJumped && wouldDie) {
             self.flags.fangguJumped = true;
-            target.character = 'fanggu'; target.perceived = 'fanggu'; target.alignment = 'evil'; target.flags = {};
+            target.character = 'fanggu'; target.perceived = 'fanggu'; target.alignment = 'evil';
+            // "This can only happen once per game": the new Fang Gu kills Outsiders as normal.
+            target.flags = { fangguJumped: true };
             record(s, 'promotion', { player: target.id, reason: 'fangGu' });
             appendLog(s, target.id, msg('fangGuBecame'));
             markDead(s, self, 'fangGuJump');
@@ -445,6 +471,7 @@ export const SV: CharacterDef[] = [
           demonAttack(s, self, targets[0]);
           if (!wasMinion || target.alive || !abilityWorks(s, self)) return;
           target.flags.keepsAbility = true;
+          target.flags.keepsAbilityFrom = self.id; // "for as long as the Vigormortis remains alive"
           const neighbor = townsfolkNeighbors(s, target)[0];
           if (neighbor) addPoison(s, neighbor, self, 'vigormortis', null, { needsSourceAlive: true });
         },
@@ -469,8 +496,8 @@ export const SV: CharacterDef[] = [
         prompt: demonChoosePrompt,
         apply: (s, self, targets) => demonAttack(s, self, targets[0]),
       },
-      endOfDayWin: (s, _owner, executedId) => {
-        if (executedId !== null) return false;
+      endOfDayWin: (s, owner, executedId) => {
+        if (executedId !== null || !abilityWorks(s, owner)) return false;
         setWinner(s, 'evil', msg('evilWinsVortox'));
         return true;
       },

@@ -1,11 +1,11 @@
 import { CHARACTERS, alignmentOfCharacter } from './characters.js';
-import { executePlayer, hooksOf, markDead } from './deaths.js';
+import { executePlayer, hooksOf, tryKill } from './deaths.js';
 import { record } from './history.js';
 import { msg } from './messages.js';
 import { nominationRefusal, slayerShotRefusal } from './offers.js';
 import { EVIL_INTRO_MIN_PLAYERS, beginNight, tick as nightTick } from './night.js';
 import { evaluateWin, setWinner } from './win.js';
-import { abilityLostReason, abilityWorks, noteMalfunction, registersAs } from './registration.js';
+import { abilityLostReason, abilityWorks, hasAbility, noteMalfunction, registersAs } from './registration.js';
 import { randomId } from './rng.js';
 import { dealCharacters } from './setup.js';
 import { CUSTOM_SCRIPT_ID, SCRIPTS, resolveScript } from './scripts.js';
@@ -196,9 +196,11 @@ export function useSlayer(state: GameState, slayerId: string, targetId: string):
     shooter: self.id, target: target.id, real: isRealSlayer, hit, targetDead: !target.alive,
     lost: isRealSlayer ? abilityLostReason(state, self) : null,
   });
-  if (hit) {
+  // A hit is still a kill like any other: a Zombuul's first death only makes them "register as dead",
+  // and whoever can't die (a Tea Lady's neighbour) doesn't — then nothing visibly happens.
+  const r = hit ? tryKill(state, target, 'slayer') : null;
+  if (r && (r.died || r.appearsDead)) {
     state.publicLog.push(msg('slayerHit', { slayer: self.name, target: target.name }));
-    markDead(state, target, 'slayer');
     evaluateWin(state);
   } else {
     state.publicLog.push(msg('slayerMiss', { slayer: self.name, target: target.name }));
@@ -219,7 +221,8 @@ export function nominate(state: GameState, nominatorId: string, nomineeId: strin
   record(state, 'nominate', { nominator: nominatorId, nominee: nomineeId });
   // Public facts the night can ask about: the Town Crier (a Minion nominated) and the Witch's curse.
   if (CHARACTERS[nominator.character].team === 'minion') state.data.minionNominatedToday = true;
-  for (const p of state.players.filter((q) => q.alive)) hooksOf(p.character).onNominate?.(state, p, nominator);
+  // (A dead Minion the Vigormortis killed still has their ability: a dead Witch still curses.)
+  for (const p of state.players.filter((q) => hasAbility(state, q))) hooksOf(p.character).onNominate?.(state, p, nominator);
   if (state.winner) return;
 
   // A nominee's own ability may react (the Virgin's execution ends the day right here, so nobody on
@@ -453,7 +456,7 @@ function endDay(state: GameState): void {
   if (state.phase !== 'day' || state.winner) return;
   // An ability may name someone else to execute today instead (the Cerenovus' madness).
   let executedId = state.onBlockId;
-  for (const p of state.players.filter((q) => q.alive)) {
+  for (const p of state.players.filter((q) => hasAbility(state, q))) {
     const byAbility = hooksOf(p.character).beforeDayEnd?.(state, p);
     if (byAbility) { executedId = byAbility; break; }
   }

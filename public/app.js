@@ -663,7 +663,7 @@ const MESSAGES = {
     towncrierInfo: (v) => (v.yes ? 'A Minion nominated today.' : 'No Minion nominated today.'),
     oracleInfo: (v) => `${v.count} dead player${v.count === 1 ? ' is' : 's are'} evil.`,
     savantInfo: (v) => `Two statements, one true and one false: (1) ${v.a} (2) ${v.b}`,
-    seamstressChoose: () => 'Choose 2 players (not yourself) to learn if they are the same alignment.',
+    seamstressChoose: () => 'Choose 2 players (not yourself) to learn if they are the same alignment — or choose no-one to keep your ability for another night.',
     seamstressInfo: (v) => (v.same ? 'They are the same alignment.' : 'They are not the same alignment.'),
     philosopherChoose: () => 'Choose a good character: you gain that ability. If that character is in play, they become drunk.',
     philosopherGained: (v) => `You have gained the ${roleNameFor(v.role)} ability.`,
@@ -672,7 +672,8 @@ const MESSAGES = {
     jugglerInfo: (v) => `You guessed ${v.count} character${v.count === 1 ? '' : 's'} correctly.`,
     sageInfo: (v) => `The Demon is one of ${v.a} or ${v.b}.`,
     mutantClaims: (v) => `${v.name} claims to be the Mutant.`,
-    barberChoose: () => 'Choose 2 players (not another Demon) to swap characters.',
+    barberChoose: () => 'You may choose 2 players (you may include yourself, but not another Demon) to swap characters — or choose no-one.',
+    barberSwapped: (v) => `The Barber's swap: you are now the ${roleNameFor(v.role)}.`,
     klutzChooses: (v) => `${v.name} publicly chooses ${v.target}.`,
     evilWinsKlutz: (v) => `${v.name} was the Klutz and chose an evil player — evil wins!`,
     evilTwinInfo: (v) => `You and ${v.name} (the ${roleNameFor(v.role)}) know each other.`,
@@ -768,7 +769,7 @@ const MESSAGES = {
     towncrierInfo: (v) => (v.yes ? 'Un Sbire a nominé aujourd’hui.' : 'Aucun Sbire n’a nominé aujourd’hui.'),
     oracleInfo: (v) => `${v.count} joueur${v.count === 1 ? ' mort est maléfique' : 's morts sont maléfiques'}.`,
     savantInfo: (v) => `Deux affirmations, une vraie et une fausse : (1) ${v.a} (2) ${v.b}`,
-    seamstressChoose: () => 'Choisissez 2 joueurs (pas vous) pour savoir s’ils ont le même alignement.',
+    seamstressChoose: () => 'Choisissez 2 joueurs (pas vous) pour savoir s’ils ont le même alignement — ou personne, pour garder votre capacité pour une autre nuit.',
     seamstressInfo: (v) => (v.same ? 'Ils ont le même alignement.' : 'Ils n’ont pas le même alignement.'),
     philosopherChoose: () => 'Choisissez un personnage bon : vous gagnez cette capacité. Si ce personnage est en jeu, il devient ivre.',
     philosopherGained: (v) => `Vous avez gagné la capacité ${roleNameFor(v.role)}.`,
@@ -777,7 +778,8 @@ const MESSAGES = {
     jugglerInfo: (v) => `Vous avez deviné ${v.count} personnage${v.count === 1 ? '' : 's'} correctement.`,
     sageInfo: (v) => `Le Démon est l’un de ${v.a} ou ${v.b}.`,
     mutantClaims: (v) => `${v.name} prétend être le Mutant.`,
-    barberChoose: () => 'Choisissez 2 joueurs (pas un autre Démon) pour échanger leurs personnages.',
+    barberChoose: () => 'Vous pouvez choisir 2 joueurs (vous compris, mais pas un autre Démon) pour échanger leurs personnages — ou personne.',
+    barberSwapped: (v) => `Échange du Barbier : vous êtes maintenant le ${roleNameFor(v.role)}.`,
     klutzChooses: (v) => `${v.name} choisit publiquement ${v.target}.`,
     evilWinsKlutz: (v) => `${v.name} était le Maladroit et a choisi un joueur maléfique — le Mal gagne !`,
     evilTwinInfo: (v) => `Vous et ${v.name} (le ${roleNameFor(v.role)}) vous connaissez.`,
@@ -1607,7 +1609,11 @@ function renderNight(v) {
       children.push(
         el(
           'button',
-          { class: 'block', disabled: wait > 0 || state.selected.length < turn.min || needsCharacter ? 'true' : null, onclick: () => submitTurn(turn) },
+          {
+            class: 'block',
+            disabled: wait > 0 || state.selected.length < turn.min || (turn.counts && !turn.counts.includes(state.selected.length)) || needsCharacter ? 'true' : null,
+            onclick: () => submitTurn(turn),
+          },
           label(t('confirm'))
         )
       );
