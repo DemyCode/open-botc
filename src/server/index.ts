@@ -22,9 +22,14 @@ const MIME: Record<string, string> = {
 
 const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/api/rooms') {
-    const state = rooms.create();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ code: state.code }));
+    try {
+      const state = rooms.create();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ code: state.code }));
+    } catch (err) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err instanceof GameError ? err.message : 'Unavailable' }));
+    }
     return;
   }
 
@@ -206,6 +211,7 @@ wss.on('connection', (ws: WebSocket) => {
 });
 
 setInterval(() => {
+  rooms.prune();
   for (const code of rooms.allCodes()) {
     // One room throwing here (a bad tick, a stale/incompatible persisted state, ...) must not
     // stop the other rooms from ticking, and must not crash the whole process — this callback

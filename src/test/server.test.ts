@@ -721,3 +721,18 @@ test('the server never logged an unexpected error during all of the above', () =
   const noisy = server.output().split('\n').filter((l) => /Error|TypeError|Unhandled|at .*\(/.test(l));
   assert.deepEqual(noisy, [], 'the server printed errors:\n' + noisy.join('\n'));
 });
+
+test('past the room cap, POST /api/rooms answers 503 instead of creating another room', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'botc-cap-'));
+  const srv = await startServer(dir, { ...FAST, BOTC_MAX_ROOMS: '2' });
+  try {
+    assert.equal((await request(srv.port, 'POST', '/api/rooms')).status, 200);
+    assert.equal((await request(srv.port, 'POST', '/api/rooms')).status, 200);
+    const third = await request(srv.port, 'POST', '/api/rooms');
+    assert.equal(third.status, 503);
+    assert.match(third.body, /full/);
+  } finally {
+    await srv.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

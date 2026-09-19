@@ -2,12 +2,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { WebSocket } from 'ws';
 import { createGame } from '../game/engine.js';
+import { GameError } from '../game/types.js';
 import { viewFor } from '../game/view.js';
 import type { GameState } from '../game/types.js';
 
 // Where rooms are saved between restarts. BOTC_DATA_DIR lets tests use a throwaway folder.
-const DATA_DIR = path.resolve(process.env.BOTC_DATA_DIR || 'data');
-const ROOMS_FILE = path.join(DATA_DIR, 'rooms.json');
+const DEFAULT_DATA_DIR = path.resolve(process.env.BOTC_DATA_DIR || 'data');
+/** A room nobody is connected to is forgotten after this long without activity. */
+const DEFAULT_TTL_MS = 24 * 3_600_000;
+const DEFAULT_MAX_ROOMS = Number(process.env.BOTC_MAX_ROOMS) || 500;
+
+export interface RoomManagerOptions {
+  dataDir?: string;
+  ttlMs?: number;
+  maxRooms?: number;
+  /** The clock (ms), injectable for tests. */
+  now?: () => number;
+}
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 
 /**
@@ -17,7 +28,7 @@ const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
  * (or worse, a crash later mid-game when some code path first touches the missing field), we
  * just discard everything from a mismatched version and start fresh.
  */
-const SCHEMA_VERSION = 4; // 4: scripts (scriptId/scriptChars), effects, per-player flags; 3: GameState gained `history` (the replay); 2: night steps wake everyone
+export const SCHEMA_VERSION = 5; // 5: poison is an effect, Monk/Butler state lives in GameState.data (typed); 4: scripts (scriptId/scriptChars), effects, per-player flags; 3: GameState gained `history` (the replay); 2: night steps wake everyone
 
 interface PersistedFile {
   version: number;
@@ -35,20 +46,65 @@ export class RoomManager {
   private sockets = new Map<string, Map<string, Set<WebSocket>>>();
   private lastPayload = new Map<string, Map<string, string>>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** When each room last saw activity (ms), for expiring abandoned ones. */
+  private touched = new Map<string, number>();
+  private readonly dataDir: string;
+  private readonly roomsFile: string;
+  private readonly ttlMs: number;
+  private readonly maxRooms: number;
+  private readonly now: () => number;
 
-  constructor() {
+  constructor(opts: RoomManagerOptions = {}) {
+    this.dataDir = opts.dataDir ?? DEFAULT_DATA_DIR;
+    this.roomsFile = path.join(this.dataDir, 'rooms.json');
+    this.ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS;
+    this.maxRooms = opts.maxRooms ?? DEFAULT_MAX_ROOMS;
+    this.now = opts.now ?? Date.now;
     this.load();
+  }
+
+  /** Marks a room as active now. */
+  touch(code: string): void {
+    this.touched.set(code, this.now());
+  }
+
+  /**
+   * Deletes rooms nobody is connected to that have been idle longer than the time-to-live (and the
+   * data saved for them). Returns the codes removed.
+   */
+  prune(): string[] {
+    const removed: string[] = [];
+    for (const code of [...this.rooms.keys()]) {
+      // "Connected" means a live socket, not the player's flag (which is stale for a room loaded after a restart).
+      const live = [...(this.sockets.get(code)?.values() ?? [])].some((set) => set.size > 0);
+      if (live) { this.touch(code); continue; }
+      if (this.now() - (this.touched.get(code) ?? 0) <= this.ttlMs) continue;
+      this.rooms.delete(code);
+      this.sockets.delete(code);
+      this.lastPayload.delete(code);
+      this.touched.delete(code);
+      removed.push(code);
+    }
+    if (removed.length) this.scheduleSave();
+    return removed;
+  }
+
+  /** Writes the rooms to disk now (normally done a moment after each change). */
+  flush(): void {
+    if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null; }
+    this.save();
   }
 
   private load(): void {
     try {
-      const raw = fs.readFileSync(ROOMS_FILE, 'utf8');
+      const raw = fs.readFileSync(this.roomsFile, 'utf8');
       const parsed = JSON.parse(raw) as PersistedFile;
       if (parsed.version !== SCHEMA_VERSION) {
         console.warn(`Discarding persisted rooms from schema v${parsed.version} (current is v${SCHEMA_VERSION})`);
         return;
       }
-      for (const [code, state] of Object.entries(parsed.rooms)) this.rooms.set(code, state);
+      // Loaded rooms start their idle clock now: a restart must not instantly expire them.
+      for (const [code, state] of Object.entries(parsed.rooms)) { this.rooms.set(code, state); this.touch(code); }
     } catch {
       // no persisted data yet, or it's unreadable — fresh start either way
     }
@@ -58,22 +114,28 @@ export class RoomManager {
     if (this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      try {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-        const payload: PersistedFile = { version: SCHEMA_VERSION, rooms: Object.fromEntries(this.rooms) };
-        fs.writeFileSync(ROOMS_FILE, JSON.stringify(payload));
-      } catch (err) {
-        console.error('Failed to persist rooms', err);
-      }
+      this.save();
     }, 500);
   }
 
+  private save(): void {
+    try {
+      fs.mkdirSync(this.dataDir, { recursive: true });
+      const payload: PersistedFile = { version: SCHEMA_VERSION, rooms: Object.fromEntries(this.rooms) };
+      fs.writeFileSync(this.roomsFile, JSON.stringify(payload));
+    } catch (err) {
+      console.error('Failed to persist rooms', err);
+    }
+  }
+
   create(): GameState {
+    if (this.rooms.size >= this.maxRooms) throw new GameError('The server is full — try again later');
     let code = randomCode();
     while (this.rooms.has(code)) code = randomCode();
     const state = createGame(code);
     this.rooms.set(code, state);
     this.sockets.set(code, new Map());
+    this.touch(code);
     this.scheduleSave();
     return state;
   }
@@ -98,6 +160,7 @@ export class RoomManager {
       byPlayer.set(playerId, set);
     }
     set.add(ws);
+    this.touch(code);
     const player = this.rooms.get(code)?.players.find((p) => p.id === playerId);
     if (player) player.connected = true;
   }
@@ -145,6 +208,7 @@ export class RoomManager {
         if (ws.readyState === ws.OPEN) ws.send(payload);
       }
     }
+    this.touch(code);
     this.scheduleSave();
   }
 }
