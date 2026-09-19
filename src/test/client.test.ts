@@ -1064,3 +1064,49 @@ test('the client shows the Slayer card and nomination rows exactly when the view
   app.show({ ...v, canNominate: true, nominatableIds: [s.players[3].id] }, { seen: true });
   assert.equal(rows(app).filter((r) => r.listeners.click).length, 1, 'exactly the offered nominee');
 });
+
+// ---------------------------------------------------------------- the replay words every kill and every block by who really did it
+
+import { record } from '../game/history.js';
+
+async function replayOfAttack(vars: Record<string, unknown>, lang: 'en' | 'fr'): Promise<string> {
+  const s = mk(['po', 'innkeeper', 'godfather', 'monk', 'sailor', 'soldier', 'tealady']);
+  startNight(s);
+  record(s, 'attack', { actor: s.players[0].id, target: s.players[1].id, ...vars });
+  s.phase = 'ended';
+  s.winner = 'good';
+  const app = await loadApp(lang);
+  app.show(viewFor(s, s.players[3].id), { seen: true, lang });
+  return replayLinesOf(app).find((l) => /Po|Godfather|Parrain/.test(l) && /→|attacks|attaque|kills|tue/.test(l)) ?? replayLinesOf(app).join('\n');
+}
+
+for (const [by, en, fr] of [['monk', 'Monk', 'Moine'], ['innkeeper', 'Innkeeper', 'Aubergiste'], ['sailor', 'Sailor', 'Marin'], ['tealady', 'Tea Lady', 'Dame de thé']] as const) {
+  test(`replay: a Demon attack stopped by the ${en} says so (and not that the Monk did it)`, async () => {
+    const line = await replayOfAttack({ outcome: 'blocked', by }, 'en');
+    assert.ok(line.includes(en), line);
+    if (by !== 'monk') assert.ok(!line.includes('Monk'), line);
+    const fline = await replayOfAttack({ outcome: 'blocked', by }, 'fr');
+    assert.ok(fline.includes(fr), fline);
+    if (by !== 'monk') assert.ok(!fline.includes('Moine'), fline);
+  });
+}
+
+test('replay: the Soldier is still worded as safe from the Demon', async () => {
+  assert.match(await replayOfAttack({ outcome: 'blocked', by: 'soldier' }, 'en'), /Soldier is safe from the Demon/);
+});
+
+test('replay: a kill by an ability that is not the Demon\'s attack is not called "the Demon attacks"', async () => {
+  for (const [cause, en, fr] of [['godfather', 'Godfather', 'Parrain'], ['gossip', 'Gossip', 'Commère'], ['assassin', 'Assassin', 'Assassin']] as const) {
+    const line = await replayOfAttack({ outcome: 'killed', cause }, 'en');
+    assert.ok(!line.includes('(the Demon)'), line);
+    assert.ok(line.includes(en), line);
+    const fline = await replayOfAttack({ outcome: 'killed', cause }, 'fr');
+    assert.ok(!fline.includes('(le Démon)'), fline);
+    assert.ok(fline.includes(fr), fline);
+  }
+});
+
+test('replay: a blocked kill by another ability names the ability and who stopped it', async () => {
+  const line = await replayOfAttack({ outcome: 'blocked', cause: 'godfather', by: 'innkeeper' }, 'en');
+  assert.ok(line.includes('Godfather') && line.includes('Innkeeper'), line);
+});

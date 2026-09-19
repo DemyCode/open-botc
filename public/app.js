@@ -1832,10 +1832,13 @@ const REPLAY = {
       }
     },
     attack: (e, c) => {
-      const base = c.P(e.actor) + ' (the Demon) attacks ' + c.P(e.target);
+      // A kill by another ability (Godfather, Gossip, Assassin...) carries its cause; only the Demon's own attack is "the Demon attacks".
+      const base = e.cause && e.cause !== 'demon'
+        ? c.P(e.actor) + ' kills ' + c.P(e.target) + " (the " + c.R(e.cause) + "'s ability)"
+        : c.P(e.actor) + ' (the Demon) attacks ' + c.P(e.target);
       switch (e.outcome) {
         case 'killed': return base;
-        case 'blocked': return base + (e.by === 'soldier' ? ' — the Soldier is safe from the Demon: nothing happens' : ' — protected by the Monk: nothing happens');
+        case 'blocked': return base + (e.by === 'soldier' ? ' — the Soldier is safe from the Demon: nothing happens' : e.by ? ' — protected by the ' + c.R(e.by) + ': nothing happens' : ': nothing happens');
         case 'alreadyDead': return base + ' — already dead: nothing happens';
         case 'ineffective': return base + ' — nothing happens: the Demon was ' + c.lost(e.lost);
         case 'mayorBounce':
@@ -1934,10 +1937,12 @@ const REPLAY = {
       }
     },
     attack: (e, c) => {
-      const base = c.P(e.actor) + ' (le Démon) attaque ' + c.P(e.target);
+      const base = e.cause && e.cause !== 'demon'
+        ? c.P(e.actor) + ' tue ' + c.P(e.target) + ' (capacité : ' + c.R(e.cause) + ')'
+        : c.P(e.actor) + ' (le Démon) attaque ' + c.P(e.target);
       switch (e.outcome) {
         case 'killed': return base;
-        case 'blocked': return base + (e.by === 'soldier' ? ' — le Soldat est protégé du Démon : rien ne se passe' : ' — protégé par le Moine : rien ne se passe');
+        case 'blocked': return base + (e.by === 'soldier' ? ' — le Soldat est protégé du Démon : rien ne se passe' : e.by ? ' — bloqué (' + c.R(e.by) + ') : rien ne se passe' : ' : rien ne se passe');
         case 'alreadyDead': return base + ' — déjà mort(e) : rien ne se passe';
         case 'ineffective': return base + ' — rien ne se passe : le Démon était ' + c.lost(e.lost);
         case 'mayorBounce':

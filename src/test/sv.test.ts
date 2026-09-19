@@ -367,3 +367,53 @@ test('Vortox: Townsfolk information is false, and no execution in a day means ev
   assert.equal(s.winner, 'evil');
 });
 
+
+// ---------------------------------------------------------------- Fang Gu: the jump only happens if the Outsider really dies
+
+const fangGuTable = () => afterNight1(['fanggu', 'witch', 'saint', 'monk', 'innkeeper', 'artist', 'juggler']);
+/** The Monk and Innkeeper guard the Witch and the Artist by default — never the Saint unless a test says so. */
+const calm = (extra: Record<string, Pick>): Record<string, Pick> => ({ monk: { targets: ['witch'] }, innkeeper: { targets: ['witch', 'artist'] }, ...extra });
+
+test('Fang Gu: an unprotected Outsider is jumped into — they become the evil Fang Gu and the old one dies', () => {
+  const s = fangGuTable();
+  night(s, calm({ fanggu: { targets: ['saint'] } }));
+  const [oldDemon, , saint] = s.players;
+  assert.equal(saint.character, 'fanggu', 'the Saint is now the Fang Gu');
+  assert.equal(saint.alignment, 'evil');
+  assert.equal(saint.alive, true);
+  assert.equal(oldDemon.alive, false, 'the old Fang Gu died instead');
+});
+
+test('Fang Gu: a Monk-protected Outsider is not killed, so there is no jump and the Fang Gu lives', () => {
+  const s = fangGuTable();
+  night(s, calm({ monk: { targets: ['saint'] }, fanggu: { targets: ['saint'] } }));
+  const [demon, , saint] = s.players;
+  assert.equal(saint.alive, true);
+  assert.equal(saint.character, 'saint', 'still the Saint');
+  assert.equal(demon.alive, true, 'the Fang Gu did not die');
+  assert.ok(!demon.flags.fangguJumped, 'the jump is not used up');
+});
+
+test('Fang Gu: an Outsider made safe by the Innkeeper is not jumped into either', () => {
+  const s = fangGuTable();
+  night(s, calm({ innkeeper: { targets: ['saint', 'artist'] }, fanggu: { targets: ['saint'] } }));
+  assert.equal(s.players[2].character, 'saint');
+  assert.equal(s.players[0].alive, true);
+});
+
+test('Fang Gu: a blocked jump is not lost — the next night the Outsider is unprotected and the Fang Gu jumps', () => {
+  const s = fangGuTable();
+  night(s, calm({ monk: { targets: ['saint'] }, fanggu: { targets: ['saint'] } }));
+  assert.equal(s.players[2].character, 'saint', 'blocked the first night');
+  night(s, calm({ fanggu: { targets: ['saint'] } }));
+  assert.equal(s.players[2].character, 'fanggu', 'the Saint became the Fang Gu on the second night');
+  assert.equal(s.players[0].alive, false);
+});
+
+test('Fang Gu: choosing an already dead Outsider does not jump', () => {
+  const s = fangGuTable();
+  byChar(s, 'saint').alive = false;
+  night(s, calm({ fanggu: { targets: ['saint'] } }));
+  assert.equal(s.players[0].alive, true);
+  assert.equal(s.players[2].character, 'saint');
+});

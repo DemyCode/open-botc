@@ -1,6 +1,6 @@
 // Sects & Violets.
 import { CHARACTERS, alignmentOfCharacter, isEvilTeam } from '../characters.js';
-import { abilityKill, demonAttack, executePlayer, markDead } from '../deaths.js';
+import { abilityKill, demonAttack, executePlayer, markDead, protectionFor } from '../deaths.js';
 import { addDrunk, addPoison, removeEffects } from '../effects.js';
 import { record } from '../history.js';
 import { msg } from '../messages.js';
@@ -393,7 +393,9 @@ export const SV: CharacterDef[] = [
         apply: (s, self, targets) => {
           if (!abilityWorks(s, self)) { demonAttack(s, self, targets[0]); return; }
           const target = byId(s, targets[0]);
-          if (teamOf(target) === 'outsider' && !self.flags.fangguJumped) {
+          // The jump only happens if the Outsider would really die: a protected or already dead one does not trigger it.
+          const wouldDie = target.alive && protectionFor(s, target, 'demon') === null;
+          if (teamOf(target) === 'outsider' && !self.flags.fangguJumped && wouldDie) {
             self.flags.fangguJumped = true;
             target.character = 'fanggu'; target.perceived = 'fanggu'; target.alignment = 'evil'; target.flags = {};
             record(s, 'promotion', { player: target.id, reason: 'fangGu' });
