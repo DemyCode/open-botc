@@ -1,6 +1,7 @@
 // What a phone can learn from its own raw data. A tampered client can read every byte the server
 // sends it, so secrets must never be in there — not just hidden by the UI.
 import assert from 'node:assert/strict';
+import { poison } from './helpers.js';
 import { test } from 'node:test';
 import { castVote, nominate, useSlayer } from '../game/engine.js';
 import type { GameState } from '../game/types.js';
@@ -149,7 +150,7 @@ test('a poisoned or drunk player looks exactly like a healthy one in their own d
   const empath = byChar(s, 'empath');
   startNight(s);
   const healthy = JSON.stringify(viewFor(s, empath.id).myCharacter);
-  s.poisonedId = empath.id;
+  poison(s, empath.id);
   assert.equal(JSON.stringify(viewFor(s, empath.id).myCharacter), healthy);
   const keys = Object.keys(viewFor(s, empath.id));
   assert.ok(!keys.some((k) => /poison|drunk|sober|healthy/i.test(k)));

@@ -8,7 +8,7 @@ import { chefInfo, investigativeInfo, ravenkeeperInfo, spyInfo, undertakerInfo }
 import { apparentCharacter } from '../game/registration.js';
 import { SCRIPTS } from '../game/scripts.js';
 import type { GameState } from '../game/types.js';
-import { advanceUntil, answerRealTurn, byChar, mk, runFullNight, startNight } from './helpers.js';
+import { advanceUntil, answerRealTurn, byChar, mk, poison, runFullNight, startNight } from './helpers.js';
 
 const SECRETS = Array.from({ length: 60 }, (_, i) => `secret-${i}`);
 const TB = new Set(SCRIPTS.tb.characters);
@@ -18,7 +18,7 @@ const roleOf = (m: { vars?: Record<string, unknown> }): string => String(m.vars?
 function poisonedTable(chars: string[], victim: string, secret: string): GameState {
   const s = mk(chars as never);
   s.secret = secret;
-  s.poisonedId = byChar(s, victim as never).id;
+  poison(s, byChar(s, victim as never).id);
   return s;
 }
 
@@ -43,7 +43,7 @@ test('legal: a poisoned Ravenkeeper is only ever told a character of the script'
 test('legal: a poisoned Spy sees a grimoire made only of the script\'s characters', () => {
   for (const secret of SECRETS) {
     const s = poisonedTable(['spy', 'poisoner', 'imp', 'empath', 'monk', 'soldier'], 'spy', secret);
-    s.poisonedId = byChar(s, 'spy').id;
+    poison(s, byChar(s, 'spy').id);
     const m = spyInfo(s, byChar(s, 'spy'), 's1');
     for (const role of m.vars!.roles as string[]) assert.ok(TB.has(role), `${secret}: ${role} is not a Trouble Brewing character`);
   }
@@ -77,7 +77,7 @@ test('legal: the script is whatever was chosen — a Bad Moon Rising game never 
     const s = mk(['undertaker', 'poisoner', 'imp', 'empath', 'monk', 'soldier']);
     s.scriptChars = SCRIPTS.bmr.characters.slice();
     s.secret = secret;
-    s.poisonedId = byChar(s, 'undertaker').id;
+    poison(s, byChar(s, 'undertaker').id);
     const m = undertakerInfo(s, byChar(s, 'undertaker'), byChar(s, 'monk'), 'u1');
     assert.ok(BMR.has(roleOf(m)), `${secret}: ${roleOf(m)} is not on the Bad Moon Rising script`);
   }
@@ -95,10 +95,9 @@ test('legal: a malfunctioning Chef never claims more evil pairs than could possi
 });
 
 test('legal: with no evil player at all, a malfunctioning Chef says 0', () => {
-  const s = poisonedTable(['chef', 'poisoner', 'imp', 'empath', 'monk'], 'chef', 'x');
-  for (const p of s.players) p.alignment = 'good';
-  s.players.forEach((p) => { p.character = p.character === 'imp' || p.character === 'poisoner' ? 'soldier' : p.character; });
-  s.poisonedId = byChar(s, 'chef').id;
+  const s = mk(['chef', 'empath', 'soldier', 'monk', 'washerwoman']);
+  s.secret = 'x';
+  s.effects.push({ kind: 'drunk', target: byChar(s, 'chef').id, source: null, sourceChar: 'test', untilNight: null });
   assert.equal(Number(chefInfo(s, byChar(s, 'chef'), 'c1').vars!.count), 0);
 });
 
@@ -165,4 +164,58 @@ test('legal: the star-pass can land on either Minion (the Storyteller varies)', 
   const heirs = new Set(SECRETS.map(starPass));
   assert.ok(heirs.size > 1, `always ${[...heirs]}`);
   assert.ok(!heirs.has('none'), 'a Minion always inherits');
+});
+
+// ---------------------------------------------------------------- the Poisoner's poison is an ordinary effect
+
+import { abilityLostReason } from '../game/registration.js';
+
+function poisonedEmpath() {
+  const s = mk(['imp', 'poisoner', 'empath', 'librarian', 'soldier', 'chef', 'washerwoman']);
+  s.day = 1;
+  s.night = 1;
+  startNight(s);
+  advanceUntil(s, 'poisoner');
+  answerRealTurn(s, [byChar(s, 'empath').id]);
+  advanceUntil(s, 'imp');
+  answerRealTurn(s, [byChar(s, 'librarian').id]); // (a skipped Imp would kill the Poisoner)
+  return s;
+}
+
+test('legal: poison lasts through the night and the next day', () => {
+  const s = poisonedEmpath();
+  assert.equal(abilityLostReason(s, byChar(s, 'empath')), 'poisoned', 'tonight');
+  runFullNight(s);
+  assert.equal(s.phase, 'day');
+  assert.equal(abilityLostReason(s, byChar(s, 'empath')), 'poisoned', 'tomorrow day');
+});
+
+test('legal: poison is gone the moment the next night begins (until the Poisoner chooses again)', () => {
+  const s = poisonedEmpath();
+  runFullNight(s);
+  startNight(s);
+  assert.equal(abilityLostReason(s, byChar(s, 'empath')), null);
+});
+
+test('legal: poison ends the moment the Poisoner dies', () => {
+  const s = poisonedEmpath();
+  byChar(s, 'poisoner').alive = false;
+  assert.equal(abilityLostReason(s, byChar(s, 'empath')), null);
+});
+
+test('legal: poison ends when the Poisoner stops being the Poisoner (e.g. a Pit-Hag changes them)', () => {
+  const s = poisonedEmpath();
+  byChar(s, 'poisoner').character = 'soldier';
+  assert.equal(abilityLostReason(s, byChar(s, 'empath')), null);
+});
+
+test('illegal: a drunk Poisoner poisons nobody', () => {
+  const s = mk(['imp', 'poisoner', 'empath', 'librarian', 'soldier', 'chef', 'washerwoman']);
+  s.effects.push({ kind: 'drunk', target: byChar(s, 'poisoner').id, source: null, sourceChar: 'test', untilNight: null });
+  s.day = 1;
+  s.night = 1;
+  startNight(s);
+  advanceUntil(s, 'poisoner');
+  answerRealTurn(s, [byChar(s, 'empath').id]);
+  assert.equal(abilityLostReason(s, byChar(s, 'empath')), null);
 });

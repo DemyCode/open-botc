@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { poison } from './helpers.js';
 import { test } from 'node:test';
 import { abilityWorks, registersAs } from '../game/registration.js';
 import { mk } from './helpers.js';
@@ -53,7 +54,7 @@ test('abilityWorks is false for the Drunk and for a poisoned player, true otherw
   const empath = state.players.find((p) => p.character === 'empath')!;
   assert.equal(abilityWorks(state, empath), true);
 
-  state.poisonedId = empath.id;
+  poison(state, empath.id);
   assert.equal(abilityWorks(state, empath), false);
 });
 

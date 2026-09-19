@@ -11,6 +11,7 @@
 // Examples that only work with Travellers or characters outside Trouble Brewing are translated
 // to the closest Trouble Brewing equivalent (the test says so), or skipped with the reason.
 import assert from 'node:assert/strict';
+import { poison } from './helpers.js';
 import { test } from 'node:test';
 import { CHARACTERS } from '../game/characters.js';
 import { addPlayer, createGame, declareNeighbor, nominate, skipSpeech, startGame, useSlayer } from '../game/engine.js';
@@ -515,7 +516,7 @@ function butlerVote(masterVotesYes: boolean, opts: { butlerDead?: boolean } = {}
   startNight(s);
   runFullNight(s);
   night(s, { butler: ['empath'], imp: ['soldier'] }); // Filip (the Empath) is the Master
-  assert.equal(s.butlerMasterId, byChar(s, 'empath').id);
+  assert.equal(s.data.butlerMasterId, byChar(s, 'empath').id);
   const butler = byChar(s, 'butler');
   if (opts.butlerDead) butler.alive = false;
   nominate(s, byChar(s, 'washerwoman').id, byChar(s, 'poisoner').id);
@@ -731,7 +732,7 @@ test('Poisoner ex. 3 — the poisoned Investigator is told "one of two players i
     // The Poisoner is alive and has poisoned the Investigator (who is asked the way the first night asks).
     const s = mk(['imp', 'poisoner', 'investigator', 'soldier', 'chef', 'monk', 'mayor']);
     s.secret = sec;
-    s.poisonedId = byChar(s, 'investigator').id;
+    poison(s, byChar(s, 'investigator').id);
     const msg = investigativeInfo(s, byChar(s, 'investigator'), 'minion', 'poison-slot');
     const nonMinions = [msg.vars!.a, msg.vars!.b].map((n) => s.players.find((p) => p.name === n)!).every((p) => CHARACTERS[p.character].team !== 'minion');
     return msg.vars!.role === 'baron' && nonMinions;
@@ -753,7 +754,7 @@ test('Poisoner ex. 4 — the poisoned Undertaker is told "the Virgin died" altho
   }, 'a poisoned Undertaker told "Virgin"');
   // ...and, a few days later, a poisoned Saint who is executed does not end the game.
   const s = mkDay(['imp', 'saint', 'poisoner', 'soldier', 'chef', 'empath']);
-  s.poisonedId = byChar(s, 'saint').id;
+  poison(s, byChar(s, 'saint').id);
   execute(s, byChar(s, 'chef'), byChar(s, 'saint'));
   assert.equal(byChar(s, 'saint').alive, false);
   assert.equal(s.winner, null, 'the poisoned Saint dies, and the game continues');

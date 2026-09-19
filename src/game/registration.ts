@@ -8,19 +8,13 @@ export function abilityWorks(state: GameState, p: PlayerState): boolean {
   return abilityLostReason(state, p) === null;
 }
 
-/** Poison lasts only while the Poisoner lives — it ends the moment they die (or stop being the Poisoner). */
-function poisonerAlive(state: GameState): boolean {
-  return state.players.some((q) => q.alive && q.character === 'poisoner');
-}
-
 /** Why a player's ability is not working right now, if it isn't (used to explain false information in the replay). */
 export function abilityLostReason(state: GameState, p: PlayerState, depth = 0): 'drunk' | 'poisoned' | 'lunatic' | null {
   const noAbility = hooksOf(p.character).noAbility;
   if (noAbility) return noAbility;
-  if (state.poisonedId === p.id && poisonerAlive(state)) return 'poisoned';
   for (const e of state.effects) {
     if (e.target !== p.id) continue;
-    if (e.needsSourceAlive && !state.players.some((q) => q.id === e.source && q.alive)) continue;
+    if (e.needsSourceAlive && !state.players.some((q) => q.id === e.source && q.alive && (!e.needsSourceChar || q.character === e.needsSourceChar))) continue;
     if (e.needsTargetChar && p.character !== e.needsTargetChar) continue;
     if (e.needsSourceWorking) {
       const src = state.players.find((q) => q.id === e.source);

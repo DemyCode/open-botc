@@ -183,7 +183,7 @@ export function beginNight(state: GameState): void {
   state.night += 1;
   record(state, 'nightStart');
   state.deathsTonight = [];
-  state.monkProtectedId = null;
+  state.data.monkProtectedId = null;
   state.nightSlotIndex = -1;
   state.pendingRealTurn = null;
   state.nightStartedAt = Date.now();

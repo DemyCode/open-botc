@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { poisonedId } from './helpers.js';
 import { test } from 'node:test';
 import { CHARACTERS } from '../game/characters.js';
 import { submitRealResponse } from '../game/night.js';
@@ -78,7 +79,7 @@ test("a poisoned Monk's protection silently fails", () => {
   advanceUntil(state, 'monk');
   answerRealTurn(state, [empath.id]); // poisoned monk "protects" empath — should not actually work
 
-  assert.equal(state.monkProtectedId, null, 'a poisoned Monk should not successfully protect anyone');
+  assert.equal(state.data.monkProtectedId, null, 'a poisoned Monk should not successfully protect anyone');
 });
 
 test('Fortune Teller: the result of choosing is available immediately, not just in the permanent log', () => {
@@ -177,7 +178,7 @@ test('Butler may legally choose a dead player as their master', () => {
   const butler = byChar(state, 'butler');
   advanceUntil(state, 'butler');
   assert.doesNotThrow(() => submitRealResponse(state, butler.id, [empath.id]));
-  assert.equal(state.butlerMasterId, empath.id);
+  assert.equal(state.data.butlerMasterId, empath.id);
 });
 
 test('a night result is still delivered even when answering was the very last action of the whole night', () => {
@@ -256,7 +257,7 @@ test('the Poisoner may target a dead player — "any player" at night includes t
   const poisoner = byChar(state, 'poisoner');
   advanceUntil(state, 'poisoner');
   submitRealResponse(state, poisoner.id, [empath.id]);
-  assert.equal(state.poisonedId, empath.id);
+  assert.equal(poisonedId(state), empath.id);
 });
 
 test('a night turn never times out — the night waits for a real answer however long it takes', () => {

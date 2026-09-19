@@ -1,6 +1,7 @@
 // Whole games, start to finish, with every action scripted. At every night step the tests assert
 // exactly who sees a real turn and who sees a decoy — so "who sees what, when" is pinned down.
 import assert from 'node:assert/strict';
+import { poisonedId } from './helpers.js';
 import { test } from 'node:test';
 import { addPlayer, createGame, declareNeighbor, nominate, startGame, tick } from '../game/engine.js';
 import { MIN_ANSWER_MS, submitRealResponse } from '../game/night.js';
@@ -72,7 +73,7 @@ test('full game 1 (7 players): night 1, a quiet day, a night kill, then the Demo
   playStep(s, 'washerwoman', { [washerwoman.name]: [] });
   playStep(s, 'chef', { [chef.name]: [] });
   playStep(s, 'empath', { [empath.name]: [] });
-  assert.equal(s.poisonedId, monk.id);
+  assert.equal(poisonedId(s), monk.id);
   dawn(s);
   assert.equal(s.day, 1);
   for (const p of s.players) assert.equal(viewFor(s, p.id).dawnMessage?.key, 'survivedNight');

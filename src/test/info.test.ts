@@ -2,6 +2,7 @@
 // deals (5-15 players), with dead players, poison and drunkenness mixed in. What a healthy player
 // is told must be TRUE; what a poisoned/drunk player is told must be well-formed and sometimes false.
 import assert from 'node:assert/strict';
+import { poison } from './helpers.js';
 import { test } from 'node:test';
 import { alignmentOfCharacter, CHARACTERS } from '../game/characters.js';
 import { addPlayer, createGame } from '../game/engine.js';
@@ -86,8 +87,8 @@ for (const [char, team] of investigators) {
     let truths = 0;
     each((s) => {
       const self = givePlayer(s, 0, char);
-      s.poisonedId = self.id;
       s.players.find((p) => p.character === 'poisoner') ?? givePlayer(s, s.players.length - 1, 'poisoner');
+      poison(s, self.id);
       const msg = investigativeInfo(s, self, team, 'slot');
       assert.equal(msg.key, 'investigativeInfo');
       const { a, b, role } = msg.vars as { a: string; b: string; role: CharacterId };
@@ -213,8 +214,8 @@ test('Chef: a poisoned Chef is told a plausible number (never more pairs than th
   const seen = new Set<number>();
   each((s) => {
     const chef = givePlayer(s, 0, 'chef');
-    s.poisonedId = chef.id;
     givePlayer(s, s.players.length - 1, 'poisoner');
+    poison(s, chef.id);
     const count = (chefInfo(s, chef, 'slot').vars as { count: number }).count;
     assert.ok(Number.isInteger(count) && count >= 0);
     const evil = s.players.filter((p) => p.alignment === 'evil').length;
@@ -296,8 +297,8 @@ test('Empath: poisoned or drunk gets a number 0-2, sometimes wrong', () => {
   let wrong = 0;
   each((s) => {
     const empath = givePlayer(s, 0, 'empath');
-    s.poisonedId = empath.id;
     givePlayer(s, s.players.length - 1, 'poisoner');
+    poison(s, empath.id);
     empath.alive = true;
     const { min, max } = bruteForceEmpath(s, empath);
     const count = (empathInfo(s, empath, 'slot').vars as { count: number }).count;
@@ -335,8 +336,8 @@ test('Fortune Teller: a poisoned one gives a Yes or No, and is wrong at least so
   let wrong = 0;
   each((s) => {
     const ft = givePlayer(s, 0, 'fortuneteller');
-    s.poisonedId = ft.id;
     givePlayer(s, s.players.length - 1, 'poisoner');
+    poison(s, ft.id);
     const demon = s.players.find((p) => CHARACTERS[p.character].team === 'demon');
     if (!demon) return; // (the test's own overwriting of seat 0 removed the Demon in this deal)
     const other = s.players.find((p) => p.id !== demon.id && p.id !== ft.id)!;
@@ -392,8 +393,8 @@ test('Undertaker and Ravenkeeper: when poisoned they name a real character, ofte
   let wrong = 0;
   each((s) => {
     const under = givePlayer(s, 0, 'undertaker');
-    s.poisonedId = under.id;
     givePlayer(s, s.players.length - 1, 'poisoner');
+    poison(s, under.id);
     const target = s.players[1];
     const m = undertakerInfo(s, under, target, 'slot');
     assert.ok(String(m.vars!.role) in CHARACTERS);
@@ -471,8 +472,8 @@ test('Spy: a poisoned Spy sees a full but wrong grimoire', () => {
   let wrongCells = 0;
   each((s) => {
     const spy = givePlayer(s, 0, 'spy');
-    s.poisonedId = spy.id;
     givePlayer(s, s.players.length - 1, 'poisoner');
+    poison(s, spy.id);
     const m = spyInfo(s, spy, 'slot');
     const roles = m.vars!.roles as string[];
     assert.equal(roles.length, s.players.length);

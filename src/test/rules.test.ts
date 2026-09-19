@@ -221,7 +221,7 @@ test('the Monk may protect a dead player (it just does nothing)', () => {
   startNight(s);
   advanceUntil(s, 'monk');
   answerRealTurn(s, [empath.id]);
-  assert.equal(s.monkProtectedId, empath.id);
+  assert.equal(s.data.monkProtectedId, empath.id);
 });
 
 test('the Fortune Teller may include themselves in their two picks', () => {

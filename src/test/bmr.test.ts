@@ -1,6 +1,7 @@
 // Bad Moon Rising, character by character — each rule from the wiki page (summary, how to run and examples)
 // played out in a real game state, and the ways it can go wrong (drunk, poisoned, protected...).
 import assert from 'node:assert/strict';
+import { poison, poisonedId } from './helpers.js';
 import { test } from 'node:test';
 import { CHARACTERS } from '../game/characters.js';
 import { nominate, toggleEndDayRequest } from '../game/engine.js';
@@ -145,7 +146,7 @@ test('Exorcist: choosing a player who is not the Demon changes nothing; the same
 
 test('Exorcist: a drunk Exorcist does nothing', () => {
   const s = afterNight1(['imp', 'poisoner', 'exorcist', 'washerwoman', 'soldier', 'monk', 'chef']);
-  s.poisonedId = byChar(s, 'exorcist').id;
+  poison(s, byChar(s, 'exorcist').id);
   startNight(s);
   advanceUntil(s, 'exorcist');
   // (the Poisoner's step resets poison each night, so poison the Exorcist through an effect instead)
@@ -242,7 +243,7 @@ test('Courtier: may shake their head (no character) and act later; a character n
   assert.ok(byChar(s, 'courtier').flags.courtierUsed !== true);
   advanceUntil(s, 'courtier');
   answerRealTurn(s, [], 'saint');
-  assert.equal(s.effects.length, 0, 'nobody is drunk');
+  assert.equal(s.effects.filter((e) => e.kind === 'drunk').length, 0, 'nobody is drunk');
   assert.equal(byChar(s, 'courtier').log.length, 0, 'no feedback');
 });
 
@@ -436,7 +437,7 @@ test('Goon: the first player to choose them each night is drunk until dusk, and 
 test('Goon: a drunk Poisoner\'s poison does not work; the Goon stays immune to nothing else (the Demon can still kill them)', () => {
   const s = afterNight1(['imp', 'poisoner', 'goon', 'washerwoman', 'soldier', 'monk', 'chef']);
   night(s, { poisoner: { targets: ['goon'] }, imp: { targets: ['goon'] } });
-  assert.equal(s.poisonedId, null, 'the drunk Poisoner poisoned nobody');
+  assert.equal(poisonedId(s), null, 'the drunk Poisoner poisoned nobody');
   assert.equal(alive(s, 'goon'), false);
 });
 

@@ -2,6 +2,7 @@
 // game from the lobby to the winner through the same engine calls the server makes — legal moves
 // and illegal ones (which must be refused with a GameError, never crash or corrupt the game).
 import assert from 'node:assert/strict';
+import { poisonedId } from './helpers.js';
 import { CHARACTERS } from '../game/characters.js';
 import {
   addPlayer, castVote, createGame, declareNeighbor, markReadyForSpeech, nominate, setScript, skipSpeech, startGame, tick,
@@ -227,7 +228,7 @@ function playDay(s: GameState, rand: Rand, where: string): void {
 /** A one-line summary of a stuck game, for failure messages. */
 export function describe(s: GameState): string {
   const alive = s.players.filter((p) => p.alive).map((p) => `${p.character}${p.perceived !== p.character ? `(thinks ${p.perceived})` : ''}`);
-  return `alive: ${alive.join(', ')}; poisoned: ${s.players.find((p) => p.id === s.poisonedId)?.character ?? 'nobody'}; phase ${s.phase}; last log: ${s.publicLog.slice(-4).map((m) => m.key).join(', ')}`;
+  return `alive: ${alive.join(', ')}; poisoned: ${s.players.find((p) => p.id === poisonedId(s))?.character ?? 'nobody'}; phase ${s.phase}; last log: ${s.publicLog.slice(-4).map((m) => m.key).join(', ')}`;
 }
 
 export function playGame(seed: number, playerCount: number, onCheck?: (s: GameState, where: string) => void, names?: string[], scriptId = 'tb'): GameState {

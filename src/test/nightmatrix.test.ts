@@ -2,6 +2,7 @@
 // do, then the multi-night rules (poison lifetime, Butler, Undertaker, Monk, Ravenkeeper,
 // Scarlet Woman, Mayor). Each row plays a real night through the engine.
 import assert from 'node:assert/strict';
+import { poison, poisonedId } from './helpers.js';
 import { test } from 'node:test';
 import { nominate, useSlayer } from '../game/engine.js';
 import { abilityWorks } from '../game/registration.js';
@@ -172,7 +173,7 @@ test('a Drunk who believes they are the Monk wakes as the Monk, but protects nob
   advanceUntil(s, 'monk');
   assert.deepEqual(s.pendingRealTurn!.playerIds, [byChar(s, 'drunk').id]);
   answerRealTurn(s, [byChar(s, 'washerwoman').id]);
-  assert.equal(s.monkProtectedId, null);
+  assert.equal(s.data.monkProtectedId, null);
 });
 
 test('a Drunk who believes they are the Poisoner (impossible in the real deal, but the rule holds) poisons nobody', () => {
@@ -180,7 +181,7 @@ test('a Drunk who believes they are the Poisoner (impossible in the real deal, b
   startNight(s);
   advanceUntil(s, 'poisoner');
   answerRealTurn(s, [byChar(s, 'soldier').id]);
-  assert.equal(s.poisonedId, null);
+  assert.equal(poisonedId(s), null);
 });
 
 // ---------------------------------------------------------------- poison lifetime
@@ -226,7 +227,7 @@ test('when the Poisoner dies during the day, everyone they poisoned is healthy a
 test('a Poisoner may poison themselves, and then their own information is unreliable too', () => {
   const s = atNight2();
   playNight(s, { poisoner: ['poisoner'], imp: ['soldier'] });
-  assert.equal(s.poisonedId, byChar(s, 'poisoner').id);
+  assert.equal(poisonedId(s), byChar(s, 'poisoner').id);
   assert.equal(abilityWorks(s, byChar(s, 'poisoner')), false, 'a Poisoner who poisoned themselves is poisoned');
 });
 
@@ -248,7 +249,7 @@ test('the Monk may protect a dead player or the Imp, but never themselves', () =
   advanceUntil(s, 'monk');
   assert.throws(() => answerRealTurn(s, [byChar(s, 'monk').id]), /yourself/);
   answerRealTurn(s, [byChar(s, 'chef').id]);
-  assert.equal(s.monkProtectedId, byChar(s, 'chef').id);
+  assert.equal(s.data.monkProtectedId, byChar(s, 'chef').id);
 });
 
 // ---------------------------------------------------------------- Ravenkeeper
@@ -383,16 +384,16 @@ test('Butler: a dead Master who cast a ghost vote yes still counts as having vot
 test('Butler: the Master is chosen fresh every night — last night\'s Master no longer binds', () => {
   const s = atNight2(['imp', 'butler', 'poisoner', 'soldier', 'washerwoman', 'empath', 'chef']);
   playNight(s, { butler: ['empath'], imp: ['soldier'] });
-  assert.equal(s.butlerMasterId, byChar(s, 'empath').id);
+  assert.equal(s.data.butlerMasterId, byChar(s, 'empath').id);
   endDayByConsensus(s);
   playNightFromHere(s, { butler: ['chef'], imp: ['soldier'] });
-  assert.equal(s.butlerMasterId, byChar(s, 'chef').id);
+  assert.equal(s.data.butlerMasterId, byChar(s, 'chef').id);
 });
 
 test('Butler: with no Master chosen (the Butler was poisoned when choosing), their yes votes are unrestricted; a working Butler with none set never counts', () => {
   const s = atNight2(['imp', 'butler', 'poisoner', 'soldier', 'washerwoman', 'empath']);
   s.phase = 'day';
-  s.butlerMasterId = null; // a healthy Butler somehow without a Master: their vote can never be confirmed
+  s.data.butlerMasterId = null; // a healthy Butler somehow without a Master: their vote can never be confirmed
   const nominator = byChar(s, 'washerwoman');
   nominate(s, nominator.id, byChar(s, 'poisoner').id);
   fastForwardToVote(s);
@@ -462,7 +463,7 @@ test('Mayor: a poisoned Mayor does not win it', () => {
   s.day = 1;
   s.night = 1;
   byChar(s, 'empath').alive = false; // 3 alive: imp, mayor, poisoner
-  s.poisonedId = byChar(s, 'mayor').id;
+  poison(s, byChar(s, 'mayor').id);
   endDayByConsensus(s);
   assert.notEqual(s.winner, 'good');
 });

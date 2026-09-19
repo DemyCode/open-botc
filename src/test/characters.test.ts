@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { poisonedId } from './helpers.js';
 import { SCRIPTS } from '../game/scripts.js';
 import { test } from 'node:test';
 import { allCharactersSummary, CHARACTERS, TEAM_DISPLAY_ORDER } from '../game/characters.js';
@@ -159,7 +160,7 @@ test('Poisoner: may target themselves', () => {
   const poisoner = byChar(s, 'poisoner');
   advanceUntil(s, 'poisoner');
   answerRealTurn(s, [poisoner.id]);
-  assert.equal(s.poisonedId, poisoner.id);
+  assert.equal(poisonedId(s), poisoner.id);
 });
 
 test("Butler: their night choice sets who their vote depends on the next day", () => {
@@ -168,7 +169,7 @@ test("Butler: their night choice sets who their vote depends on the next day", (
   const empath = byChar(s, 'empath');
   advanceUntil(s, 'butler');
   answerRealTurn(s, [empath.id]);
-  assert.equal(s.butlerMasterId, empath.id);
+  assert.equal(s.data.butlerMasterId, empath.id);
 });
 
 test('Spy: sees the true, full grimoire when unpoisoned', () => {

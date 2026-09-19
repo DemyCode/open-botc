@@ -28,7 +28,6 @@ export function createGame(code: string): GameState {
   return {
     code, scriptId: 'tb', scriptChars: SCRIPTS.tb.characters, effects: [], data: {}, hostId: '', phase: 'lobby', night: 0, day: 0, players: [],
     secret: randomId() + randomId(), rngState: 0, bluffs: [],
-    poisonedId: null, monkProtectedId: null, butlerMasterId: null,
     deathsTonight: [], nightSlotIndex: -1, pendingRealTurn: null,
     publicLog: [], currentNomination: null, onBlockId: null, highestYesToday: 0,
     usedNominatorIds: [], usedNomineeIds: [], winner: null,

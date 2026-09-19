@@ -1,5 +1,6 @@
 // Every way the game can end — and every way it must NOT — plus everything a finished game must refuse.
 import assert from 'node:assert/strict';
+import { poison } from './helpers.js';
 import { test } from 'node:test';
 import {
   addPlayer, castVote, createGame, declareNeighbor, leaveRoom, markReadyForSpeech, nominate, skipSpeech, startGame, tick, toggleEndDayRequest, useSlayer,
@@ -23,7 +24,7 @@ function execute(s: GameState, nominatorIdx: number, nomineeIdx: number): void {
 const ENDINGS: { name: string; run: () => GameState; winner: 'good' | 'evil' | null; phase: 'ended' | 'night' | 'day'; log?: string }[] = [
   { name: 'executing the Demon', run: () => { const s = mkDay(['imp', 'empath', 'chef', 'soldier', 'washerwoman']); execute(s, 1, 0); return s; }, winner: 'good', phase: 'ended', log: 'goodWinsDemonDead' },
   { name: 'executing a healthy Saint', run: () => { const s = mkDay(['imp', 'saint', 'chef', 'soldier', 'washerwoman']); execute(s, 2, 1); return s; }, winner: 'evil', phase: 'ended', log: 'saintWins' },
-  { name: 'executing a poisoned Saint', run: () => { const s = mkDay(['imp', 'saint', 'poisoner', 'soldier', 'washerwoman']); s.poisonedId = s.players[1].id; execute(s, 3, 1); return s; }, winner: null, phase: 'night' },
+  { name: 'executing a poisoned Saint', run: () => { const s = mkDay(['imp', 'saint', 'poisoner', 'soldier', 'washerwoman']); poison(s, s.players[1].id); execute(s, 3, 1); return s; }, winner: null, phase: 'night' },
   { name: 'executing a DEAD Saint', run: () => { const s = mkDay(['imp', 'saint', 'chef', 'soldier', 'washerwoman']); s.players[1].alive = false; execute(s, 2, 1); return s; }, winner: null, phase: 'night' },
   { name: 'executing an innocent leaving 2 alive', run: () => { const s = mkDay(['imp', 'empath', 'chef']); execute(s, 1, 2); return s; }, winner: 'evil', phase: 'ended', log: 'evilWinsTwoLeft' },
   { name: 'executing an innocent leaving 3 alive', run: () => { const s = mkDay(['imp', 'empath', 'chef', 'soldier']); execute(s, 1, 2); return s; }, winner: null, phase: 'night' },

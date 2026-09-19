@@ -1,6 +1,7 @@
 // The replay's raw material: the history the engine records, event by event. Scripted games check
 // the exact story; random games check invariants (every death explained, every vote adds up...).
 import assert from 'node:assert/strict';
+import { poison } from './helpers.js';
 import { test } from 'node:test';
 import { CHARACTERS } from '../game/characters.js';
 import { addPlayer, createGame, declareNeighbor, nominate, startGame, useSlayer } from '../game/engine.js';
@@ -290,7 +291,7 @@ test('the Virgin: executing a Townsfolk nominator, and the reasons it does nothi
   assert.equal(last(s, 'virgin').vars.reason, 'notTownsfolk');
   assert.equal(last(s, 'virgin').vars.executed, false);
   s = mkDay(['imp', 'virgin', 'empath', 'poisoner', 'soldier']);
-  s.poisonedId = s.players[1].id;
+  poison(s, s.players[1].id);
   nominate(s, s.players[2].id, s.players[1].id);
   assert.equal(last(s, 'virgin').vars.reason, 'poisoned');
 });
@@ -305,7 +306,7 @@ test('the Slayer\'s shot: a real hit, a bluff, a poisoned Slayer, and a dead tar
   assert.equal(last(s, 'slayer').vars.real, false, 'a bluff is recorded as a bluff');
   assert.equal(last(s, 'slayer').vars.hit, false);
   s = mkDay(['imp', 'slayer', 'poisoner', 'soldier', 'empath']);
-  s.poisonedId = s.players[1].id;
+  poison(s, s.players[1].id);
   useSlayer(s, s.players[1].id, s.players[0].id);
   assert.equal(last(s, 'slayer').vars.lost, 'poisoned');
   s = mkDay(['imp', 'slayer', 'poisoner', 'soldier', 'empath']);

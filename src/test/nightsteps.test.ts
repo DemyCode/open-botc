@@ -1,6 +1,7 @@
 // Everyone is woken at every step of the night order: the real actor gets their real screen,
 // everyone else a decoy of the same shape, and nobody can answer before 5 seconds have passed.
 import assert from 'node:assert/strict';
+import { poisonedId } from './helpers.js';
 import { test } from 'node:test';
 import { tick } from '../game/engine.js';
 import { FIRST_NIGHT_SEQUENCE, MIN_ANSWER_MS, submitRealResponse } from '../game/night.js';
@@ -152,10 +153,10 @@ test(`nobody can answer sooner than ${MIN_ANSWER_MS / 1000} seconds after a step
   const t = s.pendingRealTurn!;
   assert.throws(() => submitRealResponse(s, poisoner.id, [soldier.id], t.openedAt + MIN_ANSWER_MS - 1), /Too early/);
   assert.throws(() => submitRealResponse(s, soldier.id, [poisoner.id], t.openedAt + MIN_ANSWER_MS - 1), /Too early/);
-  assert.equal(s.poisonedId, null, 'a refused answer changes nothing');
+  assert.equal(poisonedId(s), null, 'a refused answer changes nothing');
   submitRealResponse(s, poisoner.id, [soldier.id], t.openedAt + MIN_ANSWER_MS);
   submitRealResponse(s, soldier.id, [poisoner.id], t.openedAt + MIN_ANSWER_MS);
-  assert.equal(s.poisonedId, soldier.id);
+  assert.equal(poisonedId(s), soldier.id);
 });
 
 test('the screen tells each phone how long it must still wait before answering', () => {

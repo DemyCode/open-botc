@@ -234,7 +234,7 @@ test('regression: a player can still nominate even after every other living play
 test("a Butler's yes vote is dropped if their master hasn't also voted yes", () => {
   const s = mkDay(['imp', 'butler', 'empath', 'investigator', 'washerwoman', 'soldier']);
   const [imp, butler, empath] = s.players;
-  s.butlerMasterId = empath.id;
+  s.data.butlerMasterId = empath.id;
   nominate(s, imp.id, empath.id);
   fastForwardToVote(s);
   voteInOrder(s, [butler.id]); // butler votes yes, master (empath, the nominee) never votes yes
@@ -248,7 +248,7 @@ test("a dead Butler's ghost vote is unrestricted — a dead player has no abilit
   const s = mkDay(['imp', 'butler', 'empath', 'investigator', 'washerwoman', 'soldier']);
   const [imp, butler, empath, investigator, , soldier] = s.players;
   butler.alive = false;
-  s.butlerMasterId = investigator.id;
+  s.data.butlerMasterId = investigator.id;
   nominate(s, imp.id, soldier.id);
   fastForwardToVote(s);
   voteInOrder(s, [butler.id, imp.id, empath.id]); // master (investigator) never votes yes
@@ -258,7 +258,7 @@ test("a dead Butler's ghost vote is unrestricted — a dead player has no abilit
 test("a Butler's yes vote counts once their master also votes yes", () => {
   const s = mkDay(['imp', 'butler', 'empath', 'investigator', 'washerwoman', 'soldier']);
   const [imp, butler, empath, investigator, washerwoman, soldier] = s.players;
-  s.butlerMasterId = empath.id;
+  s.data.butlerMasterId = empath.id;
   nominate(s, imp.id, soldier.id);
   fastForwardToVote(s);
   voteInOrder(s, [butler.id, empath.id, investigator.id, washerwoman.id]);

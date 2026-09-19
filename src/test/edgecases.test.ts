@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { poison } from './helpers.js';
 import { test } from 'node:test';
 import { castVote, nominate, startGame, tick, toggleEndDayRequest, useSlayer } from '../game/engine.js';
 import { submitRealResponse } from '../game/night.js';
@@ -67,7 +68,7 @@ test('a Drunk who thinks they are the Virgin never executes their nominator', ()
 test('a poisoned Slayer misses the real Demon and still uses up their shot', () => {
   const s = mkDay(['imp', 'slayer', 'poisoner', 'empath', 'soldier']);
   const [imp, slayer] = s.players;
-  s.poisonedId = slayer.id;
+  poison(s, slayer.id);
   useSlayer(s, slayer.id, imp.id);
   assert.equal(imp.alive, true);
   assert.equal(slayer.slayerUsed, true);
@@ -164,7 +165,7 @@ test('Scarlet Woman: an Imp star-pass with exactly 5 alive (counting the Imp) pr
 test('a poisoned Scarlet Woman is not promoted — good wins', () => {
   const s = mkDay(['imp', 'scarletwoman', 'poisoner', 'empath', 'investigator', 'washerwoman', 'soldier']); // majority 4
   const [imp, sw, , empath, investigator, washerwoman, soldier] = s.players;
-  s.poisonedId = sw.id;
+  poison(s, sw.id);
   nominate(s, empath.id, imp.id);
   fastForwardToVote(s);
   voteInOrder(s, [empath.id, investigator.id, washerwoman.id, soldier.id]);
@@ -218,7 +219,7 @@ test('Virgin: a Virgin nominating herself is executed (she is a Townsfolk nomina
 test('Virgin: a poisoned Virgin does not proc, and that first nomination still uses up her power', () => {
   const s = mkDay(['imp', 'virgin', 'empath', 'investigator', 'poisoner']);
   const [, virgin, empath] = s.players;
-  s.poisonedId = virgin.id;
+  poison(s, virgin.id);
   nominate(s, empath.id, virgin.id);
   assert.equal(empath.alive, true);
   assert.equal(virgin.virginUsed, true);
@@ -295,7 +296,7 @@ test('Poisoner: a poisoned Mayor is not redirected — the Mayor dies', () => {
 test('Poisoner: a poisoned Saint executed does not lose the game', () => {
   const s = mkDay(['imp', 'saint', 'poisoner', 'empath', 'investigator']);
   const [imp, saint, , empath, investigator] = s.players;
-  s.poisonedId = saint.id;
+  poison(s, saint.id);
   nominate(s, empath.id, saint.id);
   fastForwardToVote(s);
   voteInOrder(s, [empath.id, investigator.id, imp.id]);
@@ -307,7 +308,7 @@ test('Poisoner: a poisoned Saint executed does not lose the game', () => {
 test('Poisoner: poison with no living Poisoner in play has no effect', () => {
   const s = mkDay(['imp', 'virgin', 'empath', 'investigator', 'poisoner']);
   const [, virgin, empath, , poisoner] = s.players;
-  s.poisonedId = virgin.id;
+  poison(s, virgin.id);
   poisoner.alive = false;
   nominate(s, empath.id, virgin.id);
   assert.equal(empath.alive, false, 'the Virgin works again once the Poisoner is dead');
@@ -581,7 +582,7 @@ test('the per-voter timeout counts a silent voter as a no — it never votes yes
 test('a poisoned Mayor does not win with 3 alive and no execution', () => {
   const s = mkDay(['imp', 'mayor', 'poisoner']);
   const mayor = s.players[1];
-  s.poisonedId = mayor.id;
+  poison(s, mayor.id);
   endDayByConsensus(s);
   assert.notEqual(s.winner, 'good');
 });

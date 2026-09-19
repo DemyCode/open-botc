@@ -163,3 +163,17 @@ export function endDayByConsensus(state: GameState): void {
     toggleEndDayRequest(state, p.id);
   }
 }
+
+/** Poisons `targetId` as a living Poisoner at the table would (until the Poisoner dies or stops being one). */
+export function poison(state: GameState, targetId: string): void {
+  const poisoner = state.players.find((p) => p.alive && p.character === 'poisoner');
+  const target = state.players.find((p) => p.id === targetId);
+  if (!target) throw new Error('no such player');
+  if (!poisoner) throw new Error('poison(): seat a living Poisoner first — poison only lasts while one lives');
+  state.effects.push({ kind: 'poisoned', target: target.id, source: poisoner.id, sourceChar: 'poisoner', untilNight: null, needsSourceAlive: true, needsSourceChar: 'poisoner' });
+}
+
+/** Whom the Poisoner's poison currently targets (whether or not it is working), or null. */
+export function poisonedId(state: GameState): string | null {
+  return state.effects.find((e) => e.kind === 'poisoned' && e.sourceChar === 'poisoner')?.target ?? null;
+}

@@ -98,13 +98,13 @@ test('Snake Charmer ex. 2 — a good Pit-Hag-made Snake Charmer can still swap w
 
 test('Mathematician ex. 0 — one poisoned ability that worked abnormally: learns 1', () => {
   const s = mkDay(['imp', 'poisoner', 'mathematician', 'oracle', 'soldier', 'monk', 'chef']);
-  s.data.malfunctions = { [byChar(s, 'oracle').id]: 1 };
+  s.data.malfunctions = { [byChar(s, 'oracle').id]: true };
   assert.deepEqual(infoOf(s, 'mathematician'), { key: 'mathematicianInfo', vars: { count: 1 } });
 });
 
 test('Mathematician ex. 2 — a Vortox caps the count at 4', () => {
   const s = mkDay(['vortox', 'poisoner', 'mathematician', 'soldier', 'monk', 'chef', 'mayor']);
-  s.data.malfunctions = Object.fromEntries(s.players.map((p) => [p.id, 1]));
+  s.data.malfunctions = Object.fromEntries(s.players.map((p) => [p.id, true as const]));
   const m = infoOf(s, 'mathematician');
   assert.equal(m.key, 'mathematicianInfo');
   assert.ok((m.vars!.count as number) <= 4, 'never more than 4');

@@ -13,10 +13,12 @@ export function addDrunk(
 
 export function addPoison(
   state: GameState, target: PlayerState, source: PlayerState | null, sourceChar: string, untilNight: number | null,
-  opts: { needsSourceAlive?: boolean } = {},
+  opts: { needsSourceAlive?: boolean; needsSourceChar?: string; quiet?: boolean } = {},
 ): void {
-  state.effects.push({ kind: 'poisoned', target: target.id, source: source?.id ?? null, sourceChar, untilNight, ...opts });
-  record(state, 'effect', { kind: 'poisoned', target: target.id, source: source?.id ?? null, sourceChar });
+  const { quiet, ...rest } = opts;
+  state.effects.push({ kind: 'poisoned', target: target.id, source: source?.id ?? null, sourceChar, untilNight, ...rest });
+  // (The Poisoner's own step is already in the replay as its choice; only other sources need a line of their own.)
+  if (!quiet) record(state, 'effect', { kind: 'poisoned', target: target.id, source: source?.id ?? null, sourceChar });
 }
 
 /** Removes every effect of one kind of source on a target (or all of a source's effects). */

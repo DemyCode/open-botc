@@ -10,6 +10,7 @@ import {
   ravenkeeperInfo, spyInfo, undertakerInfo,
 } from '../info.js';
 import { stablePick } from '../rng.js';
+import { addPoison } from '../effects.js';
 import { abilityLostReason, abilityWorks, registersAs } from '../registration.js';
 import { isDemon, isMinion } from './util.js';
 import type { CharacterDef } from '../hooks.js';
@@ -58,9 +59,9 @@ export const TB: CharacterDef[] = [
       night: {
         recordsChoice: true, notSelf: true,
         prompt: () => ({ min: 1, max: 1, body: msg('monkChoose') }),
-        apply: (s, self, targets) => { if (abilityWorks(s, self)) s.monkProtectedId = targets[0] ?? null; },
+        apply: (s, self, targets) => { if (abilityWorks(s, self)) s.data.monkProtectedId = targets[0] ?? null; },
       },
-      protects: (s, _owner, victim, cause) => (cause === 'demon' && s.monkProtectedId === victim.id ? 'monk' : null),
+      protects: (s, _owner, victim, cause) => (cause === 'demon' && s.data.monkProtectedId === victim.id ? 'monk' : null),
     } },
   { id: 'ravenkeeper', name: 'Ravenkeeper', team: 'townsfolk', shape: 'choose', edition: 'tb', firstNight: 0, otherNight: 520,
     ability: 'If you die at night, you are woken to choose a player: you learn their character.',
@@ -109,14 +110,14 @@ export const TB: CharacterDef[] = [
     hooks: {
       night: {
         recordsChoice: true, notSelf: true,
-        before: (s) => { s.butlerMasterId = null; },
+        before: (s) => { s.data.butlerMasterId = null; },
         prompt: () => ({ min: 1, max: 1, body: msg('butlerChoose') }),
-        apply: (s, self, targets) => { if (abilityWorks(s, self)) s.butlerMasterId = targets[0] ?? null; },
+        apply: (s, self, targets) => { if (abilityWorks(s, self)) s.data.butlerMasterId = targets[0] ?? null; },
       },
       // A living Butler may only vote when their master does. (A dead Butler has no ability: unrestricted.)
       voteCounts: (s, voter, votes) => {
         if (!voter.alive || !abilityWorks(s, voter)) return true;
-        return s.butlerMasterId ? (votes[s.butlerMasterId] ?? false) : false;
+        return s.data.butlerMasterId ? (votes[s.data.butlerMasterId] ?? false) : false;
       },
     } },
   { id: 'drunk', name: 'Drunk', team: 'outsider', shape: 'info', edition: 'tb', firstNight: 0, otherNight: 0,
@@ -135,12 +136,17 @@ export const TB: CharacterDef[] = [
     hooks: {
       night: {
         recordsChoice: true,
-        before: (s) => { s.poisonedId = null; },
         prompt: () => ({ min: 1, max: 1, body: msg('poisonerChoose') }),
-        apply: (s, self, targets) => { if (abilityWorks(s, self)) s.poisonedId = targets[0] ?? null; },
+        // The poison is an ordinary effect: it lasts until dusk tomorrow, and ends the moment this Poisoner dies.
+        apply: (s, self, targets) => {
+          const target = s.players.find((p) => p.id === targets[0]);
+          if (target && abilityWorks(s, self)) addPoison(s, target, self, 'poisoner', s.night, { needsSourceAlive: true, needsSourceChar: 'poisoner', quiet: true });
+        },
       },
       // Poison lasts only while the Poisoner lives: the replay notes when it ends.
-      onDeath: (s, owner) => { if (s.poisonedId) record(s, 'poisonEnded', { poisoner: owner.id, target: s.poisonedId }); },
+      onDeath: (s, owner) => {
+        for (const e of s.effects) if (e.kind === 'poisoned' && e.source === owner.id) record(s, 'poisonEnded', { poisoner: owner.id, target: e.target });
+      },
     } },
   { id: 'spy', name: 'Spy', team: 'minion', shape: 'info', edition: 'tb', firstNight: 490, otherNight: 680,
     ability: 'Each night, you see the whole grimoire. You might register as good and as a Townsfolk or Outsider.',

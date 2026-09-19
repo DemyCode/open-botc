@@ -128,10 +128,63 @@ export interface Effect {
   untilNight: number | null;
   /** Ends the moment the source stops being alive. */
   needsSourceAlive?: boolean;
+  /** With needsSourceAlive: the source must also still BE this character (a Poisoner turned into something else stops poisoning). */
+  needsSourceChar?: string;
   /** Suspended while the source's own ability doesn't work (a drunk Courtier's target sobers up). */
   needsSourceWorking?: boolean;
   /** Ends the moment the target stops being this character (the Philosopher's chosen character). */
   needsTargetChar?: string;
+}
+
+/**
+ * Scratch space for the characters' hooks. Every key is listed here so a typo is a compile error and
+ * a reader can see all the state the abilities share. "Tonight" and "today" keys are reset by the engine
+ * (beginNight / finishNight); the rest persist for the game.
+ */
+export interface GameData {
+  // ---- per night
+  /** Players the Innkeeper made safe tonight. */
+  safe?: string[];
+  /** Demons the Exorcist chose (they do not wake). */
+  exorcised?: string[];
+  /** Players whose abilities woke tonight (for the Cerenovus/Pit-Hag/Exorcist reasoning). */
+  woke?: string[];
+  /** The Monk's protected player tonight. */
+  monkProtectedId?: string | null;
+  /** The Devil's Advocate's protected player. */
+  daProtected?: string | null;
+  /** The Goon's "first to choose me" has been used tonight. */
+  goonUsed?: boolean;
+  /** Players who came back to life tonight. */
+  resurrected?: string[];
+  /** The Witch's cursed player. */
+  witchTarget?: string | null;
+  /** The Cerenovus' madness: who must claim to be what, set by whom. */
+  mad?: { player: string; character: string; by: string } | null;
+  madClaimed?: boolean;
+  /** A death happened tonight that the Storyteller-facing Sage/Barber logic can't attribute to a normal kill. */
+  arbitraryDeaths?: boolean;
+  // ---- per day
+  /** Players who died today (executions, Slayer...). */
+  diedToday?: string[];
+  malfunctions?: Record<string, true>;
+  demonVotedToday?: boolean;
+  minionNominatedToday?: boolean;
+  /** The Gossip's true statements to resolve at dusk. */
+  gossipTrue?: string[];
+  /** The Moonchild's kills to resolve. */
+  moonchildKills?: { moonchild: string; target: string }[];
+  /** True when the last execution did not kill. */
+  executionSurvived?: boolean;
+  // ---- for the whole game
+  /** The Butler's master (whose vote the Butler must follow). */
+  butlerMasterId?: string | null;
+  /** How each dead player died. */
+  deathCause?: Record<string, string>;
+  /** How the Demon last died (execution, virgin, slayer...). */
+  demonDeathCause?: string;
+  /** The Mastermind's extra day: the day on which the Demon died. */
+  finalDay?: number;
 }
 
 export interface GameState {
@@ -142,7 +195,7 @@ export interface GameState {
   /** Drunk / poisoned effects beyond the Poisoner's own (see registration.ts). */
   effects: Effect[];
   /** Scratch space for characters' hooks: who is safe tonight, who the Exorcist chose, ... Reset by them. */
-  data: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  data: GameData;
   code: string;
   hostId: string;
   phase: Phase;
@@ -152,9 +205,6 @@ export interface GameState {
   secret: string;
   rngState: number;
   bluffs: CharacterId[];
-  poisonedId: string | null;
-  monkProtectedId: string | null;
-  butlerMasterId: string | null;
   deathsTonight: string[];
   nightSlotIndex: number;
   pendingRealTurn: PendingRealTurn | null;
