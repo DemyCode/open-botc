@@ -9,6 +9,7 @@ import {
   chefInfo, demonInfo, empathInfo, fortuneTellerInfo, investigativeInfo,
   ravenkeeperInfo, spyInfo, undertakerInfo,
 } from '../info.js';
+import { stablePick } from '../rng.js';
 import { abilityLostReason, abilityWorks, registersAs } from '../registration.js';
 import { isDemon, isMinion } from './util.js';
 import type { CharacterDef } from '../hooks.js';
@@ -95,7 +96,7 @@ export const TB: CharacterDef[] = [
       redirectsKill: (s, owner, _victim, killer) => {
         if (!abilityWorks(s, owner)) return null;
         const alternatives = s.players.filter((p) => p.alive && p.id !== owner.id && p.id !== killer.id && !protectionFor(s, p, 'demon'));
-        return alternatives.length ? alternatives[Math.floor(Math.random() * alternatives.length)] : owner;
+        return alternatives.length ? stablePick(s.secret, alternatives, 'mayor-bounce', s.night) : owner;
       },
       endOfDayWin: (s, owner, executedId) => {
         if (executedId || !owner.alive || s.players.filter((p) => p.alive).length !== 3 || !abilityWorks(s, owner)) return false;
@@ -181,7 +182,7 @@ export const TB: CharacterDef[] = [
         if (cause !== 'starPass' || s.players.some((p) => p.alive && isDemon(p))) return;
         const others = s.players.filter((p) => p.alive && p.character !== owner.character && isMinion(p));
         if (!others.length) return;
-        const promoted = others[Math.floor(Math.random() * others.length)];
+        const promoted = stablePick(s.secret, others, 'star-pass', s.night);
         promoted.character = 'imp';
         promoted.perceived = 'imp';
         record(s, 'promotion', { player: promoted.id, reason: 'starPass' });

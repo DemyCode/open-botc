@@ -209,18 +209,19 @@ test('Chef: nobody evil next to each other means 0', () => {
   assert.equal((chefInfo(s, chef, 'slot').vars as { count: number }).count, 0);
 });
 
-test('Chef: a poisoned Chef is told a number 0-2, and it is often wrong', () => {
-  let wrong = 0;
+test('Chef: a poisoned Chef is told a plausible number (never more pairs than the table can hold), and it varies', () => {
+  const seen = new Set<number>();
   each((s) => {
     const chef = givePlayer(s, 0, 'chef');
     s.poisonedId = chef.id;
     givePlayer(s, s.players.length - 1, 'poisoner');
-    const { min, max } = bruteForceChef(s);
     const count = (chefInfo(s, chef, 'slot').vars as { count: number }).count;
-    assert.ok(Number.isInteger(count) && count >= 0 && count <= 2);
-    if (count < min || count > max) wrong++;
+    assert.ok(Number.isInteger(count) && count >= 0);
+    const evil = s.players.filter((p) => p.alignment === 'evil').length;
+    assert.ok(count <= (evil >= s.players.length ? evil : Math.max(0, evil - 1)), 'no more pairs than the evil players could form');
+    seen.add(count);
   });
-  assert.ok(wrong > 30);
+  assert.ok(seen.size > 1, 'the lie is not always the same number');
 });
 
 // ---------------------------------------------------------------- Empath

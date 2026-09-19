@@ -48,6 +48,17 @@ export function malfunctionCount(state: GameState): number {
   return Object.keys((state.data.malfunctions as Record<string, true> | undefined) ?? {}).length;
 }
 
+/**
+ * The characters a lie may name: only the game's own script (a made-up "Zombuul" in a Trouble Brewing
+ * game would give the malfunction away), optionally of one team. A team the script lacks entirely
+ * (a Recluse shown as a Minion on a script with none) falls back to every character.
+ */
+export function scriptCharacters(state: GameState, team?: string): CharacterId[] {
+  const ofTeam = (ids: CharacterId[]) => (team ? ids.filter((id) => CHARACTERS[id].team === team) : ids);
+  const inScript = ofTeam(state.scriptChars);
+  return inScript.length ? inScript : ofTeam(Object.keys(CHARACTERS));
+}
+
 export type RegisterKind = 'demon' | 'minion' | 'outsider' | 'townsfolk' | 'evil' | 'good';
 
 /**
@@ -100,8 +111,7 @@ export function apparentCharacter(
   if (mis && (mis.from === 'evil') === isEvilTeam(team) && mis.kinds.includes(wantTeam) && registersAs(state, target, wantTeam, ctx)) {
     const inPlay = state.players.filter((p) => CHARACTERS[p.character].team === wantTeam).map((p) => p.character);
     if (inPlay.length) return stablePick(state.secret, inPlay, 'appear', ctx.slot, target.id);
-    const all = Object.values(CHARACTERS).filter((c) => c.team === wantTeam).map((c) => c.id);
-    return stablePick(state.secret, all, 'appear', ctx.slot, target.id);
+    return stablePick(state.secret, scriptCharacters(state, wantTeam), 'appear', ctx.slot, target.id);
   }
   return target.character;
 }

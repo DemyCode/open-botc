@@ -5,6 +5,7 @@ import { record } from './history.js';
 import { appendLog } from './log.js';
 import { msg } from './messages.js';
 import { abilityLostReason, noteMalfunction } from './registration.js';
+import { stableFloat, stablePick } from './rng.js';
 import type { NightSpec } from './hooks.js';
 import type { CharacterId, GameState, Msg, NightTurnShape, PendingRealTurn, PlayerState } from './types.js';
 import { GameError } from './types.js';
@@ -167,7 +168,7 @@ function startRound(state: GameState, step: string, actors: PlayerState[]): void
     else {
       const last = (state.lastDecoyKeys ??= {});
       const pool = DECOY_PICK_ONE.filter((k) => k !== last[id]); // never the same question twice in a row
-      decoys[id] = last[id] = pool[Math.floor(Math.random() * pool.length)];
+      decoys[id] = last[id] = stablePick(state.secret, pool, 'decoy', state.night, step, id);
     }
   }
 
@@ -227,7 +228,7 @@ export function advanceNightSlot(state: GameState): void {
   // Everyone has acted — but dawn waits (see DAWN_WAIT_*); tick() breaks it when it's time.
   state.pendingRealTurn = null;
   const now = Date.now();
-  const wait = DAWN_WAIT_MIN_MS + Math.random() * (DAWN_WAIT_MAX_MS - DAWN_WAIT_MIN_MS);
+  const wait = DAWN_WAIT_MIN_MS + stableFloat(state.secret, 'dawn', state.night) * (DAWN_WAIT_MAX_MS - DAWN_WAIT_MIN_MS);
   state.dawnAt = Math.max(now + wait, (state.nightStartedAt ?? now) + MIN_NIGHT_MS);
 }
 

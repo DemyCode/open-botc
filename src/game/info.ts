@@ -1,7 +1,7 @@
 import { CHARACTERS } from './characters.js';
 import { hooksOf } from './deaths.js';
 import { msg } from './messages.js';
-import { abilityWorks, apparentCharacter, registersAs, type RegisterKind } from './registration.js';
+import { abilityWorks, apparentCharacter, registersAs, scriptCharacters, type RegisterKind } from './registration.js';
 import { stableFloat, stablePick } from './rng.js';
 import type { GameState, Msg, PlayerState, Team } from './types.js';
 
@@ -52,9 +52,14 @@ export function investigativeInfo(state: GameState, self: PlayerState, team: Exc
     return msg('investigativeInfo', { a: pair[0].name, b: pair[1].name, role });
   }
   const [a, b] = pickPair(state, pool, slot, self.id, 'fake');
-  const teamChars = Object.values(CHARACTERS).filter((c) => c.team === team);
-  const fake = stablePick(state.secret, teamChars, slot, self.id, 'fake-char');
-  return msg('investigativeInfo', { a: a.name, b: b.name, role: fake.id });
+  const fake = stablePick(state.secret, scriptCharacters(state, team), slot, self.id, 'fake-char');
+  return msg('investigativeInfo', { a: a.name, b: b.name, role: fake });
+}
+
+/** The most pairs of evil neighbours the table could hold: the evil players sitting in one block (all of them in a circle if everyone is evil). */
+function maxEvilPairs(state: GameState): number {
+  const evil = state.players.filter((p) => p.alignment === 'evil').length;
+  return evil >= state.players.length ? evil : Math.max(0, evil - 1);
 }
 
 export function chefInfo(state: GameState, self: PlayerState, slot: string): Msg {
@@ -69,7 +74,7 @@ export function chefInfo(state: GameState, self: PlayerState, slot: string): Msg
     if (registersAs(state, p1, 'evil', ctx) && registersAs(state, p2, 'evil', ctx)) count++;
   }
   if (infoUnreliable(state, self)) {
-    count = Math.floor(stableFloat(state.secret, slot, self.id, 'fake') * 3);
+    count = Math.floor(stableFloat(state.secret, slot, self.id, 'fake') * (maxEvilPairs(state) + 1));
   }
   return msg('chefInfo', { count });
 }
@@ -100,7 +105,7 @@ export function empathInfo(state: GameState, self: PlayerState, slot: string): M
   const [left, right] = livingNeighbors(state, self);
   let count = [left, right].filter((p) => registersAs(state, p, 'evil', ctx)).length;
   if (infoUnreliable(state, self)) {
-    count = Math.floor(stableFloat(state.secret, slot, self.id, 'fake') * 3);
+    count = Math.floor(stableFloat(state.secret, slot, self.id, 'fake') * (new Set([left.id, right.id].filter((id) => id !== self.id)).size + 1));
   }
   return msg('empathInfo', { count });
 }
@@ -129,7 +134,7 @@ export function undertakerInfo(state: GameState, self: PlayerState, executed: Pl
   if (!executed) return msg('empty');
   const ctx = { asker: self.id, slot };
   const shown = infoUnreliable(state, self)
-    ? stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake').id
+    ? stablePick(state.secret, scriptCharacters(state), slot, self.id, 'fake')
     : apparentToObserver(state, executed, ctx);
   return msg('undertakerInfo', { name: executed.name, role: shown });
 }
@@ -138,7 +143,7 @@ export function ravenkeeperInfo(state: GameState, self: PlayerState, targetId: s
   const target = state.players.find((p) => p.id === targetId)!;
   const ctx = { asker: self.id, slot };
   const shown = infoUnreliable(state, self)
-    ? stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake').id
+    ? stablePick(state.secret, scriptCharacters(state), slot, self.id, 'fake')
     : apparentToObserver(state, target, ctx);
   return msg('ravenkeeperInfo', { name: target.name, role: shown });
 }
@@ -184,7 +189,7 @@ export function spyInfo(state: GameState, self: PlayerState, slot: string): Msg 
       dead: state.players.map((p) => (p.alive ? '' : '1')),
     });
   }
-  const fakeRoles = state.players.map((_, i) => stablePick(state.secret, Object.values(CHARACTERS), slot, self.id, 'fake', i).id);
+  const fakeRoles = state.players.map((_, i) => stablePick(state.secret, scriptCharacters(state), slot, self.id, 'fake', i));
   return msg('spyGrimoire', {
     names: state.players.map((p) => p.name),
     roles: fakeRoles,
