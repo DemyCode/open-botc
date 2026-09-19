@@ -13,9 +13,6 @@ import { mulberry32, seedFromString } from '../game/rng.js';
 import { dealCharacters } from '../game/setup.js';
 import type { CharacterId, GameState, Msg, PlayerState } from '../game/types.js';
 
-const ALL_IDS = Object.keys(CHARACTERS) as CharacterId[];
-const idsOfTeam = (team: string) => ALL_IDS.filter((id) => CHARACTERS[id].team === team);
-
 /** A dealt game (as after startGame) with a seeded scatter of dead players. */
 function deal(n: number, seed: number, opts: { dead?: boolean } = {}): GameState {
   const s = createGame('INFO');
@@ -41,9 +38,6 @@ function deal(n: number, seed: number, opts: { dead?: boolean } = {}): GameState
 const each = (fn: (s: GameState, n: number, seed: number) => void, opts: { dead?: boolean } = {}, seeds = 60) => {
   for (let n = 5; n <= 15; n++) for (let seed = 0; seed < seeds; seed++) fn(deal(n, seed, opts), n, seed);
 };
-
-/** A living player of the given true character, if the deal has one. */
-const holder = (s: GameState, id: CharacterId): PlayerState | undefined => s.players.find((p) => p.character === id && p.alive);
 
 /** Force somebody to have a character (moving what they had to the previous holder is unnecessary here). */
 const givePlayer = (s: GameState, index: number, id: CharacterId): PlayerState => {
@@ -500,5 +494,3 @@ test('an info message never contains anything but plain data (names, numbers, ch
   }, {}, 6);
 });
 
-void holder;
-void idsOfTeam;

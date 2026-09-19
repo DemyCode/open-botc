@@ -6,7 +6,6 @@ import { test } from 'node:test';
 import { nominate, useSlayer } from '../game/engine.js';
 import { abilityWorks } from '../game/registration.js';
 import type { CharacterId, GameState, PlayerState } from '../game/types.js';
-import { viewFor } from '../game/view.js';
 import {
   advanceUntil, answerRealTurn, breakDawn, byChar, endDayByConsensus, fastForwardToVote, mk, runFullNight, skipRound, startNight, voteInOrder,
 } from './helpers.js';
@@ -468,5 +467,4 @@ test('Mayor: a poisoned Mayor does not win it', () => {
   assert.notEqual(s.winner, 'good');
 });
 
-void viewFor;
 void ([] as PlayerState[]);

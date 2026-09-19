@@ -181,14 +181,13 @@ test('a dead player is asked to vote until they spend it, then never again', () 
 
 test('a tie between two nominees clears the block, and a third with more takes it', () => {
   const s = mkDay(['imp', ...Array(8).fill('empath')] as CharacterId[]); // 9 alive: need 5
-  const [a, b, c, d, e, f, g, h, i] = s.players;
+  const [a, b, c, d, e, f, g] = s.players;
   nominate(s, a.id, b.id); fastForwardToVote(s); voteInOrder(s, [a, b, c, d, e].map((p) => p.id));
   assert.equal(s.onBlockId, b.id);
   nominate(s, c.id, d.id); fastForwardToVote(s); voteInOrder(s, [a, b, c, d, e].map((p) => p.id));
   assert.equal(s.onBlockId, null, 'tie at 5');
   nominate(s, e.id, f.id); fastForwardToVote(s); voteInOrder(s, [a, b, c, d, e, g].map((p) => p.id));
   assert.equal(s.onBlockId, f.id, '6 beats the tied 5');
-  void h; void i;
 });
 
 test('a lower vote after a tie does not change anything', () => {

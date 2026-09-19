@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CHARACTERS } from '../game/characters.js';
 import { dealCharacters } from '../game/setup.js';
-import { nominate, toggleEndDayRequest, useDayAbility, useSlayer } from '../game/engine.js';
+import { nominate, useDayAbility } from '../game/engine.js';
 import { infoIsFalse } from '../game/info.js';
 import { abilityLostReason } from '../game/registration.js';
 import { SCRIPTS } from '../game/scripts.js';
@@ -367,5 +367,3 @@ test('Vortox: Townsfolk information is false, and no execution in a day means ev
   assert.equal(s.winner, 'evil');
 });
 
-void useSlayer;
-void toggleEndDayRequest;

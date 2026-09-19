@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CHARACTERS } from '../game/characters.js';
-import { addPlayer, createGame, declareNeighbor, nominate, startGame, tick, useSlayer } from '../game/engine.js';
+import { addPlayer, createGame, declareNeighbor, nominate, startGame, useSlayer } from '../game/engine.js';
 import type { CharacterId, GameState, HistoryEvent } from '../game/types.js';
 import { viewFor } from '../game/view.js';
 import { playGame } from './driver.js';
@@ -243,14 +243,13 @@ test('a nomination, then its vote: who voted how, how many, how many were needed
 
 test('vote outcomes: on the block, a tie, and not enough', () => {
   const s = mkDay(['imp', ...Array(8).fill('empath')] as CharacterId[]);
-  const [a, b, c, d, e, f, g] = s.players;
+  const [a, b, c, d, e, f] = s.players;
   nominate(s, a.id, b.id); fastForwardToVote(s); voteInOrder(s, [a, b, c, d, e].map((p) => p.id));
   assert.equal(last(s, 'vote').vars.outcome, 'block');
   nominate(s, c.id, d.id); fastForwardToVote(s); voteInOrder(s, [a, b, c, d, e].map((p) => p.id));
   assert.equal(last(s, 'vote').vars.outcome, 'tie');
   nominate(s, e.id, f.id); fastForwardToVote(s); voteInOrder(s, [a].map((p) => p.id));
   assert.equal(last(s, 'vote').vars.outcome, 'short');
-  void g;
 });
 
 test('a ghost vote is in the record; a dead player with no vote left is not asked', () => {
@@ -457,5 +456,4 @@ test('the history is part of the saved game and grows as it is played', () => {
   assert.equal(before.history.length, 0);
   assert.equal(saved.history.length, s.history.length);
   assert.ok(saved.history.length > 0);
-  void tick;
 });

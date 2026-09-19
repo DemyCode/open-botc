@@ -26,7 +26,6 @@ function replay(restoreEveryStep: boolean): string[] {
     const ps = Array.from({ length: 9 }, (_, i) => addPlayer(s, `P${i}`));
     ps.forEach((p, i) => declareNeighbor(s, p.id, ps[(i + 1) % 9].id));
     startGame(s);
-    const ids = ps.map((p) => p.id);
     const restore = () => { if (restoreEveryStep) s = JSON.parse(JSON.stringify(s)) as GameState; };
     const log: string[] = [];
     for (let round = 0; round < 60 && s.phase !== 'ended'; round++) {
@@ -65,7 +64,6 @@ function replay(restoreEveryStep: boolean): string[] {
       }
     }
     log.push(`winner=${s.winner}`);
-    void ids;
     return log;
   } finally {
     Math.random = realRandom;

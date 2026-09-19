@@ -9,11 +9,10 @@ import { test } from 'node:test';
 import { CHARACTERS } from '../game/characters.js';
 import { executePlayer, hooksOf } from '../game/deaths.js';
 import { nominate } from '../game/engine.js';
-import { setAlignment } from '../game/chars/util.js';
 import { abilityLostReason } from '../game/registration.js';
 import type { CharacterId, GameState } from '../game/types.js';
-import { advanceUntil, answerRealTurn, breakDawn, byChar, startNight } from './helpers.js';
-import { execute, findSecret, lastInfo, mk, mkDay, named, night } from './wikiHelpers.js';
+import { advanceUntil, answerRealTurn, byChar, startNight } from './helpers.js';
+import { execute, lastInfo, mkDay, night } from './wikiHelpers.js';
 
 const infoOf = (s: GameState, charId: CharacterId, slot = 'x') => hooksOf(charId).night!.info!(s, byChar(s, charId), slot);
 const alive = (s: GameState, c: CharacterId) => byChar(s, c).alive;
@@ -495,4 +494,3 @@ test('Vortox ex. 4 — no execution all day: evil wins', () => {
   assert.equal(s.winner, 'evil');
 });
 
-void advanceUntil; void answerRealTurn; void breakDawn; void startNight; void findSecret; void named; void mk; void setAlignment; void infoOf; void alive;
