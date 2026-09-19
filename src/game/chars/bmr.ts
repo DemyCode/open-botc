@@ -13,7 +13,7 @@ import type { CharacterDef } from '../hooks.js';
 import type { GameState, PlayerState } from '../types.js';
 import { GameError } from '../types.js';
 import { giveResult } from './tb.js';
-import { alivePlayers, byId, choose, demonChoosePrompt, isDemon, isGood, resurrect, roll, setAlignment, teamOf } from './util.js';
+import { alivePlayers, byId, choose, demonChoosePrompt, isDemon, isGood, learnsTheyDiedToday, resurrect, roll, setAlignment, teamOf } from './util.js';
 
 const never = () => [] as PlayerState[];
 
@@ -275,6 +275,8 @@ export const BMR: CharacterDef[] = [
       onDeath: (_s, owner) => { owner.flags.moonchildPending = true; },
       day: {
         offeredTo: 'dead', targets: 1, targetsAlive: true,
+        // Only on the day you learn you died — for a bluffer too, or the offer itself would give the real one away.
+        available: (s, self) => learnsTheyDiedToday(s, self),
         use: (s, self, targets) => {
           const target = byId(s, targets[0]);
           if (!target.alive) throw new GameError('Choose a living player');

@@ -13,7 +13,7 @@ import type { CharacterDef } from '../hooks.js';
 import type { CharacterId, GameState, PlayerState } from '../types.js';
 import { GameError } from '../types.js';
 import { giveResult } from './tb.js';
-import { alivePlayers, byId, choose, demonChoosePrompt, isDemon, isMinion, roll, teamOf } from './util.js';
+import { alivePlayers, byId, choose, demonChoosePrompt, isDemon, isMinion, learnsTheyDiedToday, roll, teamOf } from './util.js';
 
 const seated = (s: GameState): PlayerState[] => s.players.slice().sort((a, b) => a.seat - b.seat);
 const goodChars = (s: GameState): CharacterId[] => s.scriptChars.filter((c) => !isEvilTeam(CHARACTERS[c].team));
@@ -317,6 +317,8 @@ export const SV: CharacterDef[] = [
       onDeath: (_s, owner) => { owner.flags.klutzPending = true; },
       day: {
         offeredTo: 'dead', targets: 1, targetsAlive: true,
+        // Only on the day you learn you died — for a bluffer too, or the offer itself would give the real one away.
+        available: (s, self) => learnsTheyDiedToday(s, self),
         use: (s, self, targets) => {
           const target = byId(s, targets[0]);
           if (!target.alive) throw new GameError('Choose a living player');

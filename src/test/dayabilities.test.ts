@@ -8,7 +8,7 @@ import { useDayAbility, offeredActions } from '../game/dayactions.js';
 import type { GameState } from '../game/types.js';
 import { viewFor } from '../game/view.js';
 import { loadApp, type FakeClient } from './fakedom.js';
-import { byChar, byPerceived, endDayByConsensus, mk, mkDay, runFullNight, startNight } from './helpers.js';
+import { breakDawn, byChar, byPerceived, endDayByConsensus, mk, mkDay, playRounds, runFullNight, startNight } from './helpers.js';
 
 async function dayApp(s: GameState, playerId: string, lang: 'en' | 'fr' = 'en'): Promise<FakeClient> {
   const app = await loadApp(lang);
@@ -175,8 +175,8 @@ test('statements are shown as sentences, never as raw data — in the public log
 
 test('a dead player sees "Bluff to be the Moonchild" and may only point at a living player; the real Moonchild sees their own', async () => {
   const s = mkDay(['imp', 'poisoner', 'moonchild', 'soldier', 'monk', 'chef', 'mayor']);
-  byChar(s, 'moonchild').alive = false;
-  byChar(s, 'chef').alive = false;
+  // The Moonchild and the Chef died last night (so they learn it today); the Monk died on an earlier night.
+  for (const c of ['moonchild', 'chef']) Object.assign(byChar(s, c), { alive: false, diedTonight: true });
   byChar(s, 'monk').alive = false;
   const mine = await dayApp(s, byChar(s, 'moonchild').id);
   assert.ok(card(mine, /Choose a player as the Moonchild/));
@@ -198,4 +198,47 @@ test('the Savant visits the Storyteller with one button, and the two statements 
   const after = (await dayApp(s, savant.id)).text();
   assert.match(after, /Two statements, one true and one false: \(1\) .+\. \(2\) .+\./);
   assert.ok(!/"t":/.test(after), 'no JSON');
+});
+
+// ---------------------------------------------------------------- "When you learn that you died": that day only
+
+/** Plays night `n` with the Imp killing `victim` (by true character), then dawn. */
+function killAtNight(s: GameState, victim: string): void {
+  startNight(s);
+  while (s.pendingRealTurn) {
+    const t = s.pendingRealTurn;
+    if (t.charId === 'imp') playRounds(s, 1, Object.fromEntries(t.playerIds.map((id) => [id, [[byChar(s, victim).id]]])), undefined, true);
+    else playRounds(s, 1, {}, undefined, true);
+  }
+  breakDawn(s);
+}
+const offers = (s: GameState, c: string) => offeredActions(s, byChar(s, c)).map((o) => o.character);
+
+test('regression: the Moonchild (real or bluffed) is offered only on the day you learn you died — never to someone long dead', () => {
+  const s = mk(['imp', 'poisoner', 'moonchild', 'soldier', 'monk', 'chef', 'mayor', 'empath']);
+  startNight(s);
+  runFullNight(s);
+  endDayByConsensus(s);
+  killAtNight(s, 'chef'); // night 2: the Chef dies
+  assert.ok(offers(s, 'chef').includes('moonchild'), 'day 2: the Chef has just learned they died — they may bluff it');
+  endDayByConsensus(s);
+  killAtNight(s, 'moonchild'); // night 3: the real Moonchild dies
+  assert.ok(!offers(s, 'chef').includes('moonchild'), 'day 3: the Chef died two days ago — no longer offered');
+  assert.ok(offers(s, 'moonchild').includes('moonchild'), 'day 3: the Moonchild has just learned they died');
+  endDayByConsensus(s);
+  killAtNight(s, 'monk');
+  assert.ok(!offers(s, 'moonchild').includes('moonchild'), 'day 4: the moment has passed');
+});
+
+test('a player executed today learns it at once: they may choose (or bluff) as the Moonchild or the Klutz that same day', () => {
+  const s = mkDay(['imp', 'poisoner', 'moonchild', 'klutz', 'monk', 'chef', 'mayor', 'empath']);
+  s.scriptChars = [...new Set([...s.scriptChars, 'klutz'])];
+  const chef = byChar(s, 'chef');
+  chef.alive = false;
+  s.data.diedToday = [chef.id]; // executed this afternoon
+  assert.ok(offers(s, 'chef').includes('moonchild'));
+  assert.ok(offers(s, 'chef').includes('klutz'));
+  const longDead = byChar(s, 'empath');
+  longDead.alive = false; // died on an earlier day
+  assert.deepEqual(offeredActions(s, longDead).map((o) => o.character).filter((c) => c === 'moonchild' || c === 'klutz'), []);
 });

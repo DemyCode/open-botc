@@ -45,3 +45,11 @@ export function setAlignment(state: GameState, p: PlayerState, alignment: 'good'
   p.alignment = alignment;
   record(state, 'alignment', { player: p.id, alignment, why });
 }
+
+/**
+ * "When you learn that you died" (the Moonchild, the Klutz): the day a player's death is revealed —
+ * the day after a night death (announced at dawn), or the day they died (an execution).
+ */
+export function learnsTheyDiedToday(state: GameState, p: PlayerState): boolean {
+  return !p.alive && (p.diedTonight || (state.data.diedToday ?? []).includes(p.id));
+}
