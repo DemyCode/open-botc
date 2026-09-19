@@ -491,6 +491,57 @@ test('after answering a decoy at the Fortune Teller\'s step, a stand-in result s
   assert.ok(after.includes('Your Result'), after.slice(0, 200));
 });
 
+test('Chambermaid step: ONE round — the real one picks 2 then sees a result; everyone else picks 2 for a decoy then sees a stand-in result', () => {
+  const s = mk(['imp', 'poisoner', 'chambermaid', 'soldier', 'monk', 'chef', 'mayor']);
+  startNight(s);
+  runFullNight(s);
+  startNight(s);
+  advanceUntil(s, 'chambermaid');
+  const t = s.pendingRealTurn!;
+  const maid = byChar(s, 'chambermaid');
+  assert.deepEqual(t.playerIds, [maid.id]);
+  const real = viewFor(s, maid.id).nightTurn!;
+  assert.equal(real.decoy, false);
+  assert.equal(real.max, 2);
+  for (const p of s.players.filter((q) => q.id !== maid.id)) {
+    const decoy = viewFor(s, p.id).nightTurn!;
+    assert.equal(decoy.decoy, true);
+    assert.deepEqual(decoy.body, { key: 'decoySameTeam' }, 'a 2-player question, like the real one');
+    assert.equal(decoy.min, 2);
+    assert.equal(decoy.decoyResult, true, 'followed by a stand-in result screen');
+  }
+  answerRealTurn(s, [byChar(s, 'soldier').id, byChar(s, 'monk').id]);
+  assert.notEqual(s.pendingRealTurn?.charId, 'chambermaid', 'no second round: the step is over once everyone answered');
+  assert.equal(maid.nightResult!.key, 'chambermaidInfo');
+});
+
+test('regression: when the Chambermaid is the last step, a decoy\'s stand-in result still shows before dawn — like the real result', async () => {
+  const s = mk(['imp', 'poisoner', 'chambermaid', 'soldier', 'monk', 'chef', 'mayor']);
+  startNight(s);
+  runFullNight(s);
+  startNight(s);
+  advanceUntil(s, 'chambermaid');
+  s.nightStartedAt = Date.now() - 60_000; // a long night: day breaks the moment the last answer lands
+  const decoyPlayer = byChar(s, 'soldier');
+  const app = await loadApp('en');
+  const decoyView = viewFor(s, decoyPlayer.id);
+  app.run(`handleTurnChange(${JSON.stringify(decoyView)}); state.turnReadyAt = 0;`);
+  app.show(decoyView, { seen: true });
+  app.root.find((n) => n.hasClass('choice')).slice(0, 2).forEach((c) => { c.click(); app.run('render()'); });
+  app.root.buttons().find((b) => /^Confirm/.test(b.text()))!.click();
+  // Everyone's answers land; the Chambermaid was the last step, so the day starts at once.
+  answerRealTurn(s, [byChar(s, 'monk').id, byChar(s, 'chef').id]);
+  assert.equal(s.phase, 'day');
+  // The real Chambermaid gets their result before the dawn screen...
+  const real = await loadApp('en');
+  assert.ok(real.show(viewFor(s, byChar(s, 'chambermaid').id), { seen: false }).includes('Your Result'));
+  // ...so the decoy must too, or the table can tell who kept tapping.
+  const shown = app.show(viewFor(s, decoyPlayer.id), { seen: false });
+  assert.ok(shown.includes('Your Result'), shown.slice(0, 200));
+  app.root.buttons().find((b) => /Got it/.test(b.text()))!.click();
+  assert.ok(app.text().includes('You survived the night'), 'then the dawn screen');
+});
+
 test('waiting between steps: the same calm screen for everyone, and the dead just rest', async () => {
   const s = mk(['imp', 'poisoner', 'empath', 'washerwoman', 'soldier']);
   startNight(s);

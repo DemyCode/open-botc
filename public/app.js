@@ -2144,10 +2144,10 @@ function renderEnded(v) {
 function computeSignature(v) {
   if (!v) return 'connecting';
   if (v.nightResult && state.nightResultSeenForNight !== v.night) return `nightresult-${v.night}`;
+  if (state.decoyResultStep) return `decoyresult-${state.decoyResultStep}`;
   if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) return `dawn-${v.day}`;
   if (v.phase === 'night' && v.duskMessage && state.duskSeenForNight !== v.night) return `dusk-${v.night}`;
   if (v.phase === 'lobby') return 'lobby';
-  if (v.phase === 'night' && state.decoyResultStep) return `decoyresult-${state.decoyResultStep}`;
   if (v.phase === 'night') return `night-${turnKey(v)}`;
   if (v.phase === 'day') return `day-${v.nomination ? v.nomination.state + ':' + v.nomination.nomineeId : 'none'}`;
   if (v.phase === 'ended') return 'ended';
@@ -2156,7 +2156,11 @@ function computeSignature(v) {
 
 function render() {
   const v = state.code && state.playerId ? state.view : null;
-  if (!v || v.phase !== 'night') state.decoyResultStep = null;
+  // A decoy's stand-in result outlives the night the same way a real result does (the last step
+  // of a night can be a result step: the Chambermaid). It only belongs to the night just played.
+  if (!v || (v.phase !== 'night' && v.phase !== 'day') || (state.decoyResultStep && !state.decoyResultStep.startsWith(v.night + '-'))) {
+    state.decoyResultStep = null;
+  }
   const signature = computeSignature(v) + ':' + LANG;
   animateThisRender = signature !== lastScreenSignature;
   lastScreenSignature = signature;
@@ -2180,6 +2184,10 @@ function render() {
     app.appendChild(renderNightResultScreen(v));
     return;
   }
+  if (state.decoyResultStep) {
+    app.appendChild(renderDecoyResultScreen(v));
+    return;
+  }
   if (v.phase === 'day' && v.dawnMessage && state.dawnSeenForDay !== v.day) {
     app.appendChild(renderDawnScreen(v));
     return;
@@ -2189,7 +2197,7 @@ function render() {
     return;
   }
   if (v.phase === 'lobby') app.appendChild(renderLobby(v));
-  else if (v.phase === 'night') app.appendChild(state.decoyResultStep ? renderDecoyResultScreen(v) : renderNight(v));
+  else if (v.phase === 'night') app.appendChild(renderNight(v));
   else if (v.phase === 'day') app.appendChild(renderDay(v));
   else if (v.phase === 'ended') app.appendChild(renderEnded(v));
 }
