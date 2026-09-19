@@ -237,6 +237,7 @@ function finishNight(state: GameState): void {
   state.dawnAt = null;
   state.phase = 'day';
   state.day += 1;
+  state.effects = state.effects.filter((e) => !e.untilDawn);
   state.onBlockId = null;
   state.highestYesToday = 0;
   state.usedNominatorIds = [];

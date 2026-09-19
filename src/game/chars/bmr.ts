@@ -2,7 +2,7 @@
 import { CHARACTERS } from '../characters.js';
 import { abilityKill, demonAttack, hooksOf, notifyChosen, tryKill } from '../deaths.js';
 import { msg } from '../messages.js';
-import { addDrunk, addPoison, removeEffects } from '../effects.js';
+import { addDrunk, addPoison } from '../effects.js';
 import { record } from '../history.js';
 import { livingNeighbors } from '../info.js';
 import { appendLog } from '../log.js';
@@ -22,8 +22,18 @@ function pukkaResolvePrevious(s: GameState, pukka: PlayerState): void {
   const victimId = pukka.flags.pukkaVictim as string | undefined;
   if (!victimId || !abilityWorks(s, pukka)) return;
   pukka.flags.pukkaVictim = undefined;
-  removeEffects(s, { source: pukka.id, sourceChar: 'pukka' });
   demonAttack(s, pukka, victimId);
+  // "The previously poisoned player dies then becomes healthy": one who dies is still poisoned at their time
+  // of death (a Sage or Ravenkeeper killed by the Pukka is told unreliable information), and healthy again by
+  // dawn; one who survives (protected) is healthy at once.
+  const victim = s.players.find((p) => p.id === victimId);
+  const died = !!victim && (!victim.alive || !!victim.flags.hiddenAlive);
+  const mine = (e: { source: string | null; sourceChar: string }) => e.source === pukka.id && e.sourceChar === 'pukka';
+  if (died) {
+    for (const e of s.effects) if (mine(e)) e.untilDawn = true;
+  } else {
+    s.effects = s.effects.filter((e) => !mine(e));
+  }
 }
 
 export const BMR: CharacterDef[] = [

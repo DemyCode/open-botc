@@ -126,6 +126,8 @@ export interface Effect {
   sourceChar: string;
   /** Removed when a night begins after this night number (null: until removed). */
   untilNight: number | null;
+  /** Ends when dawn breaks (the Pukka's victim is healthy again once dead). */
+  untilDawn?: boolean;
   /** Ends the moment the source stops being alive. */
   needsSourceAlive?: boolean;
   /** With needsSourceAlive: the source must also still BE this character (a Poisoner turned into something else stops poisoning). */

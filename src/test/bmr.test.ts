@@ -994,3 +994,43 @@ test('Gossip: a statement that is malformed is refused', () => {
     assert.throws(() => useDay(s, byChar(s, 'gossip').id, 'gossip', [], { statement: bad }), /statement/i);
   }
 });
+
+// ---------------------------------------------------------------- Pukka: the victim is still poisoned when they die (wiki)
+
+test('Pukka: the player it kills is still poisoned at the time of death — a Ravenkeeper killed by it is told unreliable information', () => {
+  const s = mk(['pukka', 'poisoner', 'ravenkeeper', 'soldier', 'monk', 'chef', 'mayor']);
+  s.day = 1;
+  s.night = 1;
+  startNight(s);
+  advanceUntil(s, 'pukka');
+  answerRealTurn(s, [byChar(s, 'ravenkeeper').id]); // night A: the Ravenkeeper is poisoned
+  runFullNight(s);
+  startNight(s);
+  advanceUntil(s, 'pukka');
+  answerRealTurn(s, [byChar(s, 'soldier').id]); // night B: the previous victim dies now
+  advanceUntil(s, 'ravenkeeper');
+  answerRealTurn(s, [byChar(s, 'chef').id]);
+  const looked = s.history.find((e) => e.type === 'info' && e.vars.step === 'ravenkeeper');
+  assert.equal(looked!.vars.lost, 'poisoned', 'the poison was still on at their time of death');
+  runFullNight(s);
+  assert.equal(byChar(s, 'ravenkeeper').alive, false);
+  assert.equal(abilityLostReason(s, byChar(s, 'ravenkeeper')), null, 'and it is gone once the night is over');
+});
+
+test('Pukka: a victim whose death is blocked (Innkeeper) is healthy at once', () => {
+  const s = mk(['pukka', 'poisoner', 'innkeeper', 'soldier', 'monk', 'chef', 'mayor']);
+  s.day = 1;
+  s.night = 1;
+  startNight(s);
+  advanceUntil(s, 'pukka');
+  answerRealTurn(s, [byChar(s, 'chef').id]);
+  runFullNight(s);
+  startNight(s);
+  advanceUntil(s, 'innkeeper');
+  answerRealTurn(s, [byChar(s, 'chef').id, byChar(s, 'mayor').id]);
+  advanceUntil(s, 'pukka');
+  answerRealTurn(s, [byChar(s, 'soldier').id]);
+  runFullNight(s);
+  assert.equal(byChar(s, 'chef').alive, true, 'the Innkeeper kept them safe');
+  assert.ok(!s.effects.some((e) => e.kind === 'poisoned' && e.target === byChar(s, 'chef').id), 'and they are no longer poisoned by the Pukka');
+});
