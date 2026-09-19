@@ -1208,3 +1208,41 @@ test('regression: the Outsider icon (a crescent moon) is not collapsed to a dot 
   assert.ok(inner, `unexpected crescent path: ${outsider}`);
   assert.ok(Number(inner[1]) > 8.5, 'the inner arc is wider than the gap it spans');
 });
+
+// ---------------------------------------------------------------- the replay: choosing nobody
+
+/** Plays night 2 with the given step answered by `taps` (one entry per round) and everything else skipped, then ends the game. */
+async function replayAfterNight2(chars: CharacterId[], step: string, taps: string[][], character: string | undefined, lang: 'en' | 'fr'): Promise<string[]> {
+  const s = mk(chars);
+  startNight(s);
+  runFullNight(s);
+  startNight(s);
+  advanceUntil(s, step);
+  const actor = s.pendingRealTurn!.playerIds[0];
+  playRounds(s, taps.length, { [actor]: taps }, character);
+  runFullNight(s);
+  s.phase = 'ended';
+  s.winner = 'good';
+  const app = await loadApp(lang);
+  app.show(viewFor(s, s.players[0].id), { seen: true, lang });
+  return replayLinesOf(app);
+}
+
+test('replay: an ability that chooses nobody says "chooses nobody" (Po, Assassin, Courtier) — in English and French', async () => {
+  for (const [chars, step] of [
+    [['po', 'poisoner', 'empath', 'washerwoman', 'soldier', 'monk', 'chef'], 'po'],
+    [['imp', 'soldier', 'assassin', 'empath', 'washerwoman', 'monk', 'chef'], 'assassin'], // (the Imp's default kill lands on the safe Soldier)
+    [['imp', 'poisoner', 'courtier', 'washerwoman', 'soldier', 'monk', 'chef'], 'courtier'],
+  ] as [CharacterId[], string][]) {
+    const en = await replayAfterNight2(chars, step, [[]], undefined, 'en');
+    assert.ok(en.some((l) => /chooses nobody/.test(l)), `${step}:\n${en.join('\n')}`);
+    assert.ok(!en.some((l) => /chooses\s*$/.test(l)), `${step}: never a sentence cut short`);
+    const fr = await replayAfterNight2(chars, step, [[]], undefined, 'fr');
+    assert.ok(fr.some((l) => /ne choisit personne/.test(l)), `${step} (fr):\n${fr.join('\n')}`);
+  }
+});
+
+test('replay: a character named at night is shown (the Courtier chooses the Empath)', async () => {
+  const lines = await replayAfterNight2(['imp', 'poisoner', 'courtier', 'washerwoman', 'soldier', 'monk', 'chef'], 'courtier', [[]], 'empath', 'en');
+  assert.ok(lines.some((l) => /chooses the Empath/.test(l)), lines.join('\n'));
+});

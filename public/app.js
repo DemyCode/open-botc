@@ -1938,7 +1938,11 @@ const REPLAY = {
         case 'butler': return c.P(e.actor) + ' chooses ' + c.P(a) + ' as their master' + lostNote;
         case 'fortuneteller': return c.P(e.actor) + ' checks ' + c.P(a) + ' and ' + c.P(b);
         case 'ravenkeeper': return c.P(e.actor) + ' looks at ' + c.P(a);
-        default: return c.P(e.actor) + ' chooses ' + e.targets.map((t) => c.P(t)).join(', ');
+        default: {
+          // Players, then any character named (Courtier, Gambler, Pit-Hag...); or nobody at all.
+          const parts = [...e.targets.map((t) => c.P(t)), ...(e.picked ? ['the ' + c.R(e.picked)] : [])];
+          return c.P(e.actor) + (parts.length ? ' chooses ' + parts.join(', ') : ' chooses nobody') + lostNote;
+        }
       }
     },
     attack: (e, c) => {
@@ -2044,7 +2048,10 @@ const REPLAY = {
         case 'butler': return c.P(e.actor) + ' choisit ' + c.P(a) + ' comme maître' + lostNote;
         case 'fortuneteller': return c.P(e.actor) + ' vérifie ' + c.P(a) + ' et ' + c.P(b);
         case 'ravenkeeper': return c.P(e.actor) + ' observe ' + c.P(a);
-        default: return c.P(e.actor) + ' choisit ' + e.targets.map((t) => c.P(t)).join(', ');
+        default: {
+          const parts = [...e.targets.map((t) => c.P(t)), ...(e.picked ? [c.R(e.picked)] : [])];
+          return c.P(e.actor) + (parts.length ? ' choisit ' + parts.join(', ') : ' ne choisit personne') + lostNote;
+        }
       }
     },
     attack: (e, c) => {

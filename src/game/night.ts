@@ -336,7 +336,9 @@ function applyRealChoice(state: GameState, step: string, playerId: string, targe
   const slot = `${step}-n${state.night}`;
   // A choice is only a "choice" when the player really picked someone (an info step's "Got it"
   // is not one). The Imp's pick is told as the attack itself, with its outcome.
-  if (spec?.recordsChoice) record(state, 'choice', { actor: playerId, character: self.perceived, ability: step, targets, lost: abilityLostReason(state, self), ...(character ? { picked: character } : {}) });
+  // Choosing nobody (the Po, the Assassin, the Barber's Demon...) is always told: "X chooses nobody".
+  const choseNobody = targets.length === 0 && !character;
+  if (spec?.recordsChoice || choseNobody) record(state, 'choice', { actor: playerId, character: self.perceived, ability: step, targets, lost: abilityLostReason(state, self), ...(character ? { picked: character } : {}) });
   noteMalfunction(state, self);
   // The Goon (and anyone like them) reacts the moment they are chosen, before the ability resolves.
   if (!spec?.sequentialTargets) for (const id of targets) notifyChosen(state, self, id, step);
