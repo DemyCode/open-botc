@@ -375,6 +375,15 @@ export const SV: CharacterDef[] = [
         const mad = s.data.mad;
         if (!mad || mad.by !== owner.id || !abilityWorks(s, owner) || s.data.madClaimed) return;
         s.data.mad = null;
+        // "The Storyteller can choose not to, to prevent evil from winning by this strategy": try the execution on a
+        // copy of the game, and spare the player if it would end the game in evil's favour (a Saint, or a 2-player finish).
+        const trial = structuredClone(s);
+        executePlayer(trial, mad.player);
+        evaluateWin(trial);
+        if (trial.winner === 'evil') {
+          record(s, 'madnessSpared', { player: mad.player, character: mad.character });
+          return;
+        }
         record(s, 'madnessExecuted', { player: mad.player, character: mad.character });
         return mad.player;
       },

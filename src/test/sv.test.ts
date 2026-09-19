@@ -471,3 +471,35 @@ test('Vigormortis: the dead Minion\'s nearest Townsfolk is poisoned even if that
   assert.equal(poisonedChars.length, 1);
   assert.ok(poisonedChars[0] === 'empath' || poisonedChars[0] === 'chef', `the dead nearest Townsfolk is poisoned, not ${poisonedChars[0]}`);
 });
+
+// ---------------------------------------------------------------- Cerenovus: the Storyteller does not execute when it would hand evil the win (wiki)
+
+/** A day in which the Cerenovus made `mad` mad about being `as`, nobody claimed anything, and the day is over. */
+function madDayEnds(chars: CharacterId[], mad: CharacterId, as: string): GameState {
+  const s = afterNight1(chars);
+  night(s, { cerenovus: { targets: [mad], character: as }, fanggu: { targets: ['juggler'] } }); // (the Fang Gu kills someone harmless)
+  endDayByConsensus(s);
+  return s;
+}
+
+test('Cerenovus: a mad Saint who says nothing is NOT executed — that would make evil win, which the Storyteller avoids', () => {
+  const s = madDayEnds(['fanggu', 'cerenovus', 'saint', 'savant', 'artist', 'juggler', 'chef'], 'saint', 'chef');
+  assert.equal(byChar(s, 'saint').alive, true);
+  assert.equal(s.winner, null, 'the game goes on');
+  assert.ok(!s.history.some((e) => e.type === 'madnessExecuted'));
+});
+
+test('Cerenovus: with 3 players left, executing the mad player would leave 2 (an evil win) — so they are spared', () => {
+  const s = afterNight1(['fanggu', 'cerenovus', 'empath', 'savant', 'artist', 'juggler', 'chef']);
+  for (const c of ['savant', 'artist', 'juggler', 'chef'] as const) byChar(s, c).alive = false;
+  night(s, { cerenovus: { targets: ['empath'], character: 'chef' }, fanggu: { targets: ['savant'] } }); // (savant is already dead)
+  endDayByConsensus(s);
+  assert.equal(byChar(s, 'empath').alive, true);
+  assert.equal(s.winner, null);
+});
+
+test('Cerenovus: an ordinary mad player who says nothing is still executed (unchanged)', () => {
+  const s = madDayEnds(['fanggu', 'cerenovus', 'empath', 'savant', 'artist', 'juggler', 'chef'], 'empath', 'chef');
+  assert.equal(byChar(s, 'empath').alive, false);
+  assert.ok(s.history.some((e) => e.type === 'madnessExecuted'));
+});

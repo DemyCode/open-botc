@@ -1905,6 +1905,7 @@ const REPLAY = {
     witchCurse: (e, c) => c.P(e.target) + ' nominates and dies — the Witch ' + c.P(e.witch) + "'s curse",
     madness: (e, c) => c.P(e.player) + ' is made mad about being the ' + c.R(e.character) + ' (the Cerenovus)',
     madnessExecuted: (e, c) => c.P(e.player) + ' was not mad about being the ' + c.R(e.character) + ': executed',
+    madnessSpared: (e, c) => c.P(e.player) + ' was not mad about being the ' + c.R(e.character) + ', but the Storyteller spares them: executing them would hand evil the win',
     statement: (e, c) => {
       const who = c.P(e.by) + (e.character ? ' (' + c.R(e.character) + ')' : '');
       if (e.a !== undefined || e.b !== undefined) return who + ' learns two things: ' + e.a + ' / ' + e.b;
@@ -2009,6 +2010,7 @@ const REPLAY = {
     witchCurse: (e, c) => c.P(e.target) + ' nomine et meurt — malédiction de la Sorcière ' + c.P(e.witch),
     madness: (e, c) => c.P(e.player) + ' est rendu(e) fou de être le ' + c.R(e.character) + ' (le Cerenovus)',
     madnessExecuted: (e, c) => c.P(e.player) + ' n’était pas fou d’être le ' + c.R(e.character) + ' : exécuté(e)',
+    madnessSpared: (e, c) => c.P(e.player) + ' n’était pas fou d’être le ' + c.R(e.character) + ', mais le Conteur l’épargne : l’exécuter donnerait la victoire au Mal',
     statement: (e, c) => {
       const who = c.P(e.by) + (e.character ? ' (' + c.R(e.character) + ')' : '');
       if (e.a !== undefined || e.b !== undefined) return who + ' apprend deux choses : ' + e.a + ' / ' + e.b;
